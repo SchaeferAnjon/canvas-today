@@ -76,11 +76,12 @@ export const descOf = (d: CategoryDescs, name: string) => d[name] ?? categoryOf(
 
 /**
  * 活动栏横线下按分组排：每组一段（组之间一条线），组里按 left 里的先后；不是分类的（自己摘上去的文件夹）放在最后一段。
- * 空的组不出现。
+ * 空的组不出现。presets 关着（task-wniqx）：收件箱一段，别的（关着时放上去的分类也算）都在自己摘的那一段。
  */
-export function groupLeft(left: readonly string[]): string[][] {
-  const groups: string[][] = CATEGORY_GROUPS.map((g) => left.filter((f) => categoryOf(f)?.group === g))
-  groups.push(left.filter((f) => !isCategory(f)))
+export function groupLeft(left: readonly string[], presets = true): string[][] {
+  const seg = (f: string) => (presets || f === '收件箱' ? categoryOf(f)?.group : undefined)
+  const groups: string[][] = CATEGORY_GROUPS.map((g) => left.filter((f) => seg(f) === g))
+  groups.push(left.filter((f) => seg(f) === undefined))
   return groups.filter((g) => g.length)
 }
 

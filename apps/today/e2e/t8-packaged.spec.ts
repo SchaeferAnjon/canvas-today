@@ -26,6 +26,14 @@ test('打好的 Canvas Today.app：测试模式起得来，快速加、勾掉改
   expect(existsSync(join(BUNDLE, 'Contents/Resources/icon.icns'))).toBe(true)
   if (process.env.CT_APP) expect(readFileSync(join(BUNDLE, 'Contents/Resources/app-update.yml'), 'utf8')).toContain('repo: canvas-today')
   execFileSync('codesign', ['--verify', '--deep', '--strict', BUNDLE])
+  // 提醒事项小助手在包里（和主程序一起签名）、两种架构都有；系统问权限时的说明中文、英文都有
+  const helper = join(BUNDLE, 'Contents/MacOS/canvas-today-reminders')
+  expect(existsSync(helper)).toBe(true)
+  expect(execFileSync('lipo', ['-archs', helper], { encoding: 'utf8' }).trim().split(/\s+/).sort()).toEqual(['arm64', 'x86_64'])
+  execFileSync('codesign', ['--verify', '--strict', helper])
+  for (const k of ['NSRemindersFullAccessUsageDescription', 'NSRemindersUsageDescription', 'NSCalendarsFullAccessUsageDescription', 'NSCalendarsUsageDescription']) expect(plist).toContain(`<key>${k}</key>`)
+  expect(readFileSync(join(BUNDLE, 'Contents/Resources/zh_CN.lproj/InfoPlist.strings'), 'utf8')).toContain('画布今日把带提醒的待办放进提醒事项的「画布今日」列表')
+  expect(readFileSync(join(BUNDLE, 'Contents/Resources/en.lproj/InfoPlist.strings'), 'utf8')).toContain('into the “Canvas Today” list in Reminders')
 
   const root = mkdtempSync(join(tmpdir(), 'ct-pkg-'))
   const vault = join(root, '测试库')
@@ -40,7 +48,8 @@ test('打好的 Canvas Today.app：测试模式起得来，快速加、勾掉改
   writeFileSync(join(root, 'ud', 'settings.json'), JSON.stringify(LOOK('sky', 'b')))
   const app = await electron.launch({
     executablePath: APP,
-    env: { ...process.env, CT_E2E: '1', CT_VAULT: vault, CT_USER_DATA: join(root, 'ud'), CT_NOTES_DATA: join(root, 'nd'), CT_NOW: NOW, CT_DEVICE: 'mac-test', CT_COMMIT_MS: '200' },
+    // 提醒事项：用包里自己的小助手（不给 CT_REMINDERS_HELPER），带 --memory 的假提醒事项
+    env: { ...process.env, CT_E2E: '1', CT_VAULT: vault, CT_USER_DATA: join(root, 'ud'), CT_NOTES_DATA: join(root, 'nd'), CT_NOW: NOW, CT_DEVICE: 'mac-test', CT_COMMIT_MS: '200', CT_REMINDERS_MEMORY: join(root, 'rem.json'), CT_REMINDERS_HELPER: '' },
   })
   try {
     const page = await app.firstWindow()
@@ -61,8 +70,15 @@ test('打好的 Canvas Today.app：测试模式起得来，快速加、勾掉改
       .toMatch(/画布今日：.*打电话给房东/)
     // 设置 › 关于 写着这一版的版本号
     await page.keyboard.press('Meta+,')
-    await expect(page.getByTestId('update-line')).toContainText(`版本 ${VERSION}`)
+    await expect(page.getByTestId('update-line')).toContainText(`版本${VERSION}`)
     expect(await app.evaluate(() => Array.isArray((globalThis as unknown as { ctNotifs: unknown[] }).ctNotifs))).toBe(true)
+    // 包里的提醒事项小助手开得起来：连接提醒事项，带 🔔 的两条（交论文初稿、订冰岛租车）镜像进假提醒事项的「画布今日」
+    const rem = page.locator('[data-row="rem"]')
+    await rem.getByRole('button', { name: '连接提醒事项' }).click()
+    await expect(rem).toContainText('已连接iCloud', { timeout: 15_000 })
+    const mem = () => JSON.parse(readFileSync(join(root, 'rem.json'), 'utf8')) as { lists: { title: string }[]; items: { title: string }[] }
+    await expect.poll(() => mem().items.map((i) => i.title).sort(), { timeout: 15_000 }).toEqual(['交论文初稿', '订冰岛租车'])
+    expect(mem().lists.map((l) => l.title)).toEqual(['画布今日'])
   } finally {
     await app.close()
     rmSync(root, { recursive: true, force: true })

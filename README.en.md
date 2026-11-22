@@ -30,7 +30,7 @@ Canvas Today is the task app of [Canvas Notes](https://github.com/SchaeferAnjon/
 
 To-dos you write in a note show up in Canvas Today right away. When you tick one off, change its date or set a reminder, Canvas Today rewrites only those few characters of that line and leaves every other byte of the note alone. The notes it changed are committed to the vault's Git after a short pause, so you can undo.
 
-What version 0.1.0 does:
+What version 0.2.0 does:
 
 - **Lists**: Inbox, Today, Tomorrow, Next 7 days, plus one list for every note in the vault that has to-dos
 - **Details**: date, time, reminder, repeat, priority, subtasks, and which line of which note it lives on
@@ -38,10 +38,11 @@ What version 0.1.0 does:
 - **Four quadrants**: tasks sorted by priority and date; drag one to another quadrant to change its priority
 - **Quick add**: one sentence such as “tomorrow 3pm submit paper #writing !high” is read into date, time, repeat (every Friday), list and priority, and you see what was understood before it is added
 - **Reminders**: Mac notifications you can tick off or snooze for 10 minutes, an hour or until tomorrow; what rang and what was snoozed is recorded in the vault, so another computer knows too
+- **Apple Reminders**: to-dos with a reminder go into a “Canvas Today” list in iCloud Reminders, so they ring on your iPhone and iPad too; ticking off, rescheduling or renaming in Reminders writes back to that line in your note, and a mirrored to-do no longer also rings from this Mac. You can also import your existing Reminders lists into the vault
 - **Menu bar window**: how many are left today, tick them off, add one
 - **⌘K**: search to-dos, add one, jump to a list
 - **Chinese and English interface**
-- **Open note at this line**: opens the note in Canvas Notes with the cursor on this task (needs a Canvas Notes release after 0.4.9; see below)
+- **Open note at this line**: opens the note in Canvas Notes with the cursor on this task (needs Canvas Notes 0.5.0 or later; see below)
 - **Updates**: updates itself from the releases on GitHub
 
 The date, reminder and repeat words written into the file are Chinese (`提前1小时`, `每周日`) whichever interface language you use, so the same line reads the same on every device.
@@ -83,11 +84,13 @@ This version is signed with an Apple Developer ID but not notarized by Apple (ne
 
 Reminders are Mac notifications: the first time one rings, macOS asks whether to allow them. To keep the Done and Snooze buttons on screen until you click one, set the style to Alerts in System Settings › Notifications › Canvas Today.
 
+To have them ring on your phone too: in Settings › Reminders click Connect Reminders. The first time, macOS asks once whether Canvas Today may access Reminders; click OK. Turn on Reminders in System Settings › your name › iCloud first. Without it everything still works and this Mac rings on its own.
+
 ### Do I need Canvas Notes?
 
 No. Canvas Today works on its own: on first launch pick a folder as your vault (an empty one, or one that already has Markdown files). Tasks you add without naming a note go to `收件箱/待办.md` (Inbox/To-do) in the vault. Git is required; macOS offers to install the command line tools the first time.
 
-With Canvas Notes installed, Canvas Today opens the vault Canvas Notes had open last and follows its theme and layout. Open note at this line needs a Canvas Notes release after 0.4.9: 0.4.9 and earlier do not understand this link yet and only switch to Canvas Notes without opening the note.
+With Canvas Notes installed, Canvas Today opens the vault Canvas Notes had open last and follows its theme and layout. Open note at this line needs Canvas Notes 0.5.0 or later: 0.4.9 and earlier do not understand this link yet and only switch to Canvas Notes without opening the note.
 
 ### Updates
 

@@ -11,7 +11,8 @@ export type NoteKind = 'inbox' | 'clip' | 'work'
 
 export function kindOf(path: string): { kind: NoteKind; topic?: string } {
   const parts = path.split('/')
-  if (parts[0] === INBOX && parts.length > 1) return { kind: 'inbox' }
+  // 收件箱/待办.md 放随手加的待办（画布今日、左边「待办」格往里加，task-pd1d1），不算等着整理的一条：不进收件箱的数、梦游和 /整理收件箱 不挪它
+  if (parts[0] === INBOX && parts.length > 1) return parts.length === 2 && parts[1] === '待办.md' ? { kind: 'work' } : { kind: 'inbox' }
   if (parts[0] === CLIPS && parts.length > 1) return { kind: 'clip', topic: parts.length > 2 ? parts[1] : '未分主题' }
   return { kind: 'work' }
 }

@@ -14,7 +14,7 @@ import { noteLabel } from './views'
 
 type Row = { key: string; icon: Parameters<typeof Ic>[0]['n']; name: string; desc?: string; group: 'add' | 'tasks' | 'go'; run: () => void }
 
-export function Palette({ today, onClose, onGo, onSettings }: { today: string; onClose: () => void; onGo: (a: 'lists' | 'calendar' | 'quad', n?: Nav) => void; onSettings: () => void }) {
+export function Palette({ today, onClose, onGo, onSettings, onImport }: { today: string; onClose: () => void; onGo: (a: 'lists' | 'calendar' | 'quad', n?: Nav) => void; onSettings: () => void; onImport?: () => void }) {
   const t = useT()
   const lang = useLang()
   const a = useActions()
@@ -58,6 +58,7 @@ export function Palette({ today, onClose, onGo, onSettings }: { today: string; o
       { key: 'g-cal', icon: 'calendar', name: t('calendar'), group: 'go', run: () => onGo('calendar') },
       { key: 'g-quad', icon: 'target', name: t('quad'), group: 'go', run: () => onGo('quad') },
       { key: 'g-set', icon: 'settings-gear', name: t('settings'), group: 'go', run: onSettings },
+      ...(onImport ? [{ key: 'g-imp', icon: 'cloud-download' as const, name: t('palImport'), group: 'go' as const, run: onImport }] : []),
       {
         key: 'g-lang',
         icon: 'globe',
@@ -68,7 +69,7 @@ export function Palette({ today, onClose, onGo, onSettings }: { today: string; o
     ]
     out.push(...go.filter((r) => !low || r.name.toLowerCase().includes(low)))
     return out
-  }, [text, today, snap, lang, t, a, onClose, onGo, onSettings])
+  }, [text, today, snap, lang, t, a, onClose, onGo, onSettings, onImport])
 
   useEffect(() => setI(0), [text])
   // scrollIntoView 在这一版 Chromium 里返回 Promise：写成块，不能当清理函数交回给 React

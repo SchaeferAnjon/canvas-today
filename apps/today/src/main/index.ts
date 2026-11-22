@@ -20,6 +20,8 @@ import { clockOffset, now, onClock } from './clock'
 import { Committer } from './commit'
 import { addTask, applyEdit, newList } from './edits'
 import { appMenu, taskMenu } from './menu'
+import { RemMirror } from './mirror'
+import { helperCommand, RemHelper } from './rem-helper'
 import { Reminders } from './remind'
 import { effectiveLook, notesDataDir, notesVault, SettingsFile, watchNotesSettings } from './settings'
 import { E2E, guardScreen } from './test-mode'
@@ -37,6 +39,8 @@ let win: BrowserWindow | null = null
 let vault: TaskVault | null = null
 let committer: Committer | null = null
 let reminders: Reminders | null = null
+/** 镜像进系统提醒事项（task-b9y8i）：whenReady 里建好 */
+let mirror: RemMirror | null = null
 let updater: Updater | null = null
 /** 检查更新建好了（发布包要先加载 electron-updater）；界面来问之前先等它 */
 let updaterReady: Promise<void> = Promise.resolve()
@@ -127,10 +131,15 @@ async function openVault(dir: string): Promise<void> {
     console.error('提交没成功', e)
     broadcast('ct:say', tr(lang(), 'failed', e.message))
   }
-  v.onChange = pushSnapshot
+  v.onChange = () => {
+    pushSnapshot()
+    mirror?.soon()
+  }
   v.onWrote = (paths, msg) => committer?.add(paths, msg)
   v.onLogs = () => void reminders?.loadEvents().then(() => reminders?.soon())
   v.watch()
+  // 先认出哪些镜像着（索引里 ringBy: 'reminders'），本机通知再开始排：重开软件时不把提醒事项已经响过的再补响一次
+  mirror?.setVault(v)
   reminders = new Reminders(v, DEVICE, {
     tasks: () => vault?.snapshot().tasks ?? [],
     noteTitle: (p) => p.replace(/^.*\//, '').replace(/\.md$/i, ''),
@@ -345,6 +354,56 @@ function registerIpc() {
     await updaterReady
     await shell.openExternal(releaseUrl(updater!.status().version || PKG.version))
   })
+
+  // ---------- 提醒事项 ----------
+  const strs = (v: unknown): v is string[] => Array.isArray(v) && v.every((x) => typeof x === 'string')
+  const importOpts = (o: unknown) => {
+    const x = o as { lists?: unknown; completed?: unknown }
+    if (!x || !strs(x.lists) || typeof x.completed !== 'boolean') throw new Error('导入的参数不对')
+    return { lists: x.lists, completed: x.completed }
+  }
+  ipcMain.handle('ct:remState', () => mirror!.state())
+  ipcMain.handle('ct:remConnect', () => mirror!.connect())
+  ipcMain.handle('ct:remDisconnect', () => mirror!.disconnect())
+  ipcMain.handle('ct:remSetMirror', (_e, on: unknown) => {
+    if (typeof on !== 'boolean') throw new Error('镜像开关的参数不对')
+    return mirror!.setMirror(on)
+  })
+  ipcMain.handle('ct:remSetList', (_e, title: unknown) => {
+    if (typeof title !== 'string') throw new Error('列表名字不对')
+    return mirror!.setList(title)
+  })
+  ipcMain.handle('ct:remLists', () => mirror!.lists())
+  ipcMain.handle('ct:remPreview', (_e, o: unknown) => mirror!.preview(importOpts(o)))
+  ipcMain.handle('ct:remImport', (_e, o: unknown) => mirror!.import(importOpts(o)))
+  ipcMain.handle('ct:remDeleteOriginals', (_e, rids: unknown) => {
+    if (!strs(rids)) throw new Error('要删的参数不对')
+    return mirror!.deleteOriginals(rids)
+  })
+  ipcMain.handle('ct:remDismissBanner', () => mirror!.dismissBanner())
+  ipcMain.handle('ct:remOpenPrivacy', () => mirror!.openPrivacy())
+  ipcMain.handle('ct:remOpenICloud', () => mirror!.openICloud())
+}
+
+/** 提醒事项小助手和镜像：测试模式里小助手一律带 --memory（假提醒事项），globalThis.ctRem 让测试像人一样在提醒事项里改 */
+function setupMirror() {
+  const helper = new RemHelper(helperCommand(process.env, { e2e: E2E, packaged: app.isPackaged, execPath: process.execPath, here: __dirname }))
+  mirror = new RemMirror(helper, join(app.getPath('userData'), 'reminders-mirror.json'), {
+    settings: () => settings.read(),
+    saveRem: (p) => void settings.set({ reminders: { ...settings.read().reminders, ...p } }),
+    lang,
+    today,
+    mirroredChanged: pushSnapshot,
+    notice: (n) => broadcast('ct:notice', n),
+    state: (s) => broadcast('ct:rem', s),
+    openExternal: (url) => shell.openExternal(url),
+    flush: () => committer?.flush() ?? Promise.resolve(),
+  })
+  if (E2E && helper.memory)
+    (globalThis as unknown as { ctRem: unknown }).ctRem = {
+      external: (p: Record<string, unknown>) => helper.request('test.external', p),
+      dump: () => helper.request('test.dump'),
+    }
 }
 
 const menuHandlers = {
@@ -398,6 +457,7 @@ async function setupUpdater() {
 async function installUpdate(): Promise<boolean> {
   if (updater?.status().phase !== 'ready') return false
   reminders?.stop()
+  mirror?.stop()
   await Promise.race([committer?.flush(), new Promise((r) => setTimeout(r, 5000))]).catch((e) => console.error('更新前提交失败', e))
   vault?.close()
   quitting = true
@@ -435,6 +495,7 @@ app.whenReady().then(async () => {
   else if (!app.isPackaged) app.dock?.setIcon(join(__dirname, '../../build/icon.png'))
   if (app.isPackaged && !E2E) app.setAsDefaultProtocolClient(BRAND.scheme)
   registerIpc()
+  setupMirror()
   appMenu(lang(), menuHandlers)
   updaterReady = setupUpdater()
   const dir = vaultDir()
@@ -467,6 +528,7 @@ app.on('before-quit', (e) => {
   quitting = true
   e.preventDefault()
   reminders?.stop()
+  mirror?.stop()
   vault?.close()
   // 退出前把排着的提交掉，最多等 5 秒
   void Promise.race([committer.flush(), new Promise((r) => setTimeout(r, 5000))]).finally(() => app.quit())

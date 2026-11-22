@@ -8,7 +8,7 @@ import { type FSWatcher, watch } from 'node:fs'
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, join, relative, resolve, sep } from 'node:path'
 import { merge3 } from '@cn/format'
-import { type FileTask, keyOf, scanTasks } from '@cn/tasks'
+import { type FileTask, keyOf, type RingBy, scanTasks } from '@cn/tasks'
 import type { NoteView, Snapshot, TaskView } from '../shared/api'
 
 const SKIP_DIRS = new Set(['.git', 'node_modules', '.trash', '.obsidian'])
@@ -57,6 +57,8 @@ export class TaskVault {
   onLogs: () => void = () => {}
   /** 软件自己改了文件（交给提交的） */
   onWrote: (paths: string[], message: string) => void = () => {}
+  /** 谁来响：镜像进系统提醒事项了的（main/mirror.ts 记着）由提醒事项响，本机不排通知 */
+  ringByOf: (id: string | null) => RingBy = () => 'app'
 
   constructor(root: string) {
     this.root = resolve(root)
@@ -146,8 +148,8 @@ export class TaskVault {
           heading: t.heading?.text ?? null,
           headingLevel: t.heading?.level ?? 0,
           headingLine: t.heading?.line ?? null,
-          // 谁来响：镜像进系统提醒事项（下一批）的标成 reminders，我们自己就不排通知；第一批都是 app
-          ringBy: 'app',
+          // 谁来响：镜像进系统提醒事项的标成 reminders，我们自己就不排通知
+          ringBy: this.ringByOf(t.task.id),
         })
       }
     }
@@ -166,6 +168,11 @@ export class TaskVault {
 
   isReadOnly(path: string): boolean {
     return this.files.get(path)?.readOnly ?? false
+  }
+
+  /** 这一篇最后改的时候（毫秒）：和提醒事项两边都改了时比先后 */
+  mtime(path: string): number {
+    return this.files.get(path)?.mtimeMs ?? 0
   }
 
   /**

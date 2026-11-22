@@ -6,7 +6,7 @@ import { useEffect, useState, useSyncExternalStore } from 'react'
 import aurora from '@notes-assets/covers/aurora.jpg'
 import cave from '@notes-assets/covers/ice-cave.jpg'
 import { activeSkin, skinOf } from '../../../notes/src/shared/appearance'
-import type { AppState, GitInfo, Snapshot, UpdateState } from '../shared/api'
+import type { AppState, GitInfo, RemState, Snapshot, UpdateState } from '../shared/api'
 import type { Lang } from '../shared/i18n'
 import type { TodayAppearance, TodaySettings } from '../shared/settings'
 import { isoOf } from '../shared/when'
@@ -19,11 +19,13 @@ export interface Data {
   dark: boolean
   /** 检查更新的状态（主进程推过来） */
   update: UpdateState | null
+  /** 提醒事项（镜像、导入）：主进程推过来 */
+  rem: RemState | null
 }
 
 const media = () => window.matchMedia('(prefers-color-scheme: dark)')
 
-let data: Data = { state: null, snap: { version: 0, tasks: [], notes: [] }, git: null, offset: 0, dark: media().matches, update: null }
+let data: Data = { state: null, snap: { version: 0, tasks: [], notes: [] }, git: null, offset: 0, dark: media().matches, update: null, rem: null }
 const subs = new Set<() => void>()
 const set = (p: Partial<Data>) => {
   data = { ...data, ...p }
@@ -89,6 +91,8 @@ export async function boot() {
   window.ct.onSettings(({ settings, look }) => data.state && set({ state: { ...data.state, settings, look } }))
   window.ct.onUpdate((update) => set({ update }))
   void window.ct.updateStatus().then((update) => set({ update }))
+  window.ct.onRem((rem) => set({ rem }))
+  void window.ct.remState().then((rem) => set({ rem }))
   const m = media()
   m.addEventListener('change', () => set({ dark: m.matches }))
 }

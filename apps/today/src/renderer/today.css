@@ -1552,7 +1552,7 @@ select.sel {
 
 /* ---------- 浮层 ---------- */
 .toast {
-  position: absolute;
+  position: fixed;
   left: 50%;
   bottom: 26px;
   transform: translateX(-50%);
@@ -1563,7 +1563,7 @@ select.sel {
   display: flex;
   align-items: center;
   gap: 12px;
-  z-index: 60;
+  z-index: 95;
   max-width: min(680px, calc(100vw - 40px));
 }
 .toast > .ci {
@@ -1757,10 +1757,21 @@ select.sel {
   display: flex;
   align-items: center;
   gap: 12px;
-  min-height: 36px;
+  min-height: 40px;
   padding: 4px 12px;
   border: 1px solid var(--line);
   background: var(--card);
+}
+/* 右边一列：下拉一样宽（140，放得下「画布今日（新建）」），按钮贴右；下拉、按钮都 28 高、圆角 6（DESIGN.md 设置：设置里下拉要对齐） */
+.setw .srow > select.sel {
+  width: 140px;
+  height: 28px;
+  flex: none;
+}
+.setw .srow > .btn {
+  height: 28px;
+  border-radius: 6px;
+  flex: none;
 }
 .setw .srow + .srow {
   border-top: 0;
@@ -1791,6 +1802,15 @@ select.sel {
   display: inline;
   padding: 0;
 }
+/* 库的路径一行放不下就中间省略（英文「换一个库…」按钮更宽），不把弹窗撑出滚动条 */
+.setw .srow .sl span.mono {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.setw .srow[data-row='update'] {
+  position: relative;
+}
 .btn:disabled {
   opacity: 0.5;
 }
@@ -1799,10 +1819,14 @@ select.sel {
 }
 
 /* 检查更新：设置里下载的进度条、底栏最右端「● 重启更新到 x」/「● 更新没装上」（照画布笔记 app.css 的 .udot） */
+/* 下载进度条贴在那一行底边上，不占高度（设置弹窗在 1420 × 800 里不能滚） */
 .ubar {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 5px;
   display: block;
   height: 3px;
-  margin-top: 6px;
   border-radius: 2px;
   background: var(--fill2);
   overflow: hidden;
@@ -1881,12 +1905,15 @@ select.sel {
   border-radius: 2px;
   background: var(--acc);
 }
+/* 方角开关。关着：轨道 --fill2 加一圈 1px --line2、滑块 --t3（弹窗 --pop 底上也看得出，深湖里 --card 和 --pop 是同一个色）；
+   开着不变。画布笔记的 .sw-toggle（settings.css）同样这么画，两个软件一个样 */
 .sw {
   position: relative;
   width: 34px;
   height: 20px;
   border-radius: 5px;
   background: var(--fill2);
+  box-shadow: inset 0 0 0 1px var(--line2);
   flex: none;
 }
 .sw::after {
@@ -1897,15 +1924,17 @@ select.sel {
   width: 16px;
   height: 16px;
   border-radius: 4px;
-  background: var(--card);
+  background: var(--t3);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
   transition: left 0.15s;
 }
 .sw.on {
   background: var(--acc-bg);
+  box-shadow: none;
 }
 .sw.on::after {
   left: 16px;
+  background: var(--card);
 }
 
 /* 选库 */
@@ -1927,4 +1956,219 @@ select.sel {
 .choose p {
   color: var(--t2);
   margin: 0 0 18px;
+}
+
+/* ---------- 提醒事项（task-b9y8i） ---------- */
+/* 顶上提示「没开 iCloud 提醒事项」：照画布笔记白板顶上的胶囊（32 高、--pop、--shadow、info 14、右端 24 的圆 ×），只出一次。
+   外面包一层：出现时高度 0 → 42（胶囊 32 加上面 10）、淡入、从上面落 6px，点掉时反过来（6.6：--dur-slow、--ease），中间那一栏不跳 */
+.rbwrap {
+  flex: none;
+  display: flex;
+  justify-content: center;
+  height: 0;
+  opacity: 0;
+  transform: translateY(-6px);
+  overflow: hidden;
+  transition:
+    height var(--dur-slow) var(--ease),
+    opacity var(--dur-slow) var(--ease),
+    transform var(--dur-slow) var(--ease);
+}
+.rbwrap.in {
+  height: 42px;
+  opacity: 1;
+  transform: none;
+  overflow: visible;
+}
+.rbanner {
+  align-self: flex-start;
+  flex: none;
+  margin: 10px 16px 0;
+  max-width: calc(100% - 32px);
+  height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px 0 12px;
+  border-radius: 999px;
+  background: var(--pop);
+  box-shadow: var(--shadow);
+  font-size: 12px;
+  color: var(--t2);
+}
+.rbanner > .ci {
+  flex: none;
+  color: var(--acc);
+}
+.rbanner .rbt {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rbanner .link {
+  flex: none;
+  white-space: nowrap;
+}
+.rbanner .rbx {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  color: var(--t3);
+}
+.rbanner .rbx:hover {
+  background: var(--fill);
+  color: var(--t1);
+}
+/* 详情「提醒」那一行：镜像着的写「提醒事项里响」，不放「到点的样子」 */
+.remby {
+  font-size: 12px;
+  color: var(--t3);
+  white-space: nowrap;
+}
+
+/* 设置里提醒事项那一行的状态句（这一节唯一说现在怎么样的字）：--t2，在弹窗 --pop 底上够清楚 */
+.setw .srow[data-row='rem'] .sl > span {
+  color: var(--t2);
+}
+.setw .srow[data-row='rem'] .sl > span.uerr {
+  color: var(--red-t);
+}
+
+/* 导入提醒事项：样子同设置弹窗（.setw），一组一块；顶边固定在 120（两步之间标题和 × 不挪），内容多了往下长、在弹窗里滚 */
+.setw.impw {
+  top: 120px;
+  transform: translateX(-50%);
+  max-height: calc(100vh - 160px);
+}
+.impw .impsub {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: var(--t3);
+}
+.setw .srow.implist {
+  padding: 0;
+}
+.impcheck {
+  flex: 1;
+  min-width: 0;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 12px;
+  text-align: left;
+  border-radius: inherit;
+}
+.impcheck:hover {
+  background: var(--fill);
+}
+.impcheck .impdot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--t3);
+}
+.impcheck .impname {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.impcheck .impn {
+  font-size: 12px;
+  color: var(--t3);
+  white-space: nowrap;
+}
+.impw .impnote {
+  margin: 6px 0 10px;
+  font-size: 12px;
+  color: var(--t3);
+}
+.impw .impnote.uerr {
+  color: var(--red-t);
+}
+.impfoot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+.impfile {
+  margin-bottom: 8px;
+  padding: 8px 12px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--card);
+}
+.impfile .imph {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.impfile .imph > .ci {
+  flex: none;
+  color: var(--t3);
+}
+.impfile .imph .mono {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.impfile .imph .t3 {
+  flex: none;
+  white-space: nowrap;
+}
+.impfile .md {
+  margin-top: 6px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--fill);
+  color: var(--t2);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.impfile .impmore {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--t3);
+}
+.impknow {
+  margin: 0;
+  padding: 0 0 0 18px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--t2);
+}
+
+/* 搬完删原条目前再问一次：照画布笔记删笔记的确认框（440 宽、圆角 12、--pop、--shadow-up；标题 15/600、说明 13 --t2） */
+.askw {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(440px, calc(100vw - 40px));
+  padding: 18px 20px 16px;
+  border-radius: 12px;
+  background: var(--pop);
+  box-shadow: var(--shadow-up);
+  z-index: 92;
+}
+.askw b {
+  display: block;
+  font-size: 15px;
+  font-weight: 600;
+}
+.askw p {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--t2);
 }

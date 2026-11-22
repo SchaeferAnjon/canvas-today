@@ -43,7 +43,17 @@ export interface FilesPrefs {
   newWhere: 'picked' | 'inbox' | 'beside'
   /** 删笔记前问一声：images 带图的才问、always 每次都问、never 不问 */
   delAsk: 'images' | 'always' | 'never'
+  /** 名字叫「待办」的笔记也列在文件树、首页文件列表和「最近」里（默认关：在左边「待办」格里，task-pd1d1） */
+  showTodo: boolean
+  /**
+   * 每篇记住用哪种看法打开（标签条右边 任务 / 白板 / 文档，记在软件设置里、不往文件里加属性）：
+   * 只记和默认不一样的（名字叫「待办」的默认任务，别的默认文档或白板）
+   */
+  noteViews: Record<string, NoteView>
 }
+
+/** 一篇笔记的三种看法 */
+export type NoteView = 'task' | 'board' | 'doc'
 
 export interface PdfPrefs {
   /** 新打开的 PDF：适合宽度、适合整页、100% */
@@ -83,7 +93,7 @@ export const FONT_SIZES = [14, 15, 16, 17, 18] as const
 
 export const DEFAULT_GENERAL: GeneralPrefs = { reopen: true, tray: true, quickKey: defaultKeysOf('quick-note')[0]!, quickSrc: true }
 export const DEFAULT_EDITOR: EditorPrefs = { font: 'system', size: 15, lineHeight: 'normal', width: 'narrow', newView: 'doc', spell: false, boardShrink: true, boardDots: true, semantic: true }
-export const DEFAULT_FILES: FilesPrefs = { newWhere: 'picked', delAsk: 'images' }
+export const DEFAULT_FILES: FilesPrefs = { newWhere: 'picked', delAsk: 'images', showTodo: false, noteViews: {} }
 export const DEFAULT_PDF: PdfPrefs = { zoom: 'width', openAi: false, recap: true, ankiSides: true }
 export const DEFAULT_WEB: WebPrefs = { engine: 'google', newTab: 'bookmarks', downloads: 'downloads' }
 export const DEFAULT_SYNC: SyncPrefs = { autoMinutes: 0, pullOnOpen: false, pushOnQuit: false, backup: 'off', backupDir: null }
@@ -117,9 +127,24 @@ export function normalizeEditor(v: unknown): EditorPrefs {
   }
 }
 
+/** 记住看法的那几篇：只留库里的 md 路径（不许 .. 跳出库）和三种看法，最多 2000 篇 */
+function normalizeViews(v: unknown): Record<string, NoteView> {
+  const out: Record<string, NoteView> = {}
+  for (const [k, x] of Object.entries(obj(v)).slice(0, 2000)) {
+    if (!/\.md$/i.test(k) || k.startsWith('/') || k.split('/').includes('..') || !['task', 'board', 'doc'].includes(x as string)) continue
+    out[k] = x as NoteView
+  }
+  return out
+}
+
 export function normalizeFiles(v: unknown): FilesPrefs {
   const r = obj(v)
-  return { newWhere: oneOf(r.newWhere, ['picked', 'inbox', 'beside'], DEFAULT_FILES.newWhere), delAsk: oneOf(r.delAsk, ['images', 'always', 'never'], DEFAULT_FILES.delAsk) }
+  return {
+    newWhere: oneOf(r.newWhere, ['picked', 'inbox', 'beside'], DEFAULT_FILES.newWhere),
+    delAsk: oneOf(r.delAsk, ['images', 'always', 'never'], DEFAULT_FILES.delAsk),
+    showTodo: bool(r.showTodo, DEFAULT_FILES.showTodo),
+    noteViews: normalizeViews(r.noteViews),
+  }
 }
 
 export function normalizePdf(v: unknown): PdfPrefs {

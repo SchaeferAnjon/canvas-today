@@ -3,9 +3,12 @@
  * 分隔线下面是从文件里摘出来、单独占一格的文件夹：默认是整套顶级分类（2026-11-18 方向 A「活动栏平铺」，shared/categories.ts），
  * 任意文件夹右键「放到左边」也能摘上来，分类也能拿下来。
  * 摘了哪些、什么顺序，和每个文件夹的图标、颜色，存在库里的 .canvas-notes/左栏.json（跟着 Git 走）。
+ * 「用预设的分类」能关（task-wniqx，设置 › 文件和附件 › 左栏）：关掉时活动栏只剩收件箱和自己放上去的几格，
+ * 收起来的分类记在同一个文件里（「预设分类」: false、「收起的分类」），再打开放回去；文件夹和笔记一个不动。
  * 纯函数，主进程和界面都用。
  */
 import { CATEGORY_NAMES, categoryOf, isCategory } from './categories'
+import { INBOX } from './layout'
 
 export const LEFT_FILE = '.canvas-notes/左栏.json'
 /** 左栏.json 的版本：2 起摘上来的默认是整套分类；没有版本的老文件读的时候把整套分类补上来（分类排前面，自己摘的接在后面） */
@@ -47,7 +50,32 @@ export interface LeftConfig {
   left: string[]
   /** 文件夹 → 自己设的图标和颜色 */
   looks: Record<string, FolderLook>
+  /**
+   * 「用预设的分类」关着时才有：关掉那一刻从活动栏收起来的分类（收件箱不收），再打开时放回去。
+   * 没有这一项 = 开着（默认）
+   */
+  off?: string[]
 }
+
+/** 用不用预设的分类（关掉时分类当普通文件夹：活动栏不画、树里不分组、首页不写「分类」） */
+export const presetsOn = (c: LeftConfig) => !c.off
+
+/**
+ * 开关「用预设的分类」：关掉时把活动栏上的分类（收件箱除外）收起来记着；打开时放回去（关着时自己放上去的分类不重复）。
+ * 文件夹本身不动
+ */
+export function setPresets(c: LeftConfig, on: boolean): LeftConfig {
+  if (on === presetsOn(c)) return c
+  if (!on) return { ...c, left: c.left.filter((f) => !isCategory(f) || f === INBOX), off: c.left.filter((f) => isCategory(f) && f !== INBOX) }
+  const { off = [], ...rest } = c
+  return { ...rest, left: [...c.left, ...off.filter((f) => !c.left.includes(f))] }
+}
+
+/** 活动栏上画出来的几格（就是 left；关着预设时收起的分类已经不在里面） */
+export const shownLeft = (c: LeftConfig) => c.left
+
+/** 自己放上去的几格（不是分类的；设置里「放在左边的文件夹」数的就是它） */
+export const ownLeft = (c: LeftConfig) => c.left.filter((f) => !isCategory(f))
 
 export const defaultLeft = (): LeftConfig => ({ left: [...DEFAULT_LEFT], looks: {} })
 
@@ -79,21 +107,33 @@ export function normalizeLeft(raw: unknown): LeftConfig {
     if (isColor(lv.color)) look.color = lv.color
     if (look.icon || look.color) looks[k] = look
   }
-  return { left: Array.isArray(r['左边']) ? left : [...DEFAULT_LEFT], looks }
+  const out: LeftConfig = { left: Array.isArray(r['左边']) ? left : [...DEFAULT_LEFT], looks }
+  if (r['预设分类'] === false) {
+    const off = Array.isArray(r['收起的分类']) ? r['收起的分类'].filter((f): f is string => typeof f === 'string' && isCategory(f) && f !== INBOX) : []
+    out.off = [...new Set(off)].filter((f) => !out.left.includes(f))
+  }
+  return out
 }
 
 /** 界面、主进程手里的一份（已经是新版的）：过一遍 normalize，不再补分类（拿下来的分类不会自己回来） */
-export const cleanLeft = (c: Partial<LeftConfig>): LeftConfig => normalizeLeft({ 版本: LEFT_VERSION, 左边: c.left ?? [], 图标: c.looks ?? {} })
+export const cleanLeft = (c: Partial<LeftConfig>): LeftConfig => normalizeLeft(fileShape(c))
+
+/** 文件里的样子（关着预设时多「预设分类」「收起的分类」两项；开着时不写，和以前的文件一样） */
+const fileShape = (c: Partial<LeftConfig>) => ({ 版本: LEFT_VERSION, 左边: c.left ?? [], 图标: c.looks ?? {}, ...(c.off ? { 预设分类: false, 收起的分类: c.off } : {}) })
 
 /** 写进文件的样子：中文键、两格缩进、最后一个换行 */
 export function leftJson(c: LeftConfig): string {
-  const n = cleanLeft(c)
-  return JSON.stringify({ 版本: LEFT_VERSION, 左边: n.left, 图标: n.looks }, null, 2) + '\n'
+  return JSON.stringify(fileShape(cleanLeft(c)), null, 2) + '\n'
 }
 
 export const sameAsDefault = (c: LeftConfig) => leftJson(c) === leftJson(defaultLeft())
 
-export const putLeft = (c: LeftConfig, folder: string): LeftConfig => (c.left.includes(folder) ? c : { ...c, left: [...c.left, folder] })
+/** 放到左边：before 给了就放在它前面（从树里拖到活动栏的第几格），没给或是 null 放最后 */
+export function putLeft(c: LeftConfig, folder: string, before: string | null = null): LeftConfig {
+  if (c.left.includes(folder)) return c
+  const i = before === null ? -1 : c.left.indexOf(before)
+  return { ...c, left: i < 0 ? [...c.left, folder] : [...c.left.slice(0, i), folder, ...c.left.slice(i)], off: c.off?.filter((f) => f !== folder) }
+}
 export const takeLeft = (c: LeftConfig, folder: string): LeftConfig => ({ ...c, left: c.left.filter((f) => f !== folder) })
 
 /** 上移（-1）、下移（+1）；到头了不动 */
@@ -101,13 +141,13 @@ export const takeLeft = (c: LeftConfig, folder: string): LeftConfig => ({ ...c, 
  * 活动栏上一格在哪一段：分类按分类表的组（收件箱 | 读进来的 | 自己写的），自己摘的文件夹一段（categories.ts 的 groupLeft 就这样分段画）。
  * 上移、下移、拖着排都只在自己那一段里挪：跨段挪了，画出来还在原来那段，看着像没动
  */
-const segOf = (f: string): string | null => (isCategory(f) ? categoryOf(f)!.group : null)
+const segOf = (c: LeftConfig, f: string): string | null => (f === INBOX || (presetsOn(c) && isCategory(f)) ? categoryOf(f)!.group : null)
 
 export function moveLeft(c: LeftConfig, folder: string, by: -1 | 1): LeftConfig {
   const i = c.left.indexOf(folder)
   if (i < 0) return c
   let j = i + by
-  while (j >= 0 && j < c.left.length && segOf(c.left[j]!) !== segOf(folder)) j += by
+  while (j >= 0 && j < c.left.length && segOf(c, c.left[j]!) !== segOf(c, folder)) j += by
   if (j < 0 || j >= c.left.length) return c
   const left = [...c.left]
   ;[left[i], left[j]] = [left[j]!, left[i]!]
@@ -117,7 +157,7 @@ export function moveLeft(c: LeftConfig, folder: string, by: -1 | 1): LeftConfig 
 /** 拖着排：把 folder 放到 before 前面（before 是 null 放最后）；before 在别的段里不挪 */
 export function dropLeft(c: LeftConfig, folder: string, before: string | null): LeftConfig {
   if (!c.left.includes(folder) || folder === before) return c
-  if (before !== null && segOf(before) !== segOf(folder)) return c
+  if (before !== null && segOf(c, before) !== segOf(c, folder)) return c
   const rest = c.left.filter((f) => f !== folder)
   const i = before === null ? rest.length : rest.indexOf(before)
   return i < 0 ? c : { ...c, left: [...rest.slice(0, i), folder, ...rest.slice(i)] }
@@ -144,7 +184,7 @@ export function remapLeft(c: LeftConfig, map: (p: string) => string | null | und
     const t = to(k)
     if (t) looks[t] = v
   }
-  return { left: [...new Set(left)], looks }
+  return { ...c, left: [...new Set(left)], looks }
 }
 
 /** 没自己设过时的图标：分类用它自己的（收件箱、书架、书…），每门课是书架，别的普通文件夹 */
@@ -166,10 +206,16 @@ export function defaultColor(folder: string): FolderColor | null {
   return null
 }
 
+/**
+ * 关着预设时分类当普通文件夹：没自己设过的是普通文件夹的图标、不染色，课程、阅读下面每门课、每本书也是（原型 proto-pin-folder.html）；
+ * 收件箱照旧是收件箱的符号（它一直在，和图标栏那一格一样）
+ */
 export const lookOf = (c: LeftConfig, folder: string): { icon: string; color: string | null } => {
   const l = c.looks[folder]
-  const color = l?.color ?? defaultColor(folder)
-  return { icon: l?.icon ?? defaultIcon(folder), color: color ? FOLDER_COLORS[color] : null }
+  const plain = !presetsOn(c) && (isCategory(folder) || /^(课程|阅读)\/[^/]+$/.test(folder))
+  if (plain && folder === INBOX && !l) return { icon: 'inbox', color: null }
+  const color = l?.color ?? (plain ? null : defaultColor(folder))
+  return { icon: l?.icon ?? (plain ? 'folder' : defaultIcon(folder)), color: color ? FOLDER_COLORS[color] : null }
 }
 
 // ---------- 文件夹置顶：和笔记的置顶同一个 .canvas-notes/置顶.json，文件夹写成「写作/」 ----------

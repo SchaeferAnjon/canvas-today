@@ -110,7 +110,7 @@ export function snoozeUntil(s: Snooze, now: string): string {
 
 /**
  * 谁来响：app 是我们自己排本机通知；reminders 是这条已经镜像进系统「提醒事项」的「画布今日」列表，由提醒事项在每台设备上响，
- * 我们所有的 App 都不再给它排通知（2026-11-22 用户选的 A；镜像是下一批，第一批只留这个口子，索引里标上就跳过）
+ * 我们所有的 App 都不再给它排通知（2026-11-22 用户选的 A；画布今日的 main/mirror.ts 镜像过去、索引里标上，planReminders 就跳过）
  */
 export type RingBy = 'app' | 'reminders'
 

@@ -7,6 +7,11 @@
 const brand = require('./brand.json')
 
 const release = process.env.CT_RELEASE === '1'
+
+// 系统问权限时的英文说明（和 build/lproj/en.lproj/InfoPlist.strings 一样；中文在 zh_CN.lproj）
+const REMINDERS_WHY =
+  'Canvas Today puts to-dos with a reminder into the “Canvas Today” list in Reminders so they alert on all your devices, and writes back what you complete, reschedule or rename there. Import from Reminders also reads the lists you pick.'
+const CALENDARS_WHY = 'Canvas Today shows your events read-only in its calendar so you can plan to-dos around them. It never changes your events.'
 if (release && !process.env.CT_SIGN_IDENTITY) throw new Error('发布包要 CT_SIGN_IDENTITY（scripts/release.mjs 从钥匙串里找 Developer ID Application 后设好）')
 
 /** @type {import('electron-builder').Configuration} */
@@ -17,6 +22,14 @@ module.exports = {
   copyright: `Copyright © ${brand.year} ${brand.author}`,
   directories: { output: process.env.CT_RELEASE_OUT || 'release', buildResources: 'build' },
   files: ['out/**', 'package.json', '!**/*.map'],
+  // 提醒事项小助手（native/reminders，scripts/build-helper.mjs 编好的 arm64 + x86_64）：和主程序放在一起（Contents/MacOS，苹果说的放命令行工具的地方），
+  // 跟着整个包一起签名；系统把它记在画布今日名下问权限（用下面 Info.plist 里的用途说明）
+  extraFiles: [{ from: 'native/reminders/.build/apple/Products/Release/canvas-today-reminders', to: 'MacOS/canvas-today-reminders' }],
+  // 系统问权限时的中文、英文说明（Info.plist 本身写英文，见 extendInfo）
+  extraResources: [
+    { from: 'build/lproj/en.lproj/InfoPlist.strings', to: 'en.lproj/InfoPlist.strings' },
+    { from: 'build/lproj/zh_CN.lproj/InfoPlist.strings', to: 'zh_CN.lproj/InfoPlist.strings' },
+  ],
   // canvas-today://task/<🆔>：画布笔记、通知、系统提醒事项里的链接回到画布今日的那一条
   protocols: [{ name: brand.name, schemes: [brand.scheme] }],
   // 检查更新（src/main/index.ts 的 setupUpdater）查这个仓库 Release 里的 latest-mac.yml。只有发布包写 publish：
@@ -33,11 +46,18 @@ module.exports = {
     entitlements: release ? 'build/entitlements.mac.plist' : undefined,
     entitlementsInherit: release ? 'build/entitlements.mac.plist' : undefined,
     notarize: false,
+    // 提醒事项小助手不是 Electron 带的，签名时要先单独签它（不然签主程序时报「同一个文件夹里有没签名的程序」）
+    binaries: ['Contents/MacOS/canvas-today-reminders'],
     minimumSystemVersion: '12.0',
     extendInfo: {
       CFBundleDisplayName: brand.name,
       // 到点提醒要带按钮（勾掉、推迟），通知得是「提醒」样式
       NSUserNotificationAlertStyle: 'alert',
+      // 带提醒的待办镜像进系统提醒事项（task-b9y8i）；日历以后只读显示日程。macOS 14 起读 FullAccess 那两个，12、13 读老的
+      NSRemindersFullAccessUsageDescription: REMINDERS_WHY,
+      NSRemindersUsageDescription: REMINDERS_WHY,
+      NSCalendarsFullAccessUsageDescription: CALENDARS_WHY,
+      NSCalendarsUsageDescription: CALENDARS_WHY,
     },
   },
   dmg: { title: `${brand.name} \${version}` },

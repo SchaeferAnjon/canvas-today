@@ -1,6 +1,6 @@
 {
   "name": "canvas-today",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "Canvas Today（画布今日）：任务就是 Markdown 笔记里的一行 - [ ]，和 Canvas Notes 用同一个库。macOS。",

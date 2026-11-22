@@ -1,9 +1,10 @@
 /**
- * 设置（第一批几项）：外观（默认和画布笔记一样；不跟时自己选 A/B、主题、窗口背景）、语言、库、菜单栏、版本和更新。
+ * 设置：外观（默认和画布笔记一样；不跟时自己选 A/B、主题、窗口背景）、语言、库、提醒事项、菜单栏、版本和更新。
  * 居中弹窗，样子照画布笔记设置的「一组一块、一行一项」。
  */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { activeSkin, SKINS, skinOf } from '../../../notes/src/shared/appearance'
+import type { RemList } from '../shared/api'
 import { updateError, updateLine } from '../shared/update'
 import { nowMs, reloadState, saveSettings, useData, useLang } from './store'
 import { Ic, useT } from './ui'
@@ -15,7 +16,7 @@ const SKIN_EN: Record<string, string> = { mint: 'Mint', sky: 'Sky', sakura: 'Sak
 
 const Sw = ({ on, onClick, label }: { on: boolean; onClick: () => void; label: string }) => <button className={`sw${on ? ' on' : ''}`} role="switch" aria-checked={on} aria-label={label} onClick={onClick} />
 
-export function SettingsDialog({ onClose }: { onClose: () => void }) {
+export function SettingsDialog({ onClose, onImport }: { onClose: () => void; onImport: () => void }) {
   const t = useT()
   const { state, dark } = useData()
   const s = state!.settings
@@ -107,6 +108,8 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
             </button>
           </div>
         </div>
+        <div className="sg">{t('sRem')}</div>
+        <RemSection onImport={onImport} />
         <div className="sg">{t('sTray')}</div>
         <div className="sgroup">
           <div className="srow">
@@ -120,6 +123,119 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
         </div>
       </div>
     </>
+  )
+}
+
+/**
+ * 提醒事项（task-b9y8i）：第一行是镜像开关和现在的样子（没连：「连接提醒事项」；没授权：说清楚、能打开系统设置；没开 iCloud：怎么打开、再试一次；
+ * 连着：iCloud「画布今日」里几条、断开），连着时再有「放进哪个列表」「导入提醒事项」两行。动作照「版本和更新」那一行写成说明后面的链接
+ */
+function RemSection({ onImport }: { onImport: () => void }) {
+  const t = useT()
+  const lang = useLang()
+  const { rem: r } = useData()
+  const [lists, setLists] = useState<RemList[]>([])
+  const [busy, setBusy] = useState(false)
+  const ok = !!r && r.connected && r.auth === 'full'
+  useEffect(() => {
+    if (ok && r!.icloud) void window.ct.remLists().then(setLists)
+  }, [ok, r?.icloud, r?.list?.id])
+  if (!r) return null
+  const listName = r.list?.title ?? (lang === 'zh' ? '画布今日' : 'Canvas Today')
+  const run = async (f: () => Promise<unknown>) => {
+    setBusy(true)
+    try {
+      await f()
+    } finally {
+      setBusy(false)
+    }
+  }
+  const link = (label: string, f: () => void) => (
+    <>
+      {' · '}
+      <button className="link" onClick={f}>
+        {label}
+      </button>
+    </>
+  )
+  const connectBtn = (label: string) => (
+    <button className="btn sm" disabled={busy || r.asking} onClick={() => void run(() => window.ct.remConnect())}>
+      {label}
+    </button>
+  )
+  let sub: React.ReactNode
+  let right: React.ReactNode = null
+  if (!r.available) sub = t('remUnavailable')
+  else if (r.asking) {
+    sub = t('remAsking')
+    right = connectBtn(t('remConnect'))
+  } else if (r.auth === 'denied' || r.auth === 'restricted') {
+    sub = (
+      <>
+        {t('remDeniedSub')}
+        {link(t('remOpenPrivacy'), () => void window.ct.remOpenPrivacy())}
+      </>
+    )
+    right = connectBtn(t('remConnect'))
+  } else if (!r.connected) {
+    sub = t('remOffSub', listName)
+    right = connectBtn(t('remConnect'))
+  } else if (r.icloud === false) {
+    sub = (
+      <>
+        {t('remNoICloudSub')}
+        {link(t('remHow'), () => void window.ct.remOpenICloud())}
+      </>
+    )
+    right = connectBtn(t('remRetry'))
+  } else {
+    sub = (
+      <>
+        {!r.mirror ? t('remPausedSub') : r.error ? t('remErrorSub', r.error) : t('remOnSub', listName, r.mirrored)}
+        {link(t('remDisconnect'), () => void run(() => window.ct.remDisconnect()))}
+      </>
+    )
+    right = <Sw on={r.mirror} label={t('remRow')} onClick={() => !busy && void run(() => window.ct.remSetMirror(!r.mirror))} />
+  }
+  // 放进哪个列表：iCloud 里能写的列表；我们的「画布今日」还没建时也列出来（选了才建）
+  const own = lang === 'zh' ? '画布今日' : 'Canvas Today'
+  const choices = lists.filter((l) => l.icloud && l.writable).map((l) => l.title)
+  if (!choices.includes(listName)) choices.unshift(listName)
+  const fresh = !choices.includes(own)
+  return (
+    <div className="sgroup">
+      <div className="srow" data-row="rem">
+        <div className="sl">
+          {t('remRow')}
+          <span className={r.error && r.mirror && r.connected ? 'uerr' : undefined}>{sub}</span>
+        </div>
+        {right}
+      </div>
+      {ok && r.icloud && r.mirror && (
+        <div className="srow" data-row="remList">
+          <div className="sl">{t('remListRow')}</div>
+          <select className="sel" aria-label={t('remListRow')} value={listName} disabled={busy} onChange={(e) => void run(() => window.ct.remSetList(e.target.value))}>
+            {choices.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+            {fresh && <option value={own}>{t('remListNew', own)}</option>}
+          </select>
+        </div>
+      )}
+      {ok && (
+        <div className="srow" data-row="remImport">
+          <div className="sl">
+            {t('remImportRow')}
+            <span>{t('remImportSub')}</span>
+          </div>
+          <button className="btn sm" onClick={onImport}>
+            {t('remImportBtn')}
+          </button>
+        </div>
+      )}
+    </div>
   )
 }
 

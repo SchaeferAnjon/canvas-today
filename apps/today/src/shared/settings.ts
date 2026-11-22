@@ -1,11 +1,25 @@
 /**
- * 画布今日自己的设置（userData/settings.json）：语言、外观（默认跟画布笔记一样）、菜单栏、两边的栏开不开、自动检查更新。
+ * 画布今日自己的设置（userData/settings.json）：语言、外观（默认跟画布笔记一样）、菜单栏、两边的栏开不开、自动检查更新、提醒事项。
  * 库不另存一份：先看画布笔记的设置里上次打开的库（两个软件用同一个库），没有才用这里记的。
  */
 import { type Appearance, DEFAULT_SETTINGS as NOTES_DEFAULT, normalizeSettings, SKINS } from '../../../notes/src/shared/appearance'
 import type { Lang } from './i18n'
 
 export type TodayAppearance = Pick<Appearance, 'followSystem' | 'day' | 'night' | 'skin' | 'frame' | 'winBg'>
+
+/**
+ * 提醒事项（每台设备各记各的）：连上了没有、镜像开没开、镜像进哪个列表（名字；id 是这台设备上 EventKit 给的）。
+ * 「上次同步完两边是什么样」不在这里，在 userData/reminders-mirror.json（main/mirror.ts）
+ */
+export interface RemSettings {
+  connected: boolean
+  mirror: boolean
+  /** 列表的名字；没连过时是 null（第一次连的时候照界面语言定：画布今日 / Canvas Today） */
+  list: string | null
+  listId: string | null
+}
+
+export const DEFAULT_REM: RemSettings = { connected: false, mirror: true, list: null, listId: null }
 
 export interface TodaySettings {
   lang: Lang
@@ -25,6 +39,7 @@ export interface TodaySettings {
   autoUpdate: boolean
   /** 上次查到「已是最新」的时间，重开软件后设置里也显示 */
   updateCheckedAt?: number
+  reminders: RemSettings
 }
 
 const notesLook = NOTES_DEFAULT.appearance
@@ -37,6 +52,18 @@ export const DEFAULT_TODAY: TodaySettings = {
   left: true,
   right: true,
   autoUpdate: true,
+  reminders: DEFAULT_REM,
+}
+
+function normalizeRem(raw: unknown): RemSettings {
+  const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
+  const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v : null)
+  return {
+    connected: r.connected === true,
+    mirror: typeof r.mirror === 'boolean' ? r.mirror : DEFAULT_REM.mirror,
+    list: str(r.list),
+    listId: str(r.listId),
+  }
 }
 
 const skinIds = new Set<string>(SKINS.map((s) => s.id))
@@ -66,6 +93,7 @@ export function normalizeToday(raw: unknown, sysLang: Lang = 'zh'): TodaySetting
     ...(r.vaultChosen === true ? { vaultChosen: true } : {}),
     autoUpdate: typeof r.autoUpdate === 'boolean' ? r.autoUpdate : DEFAULT_TODAY.autoUpdate,
     ...(typeof r.updateCheckedAt === 'number' && Number.isFinite(r.updateCheckedAt) && r.updateCheckedAt > 0 ? { updateCheckedAt: r.updateCheckedAt } : {}),
+    reminders: normalizeRem(r.reminders),
   }
 }
 

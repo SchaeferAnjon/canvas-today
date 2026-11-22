@@ -1,0 +1,5 @@
+/* 系统问权限时弹窗里的说明（中文）。英文写在 electron-builder.cjs 的 extendInfo（Info.plist 本身）和 en.lproj 里，改了两边一起改 */
+"NSRemindersFullAccessUsageDescription" = "画布今日把带提醒的待办放进提醒事项的「画布今日」列表，到点在你的每台设备上提醒；你在那里勾掉、改时间、改名会写回笔记。「导入提醒事项」时也读你选的列表。";
+"NSRemindersUsageDescription" = "画布今日把带提醒的待办放进提醒事项的「画布今日」列表，到点在你的每台设备上提醒；你在那里勾掉、改时间、改名会写回笔记。「导入提醒事项」时也读你选的列表。";
+"NSCalendarsFullAccessUsageDescription" = "画布今日在它的日历里只读显示你的日程，排待办时好避开；不会改你的日程。";
+"NSCalendarsUsageDescription" = "画布今日在它的日历里只读显示你的日程，排待办时好避开；不会改你的日程。";

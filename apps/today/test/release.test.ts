@@ -67,7 +67,7 @@ describe('检查更新的文案', () => {
     expect(updateLine(st({ checkedAt: new Date('2026-11-21T21:05:00').getTime() }), true, 'zh', NOW)).toBe('上次昨天 21:05查过，是最新的')
     expect(updateLine(st({ phase: 'latest', checkedAt: new Date('2026-11-22T09:00:00').getTime() }), true, 'en', NOW)).toBe('Up to date · checked today 09:00')
     expect(updateLine(st({ phase: 'downloading', version: '0.1.1', percent: 42 }), true, 'zh')).toBe('正在下载新版本0.1.1 · 42%')
-    expect(updateLine(st({ phase: 'ready', version: '0.1.1' }), true, 'en')).toBe('Version 0.1.1 is ready; restart to use it')
+    expect(updateLine(st({ phase: 'ready', version: '0.1.1' }), true, 'en')).toBe('Version 0.1.1 is ready')
   })
 
   it('原话换成看得懂的话：签名对不上、只读位置、下载不到是「没装上」（底栏出一项）；没网、还没有能更新的版本是「没查成」', () => {

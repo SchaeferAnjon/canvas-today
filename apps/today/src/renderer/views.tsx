@@ -10,7 +10,7 @@ import { repeatLabel, tr } from '../shared/i18n'
 import { cntToday, dayItems, type Group, groupsOf, type Nav, open, quadOf } from '../shared/views'
 import { dayLabel, isoPlus, mdLabel, thirdPick, whenLabel } from '../shared/when'
 import { useActions } from './actions'
-import { useLang } from './store'
+import { useData, useLang } from './store'
 import { Check, Ic, useT } from './ui'
 
 /** 一篇笔记在界面上叫什么：收件箱那篇叫「收件箱/待办」（照原型），别的是文件名 */
@@ -244,6 +244,8 @@ export function Detail({ x, snap, today }: { x: TaskView | null; snap: Snapshot;
   const [title, setTitle] = useState(x?.title ?? '')
   const [editing, setEditing] = useState(false)
   const [step, setStep] = useState('')
+  const { rem } = useData()
+  const remList = rem?.list?.title ?? (lang === 'zh' ? '画布今日' : 'Canvas Today')
   // 外面改了标题、换了一条：没在改时跟着换；正在改的字不动（外部改动不丢正在打的字）
   useEffect(() => {
     if (!editing) setTitle(x?.title ?? '')
@@ -333,10 +335,17 @@ export function Detail({ x, snap, today }: { x: TaskView | null; snap: Snapshot;
                 </option>
               ))}
             </select>
-            {x.remind && x.date && (
-              <button className="link" onClick={() => a.preview(x)}>
-                {t('previewNotif')}
-              </button>
+            {x.ringBy === 'reminders' ? (
+              <span className="remby" title={t('remRingsTip', remList)}>
+                {t('remRings')}
+              </span>
+            ) : (
+              x.remind &&
+              x.date && (
+                <button className="link" onClick={() => a.preview(x)}>
+                  {t('previewNotif')}
+                </button>
+              )
             )}
           </span>
         </div>

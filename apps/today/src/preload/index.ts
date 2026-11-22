@@ -37,6 +37,20 @@ const api: CtApi = {
   installUpdate: () => ipcRenderer.invoke('ct:installUpdate'),
   onUpdate: on('ct:update'),
   openRelease: () => ipcRenderer.invoke('ct:openRelease'),
+  remState: () => ipcRenderer.invoke('ct:remState'),
+  onRem: on('ct:rem'),
+  remConnect: () => ipcRenderer.invoke('ct:remConnect'),
+  remDisconnect: () => ipcRenderer.invoke('ct:remDisconnect'),
+  remSetMirror: (on) => ipcRenderer.invoke('ct:remSetMirror', on),
+  remSetList: (title) => ipcRenderer.invoke('ct:remSetList', title),
+  remLists: () => ipcRenderer.invoke('ct:remLists'),
+  remPreview: (o) => ipcRenderer.invoke('ct:remPreview', o),
+  remImport: (o) => ipcRenderer.invoke('ct:remImport', o),
+  remDeleteOriginals: (rids) => ipcRenderer.invoke('ct:remDeleteOriginals', rids),
+  remDismissBanner: () => ipcRenderer.invoke('ct:remDismissBanner'),
+  remOpenPrivacy: () => ipcRenderer.invoke('ct:remOpenPrivacy'),
+  remOpenICloud: () => ipcRenderer.invoke('ct:remOpenICloud'),
+  onNotice: on('ct:notice'),
 }
 
 contextBridge.exposeInMainWorld('ct', api)

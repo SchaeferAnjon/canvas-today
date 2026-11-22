@@ -86,6 +86,8 @@ if (keptNotes) fs.writeFileSync(notes, keptNotes)
 
 console.log('构建…')
 run('npx', ['electron-vite', 'build'], { stdio: 'inherit' })
+// 提醒事项小助手（Swift，arm64 + x86_64 一个文件，两种架构的包都放它）
+run('node', ['scripts/build-helper.mjs'], { stdio: 'inherit' })
 // 签不上 Developer ID 时 electron-builder 默认只打一条警告、照样出包：强制签名，签不上就失败
 console.log(`打 Mac 包（Developer ID 签名，不公证，${ARCHS.join(' + ')}，dmg + zip）…`)
 const mac = spawnSync('npx', ['electron-builder', '--mac', ...ARCHS.map((a) => `--${a}`), '--config', 'electron-builder.cjs', '--publish', 'never', '-c.forceCodeSigning=true'], {
@@ -109,7 +111,18 @@ for (const arch of ARCHS) {
   if (!/flags=0x10000\(runtime\)/.test(info)) fail(`${arch} 没开 hardened runtime`)
   const ent = spawnSync('codesign', ['-d', '--entitlements', '-', '--xml', p], { encoding: 'utf8' }).stdout
   if (!ent.includes('com.apple.security.cs.allow-jit')) fail(`${arch} 的 entitlements 没带上`)
+  if (!ent.includes('com.apple.security.personal-information.calendars')) fail(`${arch} 的 entitlements 里没有提醒事项要的 personal-information.calendars`)
+  // 提醒事项小助手：在 Contents/MacOS 里，两种架构都有，同一张证书、hardened runtime、带着 personal-information.calendars
+  const helper = path.join(p, 'Contents/MacOS/canvas-today-reminders')
+  if (!fs.existsSync(helper)) fail(`${arch} 包里没有提醒事项小助手 ${helper}`)
+  const helperArchs = run('lipo', ['-archs', helper]).split(/\s+/).sort().join(' ')
+  if (helperArchs !== 'arm64 x86_64') fail(`${arch} 包里的提醒事项小助手是 ${helperArchs}`)
+  const hInfo = spawnSync('codesign', ['-dvv', helper], { encoding: 'utf8' }).stderr
+  if (!/Authority=Developer ID Application:/.test(hInfo) || !hInfo.includes(`TeamIdentifier=${team}`) || !/flags=0x10000\(runtime\)/.test(hInfo)) fail(`${arch} 的提醒事项小助手不是 ${id.name} 签的或没开 hardened runtime`)
+  if (!spawnSync('codesign', ['-d', '--entitlements', '-', '--xml', helper], { encoding: 'utf8' }).stdout.includes('com.apple.security.personal-information.calendars')) fail(`${arch} 的提醒事项小助手没带 personal-information.calendars`)
   const plist = fs.readFileSync(path.join(p, 'Contents/Info.plist'), 'utf8')
+  for (const k of ['NSRemindersFullAccessUsageDescription', 'NSRemindersUsageDescription', 'NSCalendarsFullAccessUsageDescription']) if (!plist.includes(`<key>${k}</key>`)) fail(`${arch} 的 Info.plist 里没有 ${k}`)
+  if (!fs.readFileSync(path.join(p, 'Contents/Resources/zh_CN.lproj/InfoPlist.strings'), 'utf8').includes('NSRemindersFullAccessUsageDescription')) fail(`${arch} 包里没有中文的权限说明`)
   const key = (k) => plist.match(new RegExp(`<key>${k}</key>\\s*<string>([^<]*)</string>`))?.[1]
   if (key('CFBundleShortVersionString') !== version) fail(`${arch} 的版本号是 ${key('CFBundleShortVersionString')}，不是 ${version}`)
   if (key('CFBundleIdentifier') !== brand.appId) fail(`${arch} 的 Bundle ID 是 ${key('CFBundleIdentifier')}`)

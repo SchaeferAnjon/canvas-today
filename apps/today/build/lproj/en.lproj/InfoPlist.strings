@@ -1,0 +1,5 @@
+/* What the system shows when it asks for access (English; same text as extendInfo in electron-builder.cjs). Chinese is in zh_CN.lproj */
+"NSRemindersFullAccessUsageDescription" = "Canvas Today puts to-dos with a reminder into the “Canvas Today” list in Reminders so they alert on all your devices, and writes back what you complete, reschedule or rename there. Import from Reminders also reads the lists you pick.";
+"NSRemindersUsageDescription" = "Canvas Today puts to-dos with a reminder into the “Canvas Today” list in Reminders so they alert on all your devices, and writes back what you complete, reschedule or rename there. Import from Reminders also reads the lists you pick.";
+"NSCalendarsFullAccessUsageDescription" = "Canvas Today shows your events read-only in its calendar so you can plan to-dos around them. It never changes your events.";
+"NSCalendarsUsageDescription" = "Canvas Today shows your events read-only in its calendar so you can plan to-dos around them. It never changes your events.";

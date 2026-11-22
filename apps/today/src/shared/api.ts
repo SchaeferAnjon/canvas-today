@@ -38,7 +38,7 @@ export interface TaskView {
   headingLevel: number
   /** 那个标题在第几行（同名的两节分得开） */
   headingLine: number | null
-  /** 谁来响：镜像进系统提醒事项的由提醒事项响（下一批），第一批都是 app */
+  /** 谁来响：镜像进系统提醒事项了的由提醒事项响（main/mirror.ts），本机不排通知；别的是 app */
   ringBy: RingBy
 }
 
@@ -141,6 +141,71 @@ export interface NotifShot {
   at: string
 }
 
+// ---------- 提醒事项（task-b9y8i：带提醒的镜像进系统提醒事项，加导入提醒事项） ----------
+
+export type RemAuth = 'notDetermined' | 'denied' | 'restricted' | 'full' | 'writeOnly'
+
+/** 设置里「提醒事项」一节、底栏、顶上提示要知道的 */
+export interface RemState {
+  /** 小助手在不在（开发时没编出来、测试模式没给假提醒事项时不在） */
+  available: boolean
+  /** 授权；还没问小助手时是 unknown */
+  auth: RemAuth | 'unknown'
+  /** 系统正在问能不能访问提醒事项 */
+  asking: boolean
+  connected: boolean
+  mirror: boolean
+  /** 开没开 iCloud 提醒事项（没授权时不知道） */
+  icloud: boolean | null
+  list: { id: string; title: string } | null
+  /** 这时候真在镜像：连上了、开着、有 iCloud、有列表 */
+  active: boolean
+  /** 镜像着的（没做完的）有几条 */
+  mirrored: number
+  /** 上次同步没成的原因（成了是 null） */
+  error: string | null
+  /** 顶上那条「没开 iCloud 提醒事项」要出 */
+  banner: 'noICloud' | null
+}
+
+/** 提醒事项里的一个列表 */
+export interface RemList {
+  id: string
+  title: string
+  source: string
+  icloud: boolean
+  color: string | null
+  open: number
+  done: number
+  writable: boolean
+  /** 是不是镜像进去的那个 */
+  mirror: boolean
+}
+
+/** 导入之前先给你看的 */
+export interface ImportPreview {
+  files: { list: string; path: string; isNew: boolean; count: number; lines: string[] }[]
+  total: number
+  recurNotes: number
+  places: number
+  multiAlarms: number
+  /** 没带上的已完成的条数 */
+  skippedDone: number
+  /** 带 🔔、没做完的几条：导入时加上 🆔，之后镜像进提醒事项 */
+  reminded: number
+}
+
+export type ImportResult = { ok: true; undo: string; total: number; lists: number; rids: string[] } | { ok: false; message: string }
+
+/** 主进程要界面弹的提示条（带撤销的） */
+export interface Notice {
+  msg: string
+  sub?: string
+  undo?: string
+  /** 同步时说的（只说一次）：正有提示条时排队，不盖掉别的、也不被盖掉 */
+  bg?: boolean
+}
+
 export interface CtApi {
   state(): Promise<AppState>
   chooseVault(): Promise<AppState>
@@ -182,6 +247,28 @@ export interface CtApi {
   onUpdate(cb: (s: UpdateState) => void): () => void
   /** 新版本（没有就是这一版）在 GitHub 上的发布页，用浏览器打开 */
   openRelease(): Promise<void>
+
+  // ---------- 提醒事项 ----------
+  remState(): Promise<RemState>
+  onRem(cb: (s: RemState) => void): () => void
+  /** 连接：第一次系统问一次能不能访问提醒事项 */
+  remConnect(): Promise<RemState>
+  /** 断开：镜像过去的删掉，以后这台 Mac 自己响 */
+  remDisconnect(): Promise<RemState>
+  remSetMirror(on: boolean): Promise<RemState>
+  /** 换一个列表镜像进去（没有就在 iCloud 下建） */
+  remSetList(title: string): Promise<RemState>
+  remLists(): Promise<RemList[]>
+  remPreview(o: { lists: string[]; completed: boolean }): Promise<ImportPreview>
+  remImport(o: { lists: string[]; completed: boolean }): Promise<ImportResult>
+  /** 导入以后删掉提醒事项里的原条目（界面先问过一次） */
+  remDeleteOriginals(rids: string[]): Promise<{ ok: boolean; removed: number }>
+  remDismissBanner(): Promise<void>
+  /** 打开系统设置 › 隐私与安全性 › 提醒事项 */
+  remOpenPrivacy(): Promise<void>
+  /** 打开系统设置里的 Apple 账户（iCloud 在那里） */
+  remOpenICloud(): Promise<void>
+  onNotice(cb: (n: Notice) => void): () => void
 }
 
 declare global {

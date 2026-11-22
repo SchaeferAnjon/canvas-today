@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!-- hardened runtime 下 Electron 要的（照画布笔记 apps/notes/build/entitlements.mac.plist 的前三项）：V8 的 JIT、可写可执行内存、
-     加载 Electron 框架里不是同一张证书签的库。画布今日不用摄像头、不发 Apple 事件，那两项不要 -->
+     加载 Electron 框架里不是同一张证书签的库。画布今日不用摄像头、不发 Apple 事件，那两项不要。
+     personal-information.calendars：hardened runtime 下用 EventKit 读写提醒事项（和日历是同一项，苹果没有单独给提醒事项的一项），
+     主程序和提醒事项小助手（Contents/MacOS/canvas-today-reminders）都带着 -->
 <plist version="1.0">
 <dict>
   <key>com.apple.security.cs.allow-jit</key>
@@ -9,6 +11,8 @@
   <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
   <true/>
   <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+  <key>com.apple.security.personal-information.calendars</key>
   <true/>
 </dict>
 </plist>

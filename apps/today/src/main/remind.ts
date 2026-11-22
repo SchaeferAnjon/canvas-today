@@ -1,7 +1,7 @@
 /**
  * 到点提醒（Mac）：本机通知，到点弹，能勾掉、推迟 10 分钟 / 1 小时 / 明天；点通知打开画布今日、选中那一条。
  * 响过、推迟、勾掉写进库里 .canvas-tasks/提醒/<设备名>/YYYY-MM.jsonl（每台设备只写自己那份，跟着 Git 走）；
- * 排的时候把所有设备的记录合起来看（@cn/tasks 的 planReminders）。索引里标了 ringBy: 'reminders' 的（镜像进系统提醒事项，下一批）跳过。
+ * 排的时候把所有设备的记录合起来看（@cn/tasks 的 planReminders）。索引里标了 ringBy: 'reminders' 的（镜像进了系统提醒事项，main/mirror.ts）跳过。
  * 测试模式里通知换成记录器：globalThis.ctNotifs 是弹过的，globalThis.ctNotifAct(第几条, 'done' | '10m' | '1h' | 'tomorrow' | 'click') 像人一样点。
  */
 import { Notification } from 'electron'

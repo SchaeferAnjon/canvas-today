@@ -57,7 +57,7 @@ test('旧版查到新版、后台下好、退出时换成新版，签名照样�
     await expect(page.locator('.vhead h1')).toHaveText('今天')
     await page.locator('.ab[data-k="settings"]').click()
     const line = page.getByTestId('update-line')
-    await expect(line).toContainText(`版本 ${from}`)
+    await expect(line).toContainText(`版本${from}`)
     await page.getByRole('button', { name: '现在查一次' }).click()
     // 下好、Squirrel 验过签才算 ready
     await expect(line).toContainText(`新版本${want}已下好`, { timeout: 120_000 })

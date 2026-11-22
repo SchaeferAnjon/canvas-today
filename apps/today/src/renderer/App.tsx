@@ -6,13 +6,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { codiconSvg } from '@cn/design/codicon-svg'
 import type { Prio } from '@cn/tasks'
-import type { AddCtx, EditOp, EditResult, TaskView } from '../shared/api'
+import type { AddCtx, EditOp, EditResult, Notice, TaskView } from '../shared/api'
 import { INBOX_NOTE } from '../shared/brand'
 import { tr } from '../shared/i18n'
 import { cntInbox, cntNote, cntToday, cntTomorrow, cntWeek, findAgain, type Nav, notesWithTodo } from '../shared/views'
 import { barKind } from '../shared/update'
 import { dayLabel, isoPlus, mdLabel, whenLabel } from '../shared/when'
 import { type Actions, ActionsCtx } from './actions'
+import { DeleteAsk, ImportDialog } from './ImportDialog'
 import { Palette } from './Palette'
 import { SettingsDialog } from './Settings'
 import { getData, nowMs, reloadState, saveSettings, useData, useLang, useToday } from './store'
@@ -46,7 +47,7 @@ function ChooseVault() {
 }
 
 function Desk() {
-  const { state, snap, git } = useData()
+  const { state, snap, git, rem } = useData()
   const lang = useLang()
   const t = useT()
   const today = useToday()
@@ -65,6 +66,9 @@ function Desk() {
   const [mini, setMini] = useState(today.slice(0, 7))
   const [say, setSay] = useState<{ text: string; x: number; y: number } | null>(null)
   const [newList, setNewList] = useState<string | null>(null)
+  /** 导入提醒事项的弹窗、搬完删原条目前再问一次（要删的那几条） */
+  const [imp, setImp] = useState(false)
+  const [delAsk, setDelAsk] = useState<string[] | null>(null)
   const lastUndo = useRef<string | null>(null)
 
   // 选中的那一条：索引换了（外面改了、自己改了）照 🆔、原文、标题找回来
@@ -73,12 +77,36 @@ function Desk() {
     if (sel && selRef && (sel.key !== selRef.key || sel.raw !== selRef.raw || sel.title !== selRef.title)) setSelRef(pickSel(sel))
   }, [sel, selRef])
 
-  const show = useCallback((msg: string, sub?: string, undo?: string) => {
+  /**
+   * 提醒事项同步时说的话（bg：只说一次的，在提醒事项里删掉了、两边都改了…）正有提示条时排队，等这一条收起再出，不被盖掉；
+   * 点了按钮的结果（连上了、镜像关了）马上出，盖掉的那条同步的话放回队头
+   */
+  const notices = useRef<Notice[]>([])
+  const toastUntil = useRef(0)
+  const showing = useRef<Notice | null>(null)
+  const show = useCallback((msg: string, sub?: string, undo?: string, bg = false) => {
     const k = Date.now()
     if (undo) lastUndo.current = undo
+    toastUntil.current = k + 5200
+    showing.current = { msg, sub, undo, bg }
     setToast({ msg, sub, undo, k })
-    setTimeout(() => setToast((x) => (x && x.k === k ? null : x)), 5200)
+    setTimeout(() => {
+      setToast((x) => (x && x.k === k ? null : x))
+      if (Date.now() < toastUntil.current) return
+      showing.current = null
+      const next = notices.current.shift()
+      if (next) show(next.msg, next.sub, next.undo, next.bg)
+    }, 5200)
   }, [])
+  const notice = useCallback(
+    (n: Notice) => {
+      const cur = Date.now() < toastUntil.current ? showing.current : null
+      if (cur && n.bg) return void notices.current.push(n)
+      if (cur?.bg) notices.current.unshift(cur)
+      show(n.msg, n.sub, n.undo, n.bg)
+    },
+    [show],
+  )
   const flashKey = useCallback((key: string) => {
     setFlash(key)
     setTimeout(() => setFlash((f) => (f === key ? null : f)), 1700)
@@ -93,8 +121,9 @@ function Desk() {
     [act, nav],
   )
 
-  // 主进程说的话（推迟了、链接找不到）
+  // 主进程说的话（推迟了、链接找不到）；提醒事项那边来的（在提醒事项里删掉了、冲突、连上了）带撤销
   useEffect(() => window.ct.onSay((text) => show(...(text.split('\n') as [string, string?]))), [show])
+  useEffect(() => window.ct.onNotice(notice), [notice])
 
   const fail = useCallback(
     (r: Extract<EditResult, { ok: false }>) => {
@@ -210,11 +239,16 @@ function Desk() {
       } else if (e.metaKey && !e.shiftKey && e.key.toLowerCase() === 'z' && !inField && lastUndo.current) {
         e.preventDefault()
         actions.undo(lastUndo.current)
+      } else if (e.key === 'Escape' && (document.activeElement === document.body || !document.activeElement) && (delAsk || imp || setOpen)) {
+        // 弹窗里点过的按钮换掉了（连上提醒事项后「连接」换成开关），焦点掉到页面上：esc 照样关最上面那个弹窗
+        if (delAsk) setDelAsk(null)
+        else if (imp) setImp(false)
+        else setSetOpen(false)
       } else if (e.key === 'Escape' && !inField && !pal && !setOpen) setSay(null)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [actions, pal, setOpen])
+  }, [actions, pal, setOpen, imp, delAsk])
 
   // ---------- 拖动（照原型：按住挪过 5 才算拖，指到 data-drop 上亮一下，日历的格子里出钟点预览） ----------
   const dragRef = useRef<{ key: string; x: number; y: number; moved: boolean; g?: HTMLDivElement; tg?: string | null; time?: string } | null>(null)
@@ -519,7 +553,10 @@ function Desk() {
                 {tab.label}
               </div>
             )}
-            <div className="content">{center}</div>
+            <div className="content">
+              <ICloudBanner show={rem?.banner === 'noICloud'} />
+              {center}
+            </div>
           </main>
           {s.right && (
             <aside className="right" data-part="右栏">
@@ -555,6 +592,12 @@ function Desk() {
             {git && git.changed > 0 ? t('uncommitted', git.changed) : t('committed')}
           </span>
           <span className="sp" />
+          {rem?.active && (
+            <button title={t('remRingsTip', rem.list?.title ?? '')} onClick={() => setSetOpen(true)}>
+              <Ic n="bell" s={12} />
+              {t('remStatus')}
+            </button>
+          )}
           <span className="bi">{t('todayN', nToday)}</span>
           <button aria-label={t('langAria')} onClick={() => void saveSettings({ lang: lang === 'zh' ? 'en' : 'zh' })}>
             <Ic n="globe" s={12} />
@@ -562,19 +605,86 @@ function Desk() {
           </button>
           <UpdateBar onSettings={() => setSetOpen(true)} />
         </div>
-        <Toast toast={toast} onUndo={(id) => actions.undo(id)} />
       </div>
       {say && (
         <div className="ab-say" style={{ top: say.y - 15, ...(say.x > window.innerWidth / 2 ? { right: window.innerWidth - say.x } : { left: say.x }) }}>
           {say.text}
         </div>
       )}
-      {pal && <Palette today={today} onClose={() => setPal(false)} onGo={(a, n) => (setPal(false), go(a, n))} onSettings={() => (setPal(false), setSetOpen(true))} />}
-      {setOpen && <SettingsDialog onClose={() => setSetOpen(false)} />}
+      {pal && (
+        <Palette
+          today={today}
+          onClose={() => setPal(false)}
+          onGo={(a, n) => (setPal(false), go(a, n))}
+          onSettings={() => (setPal(false), setSetOpen(true))}
+          onImport={rem?.connected && rem.auth === 'full' ? () => (setPal(false), setImp(true)) : undefined}
+        />
+      )}
+      {setOpen && <SettingsDialog onClose={() => setSetOpen(false)} onImport={() => (setSetOpen(false), setImp(true))} />}
+      {imp && (
+        <ImportDialog
+          onClose={() => setImp(false)}
+          onImported={(r, del) => {
+            setImp(false)
+            show(t('impDone', r.lists, r.total), t('impDoneSub'), r.undo || undefined)
+            if (del && r.rids.length) setDelAsk(r.rids)
+          }}
+        />
+      )}
+      {/* 提示条在弹窗上面（设置里连提醒事项、导入以后的话也看得到） */}
+      <Toast toast={toast} onUndo={(id) => actions.undo(id)} />
+      {delAsk && (
+        <DeleteAsk
+          n={delAsk.length}
+          onKeep={() => setDelAsk(null)}
+          onDelete={() => {
+            const rids = delAsk
+            setDelAsk(null)
+            void window.ct.remDeleteOriginals(rids).then((x) => show(x.ok ? t('delDone', x.removed) : t('remFailed', getData().rem?.error ?? '')))
+          }}
+        />
+      )}
     </ActionsCtx.Provider>
   )
 }
 
+
+/**
+ * 「没开 iCloud 提醒事项」顶上胶囊：外面一层从 0 长到 42、淡入、落 6px（today.css .rbwrap），点掉时收回去再拿掉，中间那一栏不跳。
+ * 只出一次：点掉、或者下次打开就不出了（主进程记着）
+ */
+function ICloudBanner({ show }: { show: boolean }) {
+  const t = useT()
+  const [mounted, setMounted] = useState(show)
+  const [open, setOpen] = useState(false)
+  useEffect(() => {
+    if (show) {
+      setMounted(true)
+      // 先画出收着的样子（高 0），下一帧再打开，过渡才走得起来
+      let r2 = 0
+      const r1 = requestAnimationFrame(() => (r2 = requestAnimationFrame(() => setOpen(true))))
+      return () => (cancelAnimationFrame(r1), cancelAnimationFrame(r2))
+    }
+    setOpen(false)
+    const id = setTimeout(() => setMounted(false), 260)
+    return () => clearTimeout(id)
+  }, [show])
+  if (!mounted) return null
+  return (
+    <div className={`rbwrap${open ? ' in' : ''}`}>
+      <div className="rbanner" role="status" data-part="没开iCloud提醒事项">
+        <Ic n="info" s={14} />
+        <span className="rbt">{t('remBanner')}</span>
+        <button className="link" onClick={() => void window.ct.remOpenICloud()}>
+          {t('remHow')}
+        </button>
+        <button className="rbx" aria-label={t('close')} title={t('close')} onClick={() => void window.ct.remDismissBanner()}>
+          <Ic n="close" s={14} />
+        </button>
+      </div>
+    </div>
+  )
+}
 
 /** 底栏最右端：新版下好了「● 重启更新到 x」，点了提交排着的改动后重启装上；找到了新版却装不上「● 更新没装上」，点开设置看原因 */
 function UpdateBar({ onSettings }: { onSettings: () => void }) {

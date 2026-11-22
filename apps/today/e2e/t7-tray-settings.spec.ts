@@ -61,23 +61,41 @@ test('设置：不跟画布笔记时换 A 风格、深湖；跟画布笔记时�
   }
 })
 
-test('设置弹窗在原型那么大的窗口（1420 × 800）里不用滚：A 风格、不跟画布笔记（外观四行和十个主题全露出来），中英文都是', async () => {
+/**
+ * 设置弹窗在原型那么大的窗口（1420 × 800）里：默认（和画布笔记一样）连着提醒事项、正在下载新版本时也不用滚；
+ * 不跟画布笔记时外观四行和十个主题一屏看全、主题名不截断。2026-11-22 加了「提醒事项」一节（task-b9y8i）以后，
+ * 不跟画布笔记时整个弹窗比 800 高的窗口长，要往下滚到「提醒事项」以下（改成像画布笔记那样分页的侧栏另说）
+ */
+test('设置弹窗在 1420 × 800 里：默认外观连着提醒事项也不用滚；不跟画布笔记时外观和十个主题一屏看全，中英文都是', async () => {
   for (const lang of ['zh', 'en'] as const) {
-    const run = await launch({ settings: LOOK('sky', 'a', lang) })
-    const { page } = run
-    try {
-      await run.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setContentSize(1420, 800))
-      await expect.poll(() => page.evaluate(() => innerHeight)).toBeLessThanOrEqual(800)
-      await page.locator('.ab[data-k="settings"]').click()
-      const s = page.locator('.setw')
-      await expect(s.locator('.skins button')).toHaveCount(10)
-      const { scroll, client } = await s.evaluate((e) => ({ scroll: e.scrollHeight, client: e.clientHeight }))
-      expect(scroll, `${lang}：内容 ${scroll}，弹窗 ${client}`).toBeLessThanOrEqual(client)
-      // 主题名一个都不截断
-      const cut = await s.locator('.skins button span').evaluateAll((bs) => bs.filter((b) => b.scrollWidth > b.clientWidth).map((b) => b.textContent))
-      expect(cut).toEqual([])
-    } finally {
-      await run.close()
+    for (const follow of [true, false]) {
+      const run = await launch({ settings: { ...LOOK('sky', 'a', lang), followNotes: follow }, reminders: {} })
+      const { page } = run
+      try {
+        await run.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setContentSize(1420, 800))
+        await expect.poll(() => page.evaluate(() => innerHeight)).toBeLessThanOrEqual(800)
+        await page.locator('.ab[data-k="settings"]').click()
+        const s = page.locator('.setw')
+        // 连上提醒事项（这一节最长的样子：开关、放进哪个列表、导入提醒事项三行）
+        await s.locator('[data-row="rem"]').getByRole('button').first().click()
+        await expect(s.locator('[data-row="remImport"]')).toBeVisible()
+        // 正在下载新版本时那一行多一条进度条
+        await run.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.webContents.send('ct:update', { phase: 'downloading', current: '0.1.0', version: '0.1.1', percent: 40, error: '', checkedAt: 0, inApps: true }))
+        await expect(s.locator('.ubar')).toBeAttached()
+        const { scroll, client } = await s.evaluate((e) => ({ scroll: e.scrollHeight, client: e.clientHeight }))
+        if (follow) expect(scroll, `${lang}：内容 ${scroll}，弹窗 ${client}`).toBeLessThanOrEqual(client)
+        else {
+          await expect(s.locator('.skins button')).toHaveCount(10)
+          // 外观四行和十个主题在弹窗里一屏看得全（不用滚就看得到最后一个主题）
+          const { box, last } = await s.evaluate((e) => ({ box: e.getBoundingClientRect().bottom, last: [...e.querySelectorAll('.skins button')].pop()!.getBoundingClientRect().bottom }))
+          expect(last, `${lang}：最后一个主题的下沿 ${last}，弹窗下沿 ${box}`).toBeLessThanOrEqual(box)
+          // 主题名一个都不截断
+          const cut = await s.locator('.skins button span').evaluateAll((bs) => bs.filter((b) => b.scrollWidth > b.clientWidth).map((b) => b.textContent))
+          expect(cut).toEqual([])
+        }
+      } finally {
+        await run.close()
+      }
     }
   }
 })
