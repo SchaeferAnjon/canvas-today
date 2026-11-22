@@ -1,0 +1,7 @@
+packages:
+  - packages/*
+  - apps/*
+allowBuilds:
+  electron: true
+  # 只给 Windows 打安装包用，Mac 上用不着它的安装脚本
+  electron-winstaller: false

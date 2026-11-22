@@ -1,0 +1,60 @@
+/* 菜单栏小窗：320 × 420，系统弹层的样子（--pop 底），内容照主窗口的行 */
+body.traybody {
+  background: var(--pop);
+}
+.tray {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 10px 8px 8px;
+}
+.trh {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 2px 10px 8px;
+}
+.trh b {
+  font-size: 15px;
+  font-weight: 600;
+}
+.tray .qa {
+  margin: 0 2px 4px;
+}
+.tray .chips {
+  margin: 0 4px 6px;
+}
+.trl {
+  flex: 1;
+  overflow: auto;
+}
+.tray .row {
+  height: 34px;
+}
+.tray .row .rt {
+  text-align: left;
+}
+.tray .acc {
+  font-size: 12px;
+  color: var(--t3);
+}
+.trsay {
+  font-size: 12px;
+  color: var(--t3);
+  padding: 4px 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.trf {
+  display: flex;
+  justify-content: flex-end;
+  padding: 6px 4px 0;
+  border-top: 1px solid var(--line);
+}
+.tray-empty {
+  padding: 20px;
+  color: var(--t2);
+  font-size: 12px;
+}

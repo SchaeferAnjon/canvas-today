@@ -1,0 +1,15 @@
+{
+  "name": "Canvas Today",
+  "nameZh": "画布今日",
+  "artifact": "CanvasToday",
+  "appId": "com.jiazonghan.canvastoday",
+  "scheme": "canvas-today",
+  "userDataDir": "canvas-today",
+  "license": "GPL-3.0-or-later",
+  "author": "Jia Zonghan",
+  "year": 2026,
+  "repo": "SchaeferAnjon/canvas-today",
+  "site": "https://canvas-note.us-cloud.uk/#today",
+  "hub": "https://apps.us-cloud.uk",
+  "notesRepo": "SchaeferAnjon/canvas-notes"
+}

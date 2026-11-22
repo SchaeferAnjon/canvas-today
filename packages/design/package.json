@@ -1,0 +1,23 @@
+{
+  "name": "@cn/design",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.tsx",
+    "./tokens.css": "./src/tokens.css",
+    "./ui.css": "./src/ui.css",
+    "./notes.css": "./src/notes.css",
+    "./themes.css": "./src/themes.css",
+    "./codicon-svg": "./src/codicon-svg.ts",
+    "./codicons-all": "./src/codicons-all.gen.ts"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "@vscode/codicons": "0.0.45",
+    "react": "^19.3.1"
+  }
+}

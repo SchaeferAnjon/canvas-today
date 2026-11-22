@@ -1,0 +1,185 @@
+/**
+ * 界面上的每个动作 → 改库里那一行（@cn/tasks 只换那几个字）。
+ * 先认行：盘上第 line 行还是界面看到的那一行原文就改它；不是了（外面在上面加了几行、改了别处）就按原文找最近的一样的行，
+ * 再按 🆔 找；都找不到就不改，告诉界面「这一行刚被别处改了」。
+ */
+import { addSubtask, appendTask, completeTask, editLine, type ISODate, lineAt, makeId, moveBlock, newTaskLine, parseQuick, parseTaskLine, removeBlock, setDate, setDone, setId, setPrio, setRemind, setRepeat, setTime, setTitle, splitLines } from '@cn/tasks'
+import type { AddCtx, AddResult, EditReq, EditResult, Snapshot } from '../shared/api'
+import { INBOX_NOTE } from '../shared/brand'
+import { isoPlus } from '../shared/when'
+import { ReadOnlyError, type TaskVault } from './vault'
+
+const newId = () => makeId(Math.random)
+
+/** 文字里认那一行：先看原来的行号，再找原文一样、离得最近的，再按 🆔 */
+export function locate(text: string, line: number, raw: string): number | null {
+  if (lineAt(text, line) === raw) return line
+  const lines = splitLines(text)
+  let best: number | null = null
+  for (let i = 0; i < lines.length; i++) {
+    if (lineAt(text, i) !== raw) continue
+    if (best === null || Math.abs(i - line) < Math.abs(best - line)) best = i
+  }
+  if (best !== null) return best
+  const id = parseTaskLine(raw)?.id
+  if (id) for (let i = 0; i < lines.length; i++) if (parseTaskLine(lineAt(text, i) ?? '')?.id === id) return i
+  return null
+}
+
+const noteTitle = (path: string) => path.replace(/^.*\//, '').replace(/\.md$/i, '')
+
+/** 提交说明里怎么说这个动作 */
+function say(req: EditReq, title: string): string {
+  const e = req.edit
+  switch (e.op) {
+    case 'done':
+      return e.done ? `勾掉「${title}」` : `「${title}」改回没做完`
+    case 'date':
+      return e.date ? `「${title}」改到 ${e.date}${e.time ? ' ' + e.time : ''}` : `「${title}」拿掉日子`
+    case 'time':
+      return e.time ? `「${title}」改到 ${e.time}` : `「${title}」拿掉钟点`
+    case 'remind':
+      return e.remind ? `「${title}」${e.remind}提醒` : `「${title}」不提醒了`
+    case 'repeat':
+      return e.repeat ? `「${title}」${e.repeat}重复` : `「${title}」不重复了`
+    case 'prio':
+      return `「${title}」改优先级`
+    case 'title':
+      return `「${title}」改名「${e.title}」`
+    case 'addSub':
+      return `「${title}」加一步「${e.title}」`
+    case 'delete':
+      return `删掉「${title}」`
+    case 'move':
+      return `「${title}」挪进《${noteTitle(e.to)}》`
+  }
+}
+
+export async function applyEdit(v: TaskVault, req: EditReq, today: ISODate): Promise<EditResult> {
+  const title = parseTaskLine(req.raw)?.title ?? req.raw
+  const paths = req.edit.op === 'move' ? [req.path, req.edit.to] : [req.path]
+  if (req.edit.op === 'move' && req.edit.to === req.path) return { ok: false, reason: 'failed', message: '已经在这一篇里' }
+  try {
+    const r = await v.change(paths, '画布今日：' + say(req, title), (now) => {
+      const text = now.get(req.path)
+      if (text == null) return null
+      const n = locate(text, req.line, req.raw)
+      if (n === null) return null
+      const out = new Map<string, string | null>()
+      const e = req.edit
+      let line = n
+      let next: { line: number; date: string } | undefined
+      let movedTo: string | undefined
+      let after: string
+      switch (e.op) {
+        case 'done': {
+          if (e.done) {
+            const c = completeTask(text, n, today, newId)
+            after = c.text
+            next = c.next
+          } else after = editLine(text, n, (l) => setDone(l, false, today))
+          break
+        }
+        case 'date':
+          after = editLine(text, n, (l) => {
+            let x = setDate(l, e.date)
+            if (e.date && e.time !== undefined) x = setTime(x, e.time, today)
+            return x
+          })
+          break
+        case 'time':
+          after = editLine(text, n, (l) => setTime(l, e.time, today))
+          break
+        case 'remind':
+          // 有提醒的那条给一个 🆔（提醒记录、以后的提醒事项镜像、canvas-today:// 链接都靠它认）
+          after = editLine(text, n, (l) => {
+            const x = setRemind(l, e.remind)
+            return e.remind && !parseTaskLine(x)!.id ? setId(x, newId()) : x
+          })
+          break
+        case 'repeat':
+          after = editLine(text, n, (l) => setRepeat(l, e.repeat))
+          break
+        case 'prio':
+          after = editLine(text, n, (l) => setPrio(l, e.prio))
+          break
+        case 'title':
+          if (!e.title.trim()) return null
+          after = editLine(text, n, (l) => setTitle(l, e.title))
+          break
+        case 'addSub':
+          if (!e.title.trim()) return null
+          after = addSubtask(text, n, e.title).text
+          break
+        case 'delete':
+          after = removeBlock(text, n).text
+          break
+        case 'move': {
+          const dst = now.get(e.to) ?? null
+          const m = moveBlock(text, n, dst ?? `# ${noteTitle(e.to)}\n\n`)
+          after = m.from
+          out.set(e.to, m.to)
+          line = m.line
+          movedTo = e.to
+          break
+        }
+      }
+      out.set(req.path, after)
+      const where = movedTo ?? req.path
+      const raw = e.op === 'delete' ? req.raw : (lineAt(out.get(where)!, line) ?? '')
+      return { out, result: { line, raw, next, movedTo } }
+    })
+    if (!r) return { ok: false, reason: 'gone' }
+    return { ok: true, undo: r.undo ?? '', path: r.result.movedTo ?? req.path, line: r.result.line, raw: r.result.raw, ...(r.result.next && req.edit.op === 'done' ? { next: r.result.next } : {}), ...(r.result.movedTo ? { movedTo: r.result.movedTo } : {}) }
+  } catch (err) {
+    if (err instanceof ReadOnlyError) return { ok: false, reason: 'readonly', message: err.message }
+    return { ok: false, reason: 'failed', message: String((err as Error).message ?? err) }
+  }
+}
+
+/** 一篇笔记叫这个名字（标题或最后一层文件夹）：#清单 用 */
+function noteByName(s: Snapshot, name: string): string | null {
+  const n = name.toLowerCase()
+  return s.notes.find((x) => x.title.toLowerCase() === n)?.path ?? s.notes.find((x) => x.folder.split(' › ').pop()?.toLowerCase() === n)?.path ?? null
+}
+
+/** 快速加一条：认出日子钟点重复优先级；#清单 对上哪篇就写进哪篇，不然进 收件箱/待办.md（这一篇没有就建） */
+export async function addTask(v: TaskVault, text: string, ctx: AddCtx, today: ISODate, snap: Snapshot): Promise<AddResult> {
+  const q = parseQuick(text, today)
+  let title = q.title
+  let path = typeof ctx === 'object' ? ctx.note : INBOX_NOTE
+  if (q.list) {
+    const hit = noteByName(snap, q.list)
+    if (hit) path = hit
+    // 对不上哪篇：#那几个字留在标题里，不丢
+    else title = `${title} #${q.list}`.trim()
+  }
+  if (!title) return { ok: false, reason: 'empty' }
+  const date = q.date ?? (ctx === 'today' ? today : ctx === 'tomorrow' ? isoPlus(today, 1) : null)
+  const line = newTaskLine({ title, date, time: q.time, repeat: q.repeat, prio: q.prio })
+  try {
+    let created = false
+    const r = await v.change([path], `画布今日：加了「${title}」`, (now) => {
+      let cur = now.get(path) ?? null
+      if (cur === null) {
+        created = true
+        cur = `# ${noteTitle(path)}\n\n`
+      }
+      const a = appendTask(cur, line)
+      return { out: new Map([[path, a.text]]), result: a.line }
+    })
+    if (!r) return { ok: false, reason: 'failed' }
+    return { ok: true, undo: r.undo ?? '', path, line: r.result, raw: line, title, date, time: q.time, created }
+  } catch (err) {
+    return { ok: false, reason: 'failed', message: String((err as Error).message ?? err) }
+  }
+}
+
+/** 新清单：建一篇「收件箱/<名字>.md」（已经有同名的就用它） */
+export async function newList(v: TaskVault, name: string): Promise<string | null> {
+  const clean = name.replace(/[\\/:*?"<>|\r\n]+/g, ' ').trim()
+  if (!clean) return null
+  const path = `收件箱/${clean}.md`
+  await v.change([path], `画布今日：新清单「${clean}」`, (now) => (now.get(path) != null ? null : { out: new Map([[path, `# ${clean}\n\n`]]), result: true }))
+  return path
+}

@@ -1,0 +1,26 @@
+{
+  "name": "canvas-today",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Canvas Today（画布今日）：任务就是 Markdown 笔记里的一行 - [ ]，和 Canvas Notes 用同一个库。macOS。",
+  "packageManager": "pnpm@12.14.0",
+  "scripts": {
+    "dev": "pnpm --filter @cn/today dev",
+    "build": "pnpm --filter @cn/today build",
+    "typecheck": "tsc -p packages/format && tsc -p packages/tasks && tsc -p packages/git && tsc -p packages/design && tsc -p apps/today",
+    "test": "vitest run",
+    "test:e2e": "pnpm --filter @cn/today test:e2e",
+    "dist:mac": "pnpm --filter @cn/today dist:mac",
+    "release": "node apps/today/scripts/release.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0"
+  },
+  "license": "GPL-3.0-or-later",
+  "author": "Jia Zonghan",
+  "homepage": "https://canvas-note.us-cloud.uk/#today",
+  "repository": "github:SchaeferAnjon/canvas-today"
+}
