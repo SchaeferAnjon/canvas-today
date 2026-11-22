@@ -309,6 +309,19 @@ describe('可视化挂在这一段的脚上', () => {
   })
 })
 
+describe('可视化嵌进这一段（task-m552v）', () => {
+  it('新做的写成单独一段嵌入，不算配图；读回来再写一字不差；以前脚上的链接原样', () => {
+    const s = sec({ viz: { path: '课程/线性代数/旋转矩阵.html', title: '旋转矩阵 · 拖动角度看基向量', embed: true } })
+    const md = renderSection(s, NOTE)
+    expect(md).toContain('[完整对话 · 2 轮](../../.canvas-notes/对话/第3讲%20线性映射-p5-1.md) · [[第4讲')
+    expect(md.trimEnd().split('\n').pop()).toBe('![可视化 · 旋转矩阵 · 拖动角度看基向量](旋转矩阵.html)')
+    const back = parseReadingNote(md, NOTE)[0]!
+    expect(back.viz).toEqual({ path: '课程/线性代数/旋转矩阵.html', title: '旋转矩阵 · 拖动角度看基向量', embed: true })
+    expect(back.figures).toEqual(s.figures)
+    expect(renderSection(back, NOTE)).toBe(md)
+  })
+})
+
 describe('我的疑惑', () => {
   const item = (pdf: string, page: number, q: string, lecture?: number): DoubtItem => ({
     id: `${pdf}-${page}`,

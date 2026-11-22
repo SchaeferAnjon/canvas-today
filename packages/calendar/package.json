@@ -1,0 +1,24 @@
+{
+  "name": "@cn/calendar",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "日历的 React 组件：画布今日的日历（周、月、小月历）和画布笔记待办首页上方的日历（周一条、月带点）共用一份；拖动、只读的系统日程也在这里",
+  "exports": {
+    ".": "./src/index.ts",
+    "./calendar.css": "./src/calendar.css"
+  },
+  "dependencies": {
+    "@cn/design": "workspace:*",
+    "@cn/tasks": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  }
+}

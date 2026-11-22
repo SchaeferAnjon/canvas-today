@@ -2,6 +2,7 @@
  * 列表怎么分组、左栏的数（照 v2 原型的 listView / cntToday / cntInbox）。纯函数，界面和菜单栏小窗都用，单元测试在 test/views.test.ts。
  * 一条「没做完」= 没勾、没取消；子任务（挂在别的待办下面的）不单独列，除非它自己写了日子。
  */
+import type { CalItem } from '@cn/calendar'
 import { diffDays, type ISODate } from '@cn/tasks'
 import type { NoteView, Snapshot, TaskView } from './api'
 import { INBOX_NOTE } from './brand'
@@ -97,6 +98,16 @@ export function quadOf(ts: readonly TaskView[]): Record<0 | 1 | 2 | 3, TaskView[
 export function dayItems(ts: readonly TaskView[], d: ISODate): { timed: TaskView[]; allDay: TaskView[] } {
   const mine = ts.filter((t) => t.date === d && listed(t) && !t.cancelled)
   return { timed: mine.filter((t) => t.time).sort(byTime), allDay: mine.filter((t) => !t.time).sort((a, b) => Number(a.done) - Number(b.done) || byPlace(a, b)) }
+}
+
+/**
+ * 日历上画的待办（@cn/calendar 的 CalItem）：有日子、没取消的，勾掉的也画（淡一点）；子任务写了日子的也算。
+ * 按文件里的先后交进去（路径、行号），日历里钟点一样、都是全天的时候照这个先后排；repeat 是重复写法怎么说（块下面那行小字）
+ */
+export function calItems(ts: readonly TaskView[], repeat: (r: string) => string): CalItem[] {
+  return ts
+    .filter((t) => t.date && !t.cancelled)
+    .map((t) => ({ key: t.key, title: t.title, date: t.date!, time: t.time, done: t.done, ...(t.repeat ? { note: repeat(t.repeat) } : {}) }))
 }
 
 /**

@@ -11,7 +11,7 @@
  * 只转编号行管着的那一张卡（doc-board 的一块，段落或列表），别的一个字不动；导图、旧写法的白板不在这里转
  * （旧写法打开时 board-convert 转白板，那一步把总结卡整张写成提示块）。纯函数，不依赖 Electron。
  */
-import { aiCalloutHead, SUMMARY_LABEL } from './ai-callout'
+import { aiCalloutHead, calloutWords } from './ai-callout'
 import { hasOldLayout } from './board'
 import { type DocUnit, splitDoc } from './doc-board'
 import { isMindmap } from './mindmap'
@@ -21,7 +21,7 @@ export function summaryCallout(body: string, by?: string): string {
   if (/^\s*>\s*\[!ai\]/i.test(body)) return body
   const lines = body.split('\n')
   const cr = lines[0]!.endsWith('\r') ? '\r' : ''
-  const head = `> [!ai] ${aiCalloutHead({ label: SUMMARY_LABEL, ...(by ? { by } : {}) })}${cr}`
+  const head = `> [!ai] ${aiCalloutHead({ label: calloutWords().summary, ...(by ? { by } : {}) })}${cr}`
   return [
     head,
     ...lines.map((l) => {

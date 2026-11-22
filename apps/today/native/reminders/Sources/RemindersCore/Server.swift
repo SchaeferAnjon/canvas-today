@@ -12,6 +12,9 @@ import Foundation
 ///   read {lists, completed}        导入用：几个列表，带重复规则
 ///   save {list, create:[{key, fields}], update:[{rid, fields}]}   一批新建、改，一起存；回答 created {key: rid}、missing [rid]
 ///   remove {rids}   move {rids, list}
+///   calStatus / calRequest         日历的授权（不弹窗）/ 要日历的权限（第一次系统问一次）
+///   calendars                      系统里的日历（只读）
+///   events {from, to}              这几天（本地日子，都含）的日程，重复的每一次各一条
 ///   test.dump / test.set / test.external   只有 --memory 的假提醒事项认
 public final class Server {
   public static let changedLine = "{\"event\":\"changed\"}"
@@ -41,6 +44,23 @@ public final class Server {
     } catch {
       emit(JSONValue.object(["id": id, "ok": .bool(false), "code": .string("failed"), "error": .string("\(error)")]).line())
     }
+  }
+
+  func calendar() throws -> CalendarStore {
+    guard let c = store as? CalendarStore else { throw StoreError("unknown", "这个小助手不读日历") }
+    return c
+  }
+
+  func needCalendar() throws -> CalendarStore {
+    let c = try calendar()
+    guard c.calendarStatus().auth == "full" else { throw StoreError("noAccess", "没有访问日历的权限") }
+    return c
+  }
+
+  func day(_ v: JSONValue?, _ name: String) throws -> String {
+    let s = try need(v, name)
+    guard Dates.dueComponents(s, tz: TimeZone(identifier: "UTC")!) != nil, s.count == 10 else { throw StoreError("badRequest", "\(name) 要是「2026-11-22」") }
+    return s
   }
 
   func needAccess() throws {
@@ -117,6 +137,18 @@ public final class Server {
       let n = try store.move(rids: try strings(o["rids"]), to: try need(o["list"], "list"))
       try store.commit()
       return .object(["moved": .int(Int64(n))])
+    case "calStatus":
+      return try calendar().calendarStatus().json()
+    case "calRequest":
+      return try calendar().requestCalendarAccess().json()
+    case "calendars":
+      return .object(["calendars": .array(try needCalendar().calendars().map { $0.json() })])
+    case "events":
+      let c = try needCalendar()
+      let from = try day(o["from"], "from")
+      let to = try day(o["to"], "to")
+      guard from <= to else { throw StoreError("badRequest", "from 要在 to 前面") }
+      return .object(["events": .array(try c.events(from: from, to: to).map { $0.json() })])
     default:
       throw StoreError("unknown", "不认识的命令：\(cmd)")
     }

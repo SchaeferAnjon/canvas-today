@@ -4,6 +4,7 @@
  * 一项一个默认值，读的时候一项一项检查，不对的回到默认。纯函数，主进程、界面、单元测试共用。
  */
 import { defaultKeysOf } from './cmd-table'
+import { t } from './i18n'
 
 export interface GeneralPrefs {
   /** 打开时回到上次的样子：开着的标签、右栏的网页（库照样打开上次那个） */
@@ -195,8 +196,9 @@ export const SEARCH_ENGINES: Record<SearchEngine, { name: string; url: string }>
 }
 
 export function autoSyncLabel(min: number): string {
-  if (min === 0) return '只在我点时'
-  if (min === 1440) return '每天一次'
-  if (min % 60 === 0) return `每${min / 60 === 1 ? '' : min / 60}小时`
-  return `每${min}分钟`
+  if (min === 0) return t('只在我点时')
+  if (min === 1440) return t('每天一次')
+  if (min === 60) return t('每小时')
+  if (min % 60 === 0) return t('每{n}小时', { n: min / 60 })
+  return t('每{n}分钟', { n: min })
 }

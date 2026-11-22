@@ -35,6 +35,7 @@ const uncommitted = (run: Running) => execFileSync('git', ['-C', run.vault, 'sta
 const L = {
   zh: {
     settings: '设置',
+    calRem: '日历和提醒事项',
     connect: '连接提醒事项',
     mirror: '镜像进提醒事项',
     offSub: '画布今日',
@@ -49,6 +50,7 @@ const L = {
   },
   en: {
     settings: 'Settings',
+    calRem: 'Calendar & Reminders',
     connect: 'Connect Reminders',
     mirror: 'Mirror to Reminders',
     offSub: 'Canvas Today',
@@ -63,9 +65,16 @@ const L = {
   },
 }
 
-async function connect(page: Page, l: (typeof L)['zh']) {
+/** 打开设置、翻到「日历和提醒事项」那一页（设置照画布笔记分了页） */
+async function remPage(page: Page, l: (typeof L)['zh'] = L.zh) {
   await page.locator('.ab[data-k="settings"]').click()
   const s = page.getByRole('dialog', { name: l.settings })
+  await s.getByRole('navigation').getByRole('button', { name: l.calRem }).click()
+  return s
+}
+
+async function connect(page: Page, l: (typeof L)['zh']) {
+  const s = await remPage(page, l)
   const r = s.locator('[data-row="rem"]')
   await expect(r).toContainText(l.offSub)
   await r.getByRole('button', { name: l.connect }).click()
@@ -154,7 +163,7 @@ for (const lang of ['zh', 'en'] as const) {
       // 底栏还写着连着
       await expect(page.locator('.status')).toContainText(l.status)
       // 设置里写着有几条在提醒事项里响
-      await page.locator('.ab[data-k="settings"]').click()
+      await remPage(page, l)
       await expect(s.locator('[data-row="rem"]')).toContainText(l.connected)
     } finally {
       await run.close()
@@ -265,7 +274,7 @@ for (const lang of ['zh', 'en'] as const) {
       expect(seeded(run).length).toBe(5)
 
       // 再导一次，这次搬完删掉原条目：删之前再问一次
-      await page.locator('.ab[data-k="settings"]').click()
+      await remPage(page, l)
       await s.getByRole('button', { name: t.importBtn }).click()
       await dlg.getByRole('checkbox', { name: /购物/ }).click()
       await dlg.getByRole('checkbox', { name: /工作/ }).click()
@@ -291,8 +300,7 @@ test('没开 iCloud 提醒事项：不镜像、本机照响；顶上提示一次
   const run = await launch({ reminders: { icloud: false }, now: '2026-11-24T19:58:00' })
   const { page } = run
   try {
-    await page.locator('.ab[data-k="settings"]').click()
-    const s = page.getByRole('dialog', { name: '设置' })
+    const s = await remPage(page)
     const r = s.locator('[data-row="rem"]')
     await r.getByRole('button', { name: '连接提醒事项' }).click()
     await expect(r).toContainText('没开iCloud提醒事项：不镜像，这台Mac自己响')
@@ -326,8 +334,7 @@ test('没给权限（系统问的时候点了「不允许」）：设置里说�
   const run = await launch({ reminders: { denyRequest: true } })
   const { page } = run
   try {
-    await page.locator('.ab[data-k="settings"]').click()
-    const r = page.getByRole('dialog', { name: '设置' }).locator('[data-row="rem"]')
+    const r = (await remPage(page)).locator('[data-row="rem"]')
     await r.getByRole('button', { name: '连接提醒事项' }).click()
     await expect(r).toContainText('没给画布今日访问提醒事项，现在是这台Mac自己响')
     await expect(page.locator('.toast')).toContainText('没连上')

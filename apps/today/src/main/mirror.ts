@@ -484,8 +484,8 @@ export class RemMirror {
 
   // ---------- 设置里点的 ----------
 
-  /** 连接：第一次系统问一次；给了权限、有 iCloud：找到或建好列表，同步一遍 */
-  async connect(): Promise<RemState> {
+  /** 连接：第一次系统问一次；给了权限、有 iCloud：找到或建好列表，同步一遍。quiet：连上了不说（日历左栏一起连时由日历那边一起说） */
+  async connect(quiet = false): Promise<RemState> {
     if (!this.helper.available) return this.state()
     this.asking = true
     this.emit()
@@ -514,7 +514,7 @@ export class RemMirror {
     this.error = null
     await this.sync()
     const l = this.rem().list ?? listTitle(this.deps.lang())
-    this.deps.notice({ msg: this.t('remConnected', this.state().mirrored, l), sub: this.t('remConnectedSub') })
+    if (!quiet) this.deps.notice({ msg: this.t('remConnected', this.state().mirrored, l), sub: this.t('remConnectedSub') })
     this.emit()
     return this.state()
   }

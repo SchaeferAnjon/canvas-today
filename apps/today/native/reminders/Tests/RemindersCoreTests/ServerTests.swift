@@ -196,6 +196,51 @@ final class ServerTests: XCTestCase {
     XCTAssertEqual(e["ok"] as? Bool, false)
   }
 
+  // ---------- 系统日历（只读，task-ykkoz） ----------
+
+  func testCalendarAskOnceThenReadEvents() throws {
+    var s = try result(["id": 1, "cmd": "calStatus"])
+    XCTAssertEqual(s["auth"] as? String, "notDetermined")
+    // 没授权：读不了
+    let e = try ask(["id": 2, "cmd": "events", "from": "2026-11-22", "to": "2026-11-28"])
+    XCTAssertEqual(e["code"] as? String, "noAccess")
+    s = try result(["id": 3, "cmd": "calRequest"])
+    XCTAssertEqual(s["auth"] as? String, "full")
+    XCTAssertEqual(mem.state.calAuth, "full")
+    mem.state.calendars = [CalInfo(id: "C1", title: "工作", color: "#4F7CAC", source: "iCloud")]
+    mem.state.events = [
+      EventItem(id: "e1", title: "组会", calendar: "C1", allDay: false, start: "2026-11-23T09:30", end: "2026-11-23T10:30"),
+      EventItem(id: "e2", title: "出差", calendar: "C1", allDay: true, start: "2026-11-27", end: "2026-11-30"),
+      EventItem(id: "e3", title: "上个月的", calendar: "C1", allDay: false, start: "2026-10-01T09:00", end: "2026-10-01T10:00"),
+      EventItem(id: "e4", title: "跨午夜", calendar: "C1", allDay: false, start: "2026-11-21T23:00", end: "2026-11-22T01:00"),
+    ]
+    let cals = try result(["id": 5, "cmd": "calendars"])["calendars"] as! [[String: Any]]
+    XCTAssertEqual(cals.first?["title"] as? String, "工作")
+    XCTAssertEqual(cals.first?["color"] as? String, "#4F7CAC")
+    let evs = try result(["id": 6, "cmd": "events", "from": "2026-11-22", "to": "2026-11-28"])["events"] as! [[String: Any]]
+    XCTAssertEqual(evs.map { $0["id"] as! String }, ["e4", "e1", "e2"], "这几天碰到的都给（跨进来的、跨出去的），按开始的先后")
+    XCTAssertEqual(evs[2]["allDay"] as? Bool, true)
+    XCTAssertEqual(evs[2]["end"] as? String, "2026-11-30")
+  }
+
+  func testCalendarDeniedAndBadDays() throws {
+    mem.state.calDenyRequest = true
+    let s = try result(["id": 1, "cmd": "calRequest"])
+    XCTAssertEqual(s["auth"] as? String, "denied")
+    XCTAssertEqual((try ask(["id": 2, "cmd": "calendars"]))["code"] as? String, "noAccess")
+    mem.state.calAuth = "full"
+    XCTAssertEqual((try ask(["id": 3, "cmd": "events", "from": "11/22", "to": "2026-11-28"]))["code"] as? String, "badRequest")
+    XCTAssertEqual((try ask(["id": 4, "cmd": "events", "from": "2026-11-29", "to": "2026-11-28"]))["code"] as? String, "badRequest")
+  }
+
+  func testOutsideNewEventTellsTheApp() throws {
+    _ = try result(["id": 1, "cmd": "calRequest"])
+    _ = try result(["id": 2, "cmd": "test.external", "op": "addEvent", "calendar": "C1", "title": "牙医", "start": "2026-11-27T10:00", "end": "2026-11-27T11:00"])
+    XCTAssertTrue(lines.contains("{\"event\":\"changed\"}"))
+    let evs = try result(["id": 3, "cmd": "events", "from": "2026-11-27", "to": "2026-11-27"])["events"] as! [[String: Any]]
+    XCTAssertEqual(evs.map { $0["title"] as! String }, ["牙医"])
+  }
+
   func testTestCommandsOnlyInMemoryMode() throws {
     final class Fake: ReminderStore {
       var mode: String { "eventkit" }
@@ -213,5 +258,8 @@ final class ServerTests: XCTestCase {
     let s = Server(store: Fake(), emit: { [unowned self] in self.lines.append($0) })
     s.handle("{\"id\":1,\"cmd\":\"test.dump\"}")
     XCTAssertTrue(lines.last!.contains("\"ok\":false"), "真的 EventKit 不认测试用的命令：\(lines.last!)")
+    // 只认提醒事项的 store：日历的命令说不认识
+    s.handle("{\"id\":2,\"cmd\":\"calStatus\"}")
+    XCTAssertTrue(lines.last!.contains("\"code\":\"unknown\""), lines.last!)
   }
 }

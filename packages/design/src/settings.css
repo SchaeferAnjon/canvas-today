@@ -1,0 +1,671 @@
+/*
+ * 设置的框架（画布笔记设置方向 A「分组侧栏」，task-f7rib；2026-11-22 抽成共用的，画布今日也用，task-ykkoz）。组件在 settings.tsx。
+ * 窗口 960 × 680、左边 200 宽侧栏（「设置」、可选的搜索框、分段的分页），右边每页一个头（图标、名字、一句这页管什么），
+ * 下面按组一张 1px --line、圆角 12 的细线表：一行最矮 52，左边名字 13/500 + 说明 12 --t3，右边一列 220，
+ * 下拉、分段 220 宽，开关、按钮贴这一列的右边（偏好「设置里下拉要对齐」）；方角开关；底下提示条带「撤回」。
+ * 前一半是弹窗和开关的底子（原来画布笔记 settings.css 的头几条），后一半是方向 A（原来 settings/settings-a.css），先后照旧。
+ */
+/* 设置：B 里是居中弹窗 900 × 620，圆角 12，左边 180 宽分页（design/v3/DESIGN.v3.md「4.4 外观页」）；A 里开成中间的标签 */
+.set-back {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  background: rgba(10, 10, 14, 0.18);
+  display: grid;
+  place-items: center;
+}
+[data-tone='dark'] .set-back {
+  background: rgba(0, 0, 0, 0.45);
+}
+.set {
+  width: min(900px, calc(100vw - 40px));
+  height: min(620px, calc(100vh - 60px));
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  border-radius: 12px;
+  background: var(--pop);
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
+  box-shadow: var(--shadow-up);
+  overflow: hidden;
+  color: var(--t1);
+}
+.set-nav {
+  background: var(--fill);
+  padding: 16px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.set-nav h3 {
+  margin: 0;
+  font: 600 15px/1.35 var(--sans);
+  padding: 0 10px 10px;
+}
+.set-body {
+  position: relative;
+  overflow: auto;
+  padding: 20px 24px 28px;
+}
+.set-x {
+  position: absolute;
+  right: 12px;
+  top: 12px;
+}
+
+/* 方角开关：轨道和滑块都是小圆角方形 */
+.sw-toggle {
+  width: 32px;
+  height: 18px;
+  border: 0;
+  border-radius: 5px;
+  background: var(--fill2);
+  position: relative;
+  flex: none;
+  box-shadow: inset 0 0 0 1px var(--line2);
+  padding: 0;
+}
+.sw-toggle::after {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  /* 关着的滑块 --t3：弹窗、设置页底色上都看得出（画布今日的 .sw 同样这么画，两个软件一个样）；开着的见 .on */
+  background: var(--t3);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: left 0.15s;
+}
+.sw-toggle.on {
+  background: var(--acc-bg);
+  box-shadow: none;
+}
+.sw-toggle.on::after {
+  left: 16px;
+  /* 滑块用强调色上的字色：石墨的强调底是近白，写死白色就看不出开着 */
+  background: var(--acc-on);
+}
+
+/* ---------- 窗口和侧栏 ---------- */
+.set {
+  width: min(960px, calc(100vw - 40px));
+  height: min(680px, calc(100vh - 60px));
+  grid-template-columns: 200px minmax(0, 1fr);
+  position: relative;
+}
+.set-nav {
+  /* 15 页在 680 高里不用滚：段头上边 9、底下 10（原型是 10、12，差 5px 侧栏出滚动条） */
+  padding: 16px 10px 10px;
+  gap: 0;
+  min-height: 0;
+}
+.set-nav h3 {
+  margin: 0;
+  font: 600 15px/1.35 var(--sans);
+  padding: 0 10px 10px;
+}
+.sa-srch {
+  height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  border-radius: 8px;
+  background: var(--card);
+  box-shadow: inset 0 0 0 1px var(--line2);
+  color: var(--t3);
+  margin: 0 2px 10px;
+  flex: none;
+}
+.sa-srch:focus-within {
+  box-shadow: inset 0 0 0 1px var(--acc-ring), 0 0 0 3px var(--acc-soft);
+}
+.sa-srch input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: none;
+  font: 13px var(--sans);
+  color: var(--t1);
+}
+.sa-srch input::placeholder {
+  color: var(--t3);
+}
+.sa-srch .clr {
+  border: 0;
+  background: none;
+  color: var(--t3);
+  padding: 0;
+  display: grid;
+}
+.sa-navlist {
+  overflow: auto;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.sa-sec {
+  font-size: 12px;
+  color: var(--t3);
+  padding: 9px 10px 4px;
+  flex: none;
+}
+.sa-sec:first-child {
+  padding-top: 0;
+}
+.set-nav .si {
+  height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: 0;
+  background: none;
+  color: var(--t1);
+  font: 13px/1.35 var(--sans);
+  text-align: left;
+  flex: none;
+}
+.set-nav .si .ci {
+  color: var(--t2);
+}
+.set-nav .si:hover {
+  background: var(--fill);
+}
+.set-nav .si.on {
+  background: var(--fill2);
+  font-weight: 500;
+}
+.set-nav .si.on .ci {
+  color: var(--t1);
+}
+/* 搜索结果：名字（打中的字染色）+ 一行「页 › 组」 */
+.sa-res {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: auto;
+  flex: 1;
+  min-height: 0;
+}
+.sa-rrow {
+  border: 0;
+  background: none;
+  text-align: left;
+  border-radius: 6px;
+  padding: 6px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  color: var(--t1);
+  flex: none;
+}
+.sa-rrow:hover,
+.sa-rrow.sel {
+  background: var(--fill2);
+}
+.sa-rrow b {
+  font-weight: 500;
+  font-size: 13px;
+  color: var(--t1);
+}
+.sa-rrow small {
+  font-size: 12px;
+  color: var(--t3);
+}
+.sa-rhead {
+  font-size: 12px;
+  color: var(--t3);
+  padding: 2px 10px 6px;
+}
+.sa-rempty {
+  font-size: 12px;
+  color: var(--t3);
+  padding: 8px 10px;
+  line-height: 1.6;
+}
+.sa-mark {
+  background: var(--acc-soft);
+  color: var(--acc-t);
+  border-radius: 3px;
+}
+
+/* ---------- 右边：页头、组、细线表 ---------- */
+.set-body {
+  padding: 22px 28px 40px;
+}
+.set-x {
+  right: 12px;
+  top: 12px;
+  z-index: 3;
+}
+.sa-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 4px;
+  padding-right: 40px;
+}
+.sa-head .pi {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--fill2);
+  display: grid;
+  place-items: center;
+  color: var(--t2);
+  flex: none;
+}
+.sa-head h2 {
+  margin: 0;
+  font: 600 17px/1.35 var(--sans);
+}
+.sa-head p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--t3);
+}
+/* 照现在的几页（外观、首页、梦游、插件）：页头下面接它们自己的标题，第一个标题离页头 22 */
+.sa-head + .sa-keep > h4:first-child,
+.sa-head + .sa-keep > :first-child > h4:first-child {
+  margin-top: 22px;
+}
+.sa-grph {
+  margin: 22px 0 8px;
+  font: 600 13px/1.35 var(--sans);
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+.sa-card {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.sa-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 220px;
+  gap: 24px;
+  align-items: center;
+  padding: 10px 14px;
+  min-height: 52px;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+}
+.sa-row:first-child {
+  border-top: 0;
+  border-radius: 11px 11px 0 0;
+}
+.sa-row:last-child {
+  border-radius: 0 0 11px 11px;
+}
+.sa-row:only-child {
+  border-radius: 11px;
+}
+.sa-row .sa-lb {
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.sa-row .sa-ds {
+  font-size: 12px;
+  color: var(--t3);
+  line-height: 1.5;
+  margin-top: 1px;
+}
+.sa-row .sa-ds .sa-lnk {
+  margin-left: 4px;
+}
+.sa-row .sa-cc {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  min-width: 0;
+  gap: 8px;
+}
+.sa-row.info {
+  grid-template-columns: 1fr;
+}
+.sa-row.full {
+  grid-template-columns: 1fr;
+  row-gap: 0;
+}
+.sa-row.full .sa-cc {
+  justify-content: stretch;
+  margin-top: 8px;
+}
+.sa-row.full .sa-cc .sa-fld {
+  flex: 1;
+}
+.sa-row.dim .sa-lb,
+.sa-row.dim .sa-ds {
+  opacity: 0.55;
+}
+/* 一行下面多出来的一句（撞键、地址还没保存……）：整行宽，跟在说明下面 */
+.sa-row .sa-more {
+  grid-column: 1 / -1;
+  margin-top: -4px;
+}
+/* 说明分两句、第二句另起一行（「用预设的分类」，不让一个词被拆开） */
+.sa-ds .sa-blk {
+  display: block;
+}
+/* 只有字的值（「跟着文件夹」「一直在」「2个」）：在右边那一列里靠右 */
+.sa-val {
+  font-size: 13px;
+  color: var(--t2);
+}
+.sa-note {
+  font-size: 12px;
+  color: var(--t3);
+  margin: 10px 2px 0;
+  line-height: 1.6;
+}
+
+/* ---------- 控件：同一种控件一个样子，宽度由右边那一列定 ---------- */
+.set select.sa-sel,
+.set .sa-fld {
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid var(--line2);
+  background-color: var(--card);
+  color: var(--t1);
+  font: 13px var(--sans);
+  padding: 0 26px 0 9px;
+  appearance: none;
+  -webkit-appearance: none;
+  outline: none;
+  min-width: 0;
+  text-overflow: ellipsis;
+}
+.set select.sa-sel {
+  width: 220px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%236f8a99'%3E%3Cpath d='M3.14598 5.85423L7.64598 10.3542C7.84098 10.5492 8.15798 10.5492 8.35298 10.3542L12.853 5.85423C13.048 5.65923 13.048 5.34223 12.853 5.14723C12.658 4.95223 12.341 4.95223 12.146 5.14723L7.99998 9.29323L3.85398 5.14723C3.65898 4.95223 3.34198 4.95223 3.14698 5.14723C2.95198 5.34223 2.95098 5.65923 3.14598 5.85423Z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 12px;
+}
+.set select.sa-sel:focus,
+.set .sa-fld:focus {
+  border-color: var(--acc-ring);
+  box-shadow: 0 0 0 3px var(--acc-soft);
+}
+.set select.sa-sel:disabled {
+  opacity: 0.55;
+}
+.set .sa-fld {
+  padding: 0 9px;
+  width: 100%;
+}
+.set .sa-fld.mono {
+  font: 12px var(--mono);
+}
+.set textarea.sa-fld {
+  height: 64px;
+  padding: 7px 9px;
+  resize: none;
+  line-height: 1.5;
+}
+.set .sa-fld[aria-invalid='true'] {
+  border-color: var(--red);
+}
+.set .sa-btn {
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  border-radius: 6px;
+  border: 1px solid var(--line2);
+  background: var(--card);
+  color: var(--t1);
+  font: 13px var(--sans);
+  white-space: nowrap;
+  flex: none;
+}
+.set .sa-btn:hover:not(:disabled) {
+  background: var(--fill);
+}
+.set .sa-btn:disabled {
+  opacity: 0.55;
+}
+.set .sa-btn.primary {
+  background: var(--solid);
+  color: var(--solid-t);
+  border-color: transparent;
+}
+.set .sa-btn.primary:hover:not(:disabled) {
+  opacity: 0.88;
+  background: var(--solid);
+}
+.set .sa-btn.ghost {
+  background: none;
+  border-color: transparent;
+  color: var(--t2);
+}
+.set .sa-btn.ghost:hover:not(:disabled) {
+  background: var(--fill);
+  color: var(--t1);
+}
+.sa-seg {
+  display: flex;
+  width: 220px;
+  height: 28px;
+  border-radius: 6px;
+  background: var(--fill);
+  padding: 2px;
+  gap: 2px;
+}
+.sa-seg button {
+  flex: 1;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  font-size: 12px;
+  color: var(--t2);
+  white-space: nowrap;
+  padding: 0 6px;
+}
+.sa-seg button.on {
+  background: var(--card);
+  color: var(--t1);
+  box-shadow: 0 0 0 1px var(--line2);
+}
+.sa-lnk {
+  color: var(--acc-t);
+  font-size: 12px;
+  border: 0;
+  background: none;
+  padding: 0;
+  white-space: nowrap;
+}
+.sa-lnk:hover {
+  text-decoration: underline;
+}
+.sa-lnk .ci {
+  vertical-align: -2px;
+}
+/* 状态一句前面的小点（远程地址、备份） */
+.sa-ds .dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: 1px;
+  background: var(--green);
+}
+.sa-ds .dot.warn {
+  background: var(--yellow);
+}
+
+/* 从用的地方跳过来、搜索回车：那一行 --acc-soft 闪 1.6 秒（照梦游页「去AI页换 ›」） */
+.sa-flash {
+  animation: sa-flash 1.6s ease-out;
+}
+@keyframes sa-flash {
+  0%,
+  35% {
+    background: var(--acc-soft);
+    box-shadow: 0 0 0 2px var(--acc-ring) inset;
+  }
+  100% {
+    background: transparent;
+    box-shadow: none;
+  }
+}
+
+/* ---------- 底下的提示条：一句说这次改了会怎样，带「撤回」，4 秒后收起 ---------- */
+.sa-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  transform: translate(-50%, 8px);
+  opacity: 0;
+  pointer-events: none;
+  transition: 0.18s;
+  background: var(--solid);
+  color: var(--solid-t);
+  border-radius: 10px;
+  padding: 8px 8px 8px 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  white-space: nowrap;
+  max-width: calc(100% - 32px);
+  z-index: 90;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+}
+.sa-toast.show {
+  opacity: 1;
+  transform: translate(-50%, 0);
+  pointer-events: auto;
+}
+.sa-toast > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sa-toast:not(.with-act) {
+  padding-right: 14px;
+}
+.sa-toast .ci.ok {
+  color: color-mix(in srgb, var(--green) 70%, var(--solid-t));
+}
+.sa-toast button {
+  border: 0;
+  background: rgba(127, 127, 127, 0.22);
+  color: inherit;
+  border-radius: 6px;
+  height: 24px;
+  padding: 0 10px;
+  font-size: 12px;
+  flex: none;
+}
+.sa-toast button:hover {
+  background: rgba(127, 127, 127, 0.34);
+}
+/* A 里设置是中间的一个标签：提示条贴在这个标签的底下 */
+.set-tab .sa-toast {
+  position: absolute;
+}
+
+/* 整行宽的输入框后面跟按钮（远程地址、听写密钥） */
+.sa-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+.sa-inline .sa-fld {
+  flex: 1;
+  min-width: 0;
+}
+/* 一行里的小菜单（选 Chrome 用户）：贴着按钮右边往下开 */
+.sa-popwrap {
+  position: relative;
+}
+.sa-pop {
+  position: absolute;
+  right: 0;
+  top: 32px;
+  z-index: 30;
+  width: 260px;
+  padding: 6px;
+  border-radius: 12px;
+  background: var(--pop);
+  box-shadow: var(--shadow-up);
+}
+.sa-pop .mh {
+  font-size: 12px;
+  color: var(--t3);
+  padding: 4px 8px 6px;
+}
+.sa-pop button {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  height: 30px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--t1);
+  font-size: 13px;
+  text-align: left;
+}
+.sa-pop button:hover {
+  background: var(--fill);
+}
+.sa-pop button b {
+  font-weight: 500;
+}
+.sa-pop button span {
+  font-size: 12px;
+  color: var(--t3);
+}
+
+/* ---------- designer 复审（第 1 轮） ---------- */
+/* 内容区给滚动条留位：页长页短、切页时右边那一列和 × 都不跳 */
+.set-body {
+  scrollbar-gutter: stable;
+}
+/* 侧栏 15 页放得下，不露滚动条 */
+.sa-navlist {
+  scrollbar-width: none;
+}
+.sa-txt {
+  min-width: 0;
+}
+/* 路径单独一行，太长省略；说明另起一行 */
+.sa-path,
+.sa-line {
+  display: block;
+}
+.sa-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 整行宽的框后面的按钮一样宽（保存、现在同步） */
+.sa-inline .sa-btn {
+  min-width: 84px;
+  justify-content: center;
+}
+/* 停用的一行：开关跟字一起淡 */
+.sa-row.dim .sw-toggle {
+  opacity: 0.45;
+}
+/* 只有字的一行：说明不压到右边那一列 */
+.sa-row.info .sa-txt {
+  max-width: calc(100% - 244px);
+}

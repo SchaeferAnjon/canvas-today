@@ -39,6 +39,13 @@ export interface DiffEntry {
   warn?: boolean
   /** 现在库里这个路径上还有这个文件（「打开这篇」能不能点） */
   exists: boolean
+  /**
+   * 梦游的一条（task-m552v「打开「文件名」」不再灰掉）：现在库里这篇在哪。和 path 一样是原处；
+   * 后来收下的归类把它挪走了是挪去的地方；还没收下的挪动是原来那份；只在梦游分支上的新文件是 null（branch 为 true）
+   */
+  now?: string | null
+  /** 只在梦游分支上（还没收下的新文件）：「打开「x.html」· 梦游分支上的」开的是梦游分支上那份 */
+  branch?: boolean
 }
 
 export interface DiffResult {
@@ -48,6 +55,8 @@ export interface DiffResult {
   left: string
   right: string
   files: DiffEntry[]
+  /** 右边那一版的提交号（梦游是这一条最后一次提交，历史是那次提交）：HTML 收下后的样子按它读（cn-file://rev/…） */
+  rev?: string
 }
 
 /** 新文件、大文件只露一行（「新文件 · 18 KB · 预览 · 看源码」），源码默认收起：别把上万行全铺开 */
@@ -175,4 +184,46 @@ function mdChange(hunks: Hunk[], after: string): string {
   }
   if (one) return `改了「${clip(one)}」那段`
   return `改了${hunks.length}处`
+}
+
+const titleOfPath = (p: string) => baseName(p).replace(/\.md$/i, '')
+const H1 = /^#\s+(.+?)\s*$/m
+const IMG_LINK = /!\[[^\]\n]*\]\(([^)\s]+)\)/g
+const REL_LINK = /(?<!!)\[[^\]\n]*\]\(([^)\s]+)\)/g
+const relOnly = (url: string) => !/^([a-z][a-z0-9+.-]*:|#|\/)/i.test(url)
+/** 一篇里的相对链接（图片的、别的），按出现的先后 */
+const links = (t: string, re: RegExp) => [...t.matchAll(re)].map((m) => m[1]!).filter(relOnly)
+const changed = (a: string[], b: string[]) => a.reduce((n, x, i) => n + (b[i] !== undefined && b[i] !== x ? 1 : 0), 0)
+
+/**
+ * 归类和改名挪的那篇（task-m552v 对照的文件条、左栏小卡里那一行）：挪到哪、改没改名、正文跟着改了什么。
+ * 「挪到剪藏/旅行」「挪到剪藏/旅行，标题加「2」，2张图的地址跟着改」「挪到写作并改名，标题和1处链接跟着改」「改名「新名」，标题跟着改」
+ */
+export function moveSay(from: string, to: string, before: string | null, after: string | null, vault?: string): string {
+  const was = titleOfPath(from)
+  const now = titleOfPath(to)
+  const moved = dirName(from, vault) !== dirName(to, vault)
+  const renamed = was !== now
+  const suffix = renamed && now.startsWith(was) ? now.slice(was.length).trim() : ''
+  const head = moved ? `挪到${dirName(to, vault)}${renamed && !suffix ? '并改名' : ''}` : renamed && !suffix ? `改名「${now}」` : ''
+  const parts = [head]
+  if (suffix) parts.push(`标题加「${suffix}」`)
+  if (before !== null && after !== null) {
+    const title = !suffix && H1.exec(before)?.[1] !== H1.exec(after)?.[1]
+    const imgs = changed(links(before, IMG_LINK), links(after, IMG_LINK))
+    const other = changed(links(before, REL_LINK), links(after, REL_LINK))
+    const what = [title ? '标题' : '', imgs ? `${imgs}张图的地址` : '', other ? `${other}处链接` : ''].filter(Boolean)
+    if (what.length) parts.push(`${what.length > 1 ? what.slice(0, -1).join('、') + '和' + what[what.length - 1] : what[0]}跟着改`)
+  }
+  return parts.filter(Boolean).join('，') || '内容没变'
+}
+
+/** 改名时别的笔记里换了双链的那一篇：「「记下的时刻」那段的 [[极光]] 换成 [[极光 2]]」（第一处改的那一行往上最近的标题） */
+export function relinkSay(oldName: string, newName: string, before: string, after: string): string {
+  const a = before.split('\n')
+  const lines = after.split('\n')
+  let n = 0
+  while (n < lines.length && lines[n] === a[n]) n++
+  const where = n < lines.length ? headingAt(lines, n + 1) : null
+  return `${where ? `「${clip(where)}」那段的 ` : ''}[[${oldName}]] 换成 [[${newName}]]`
 }

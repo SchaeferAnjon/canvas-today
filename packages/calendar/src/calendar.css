@@ -1,0 +1,631 @@
+/*
+ * @cn/calendar 的样子。颜色全是 @cn/design themes.css 的变量（十套主题都能用），类名都以 cal- 开头。
+ * 画布今日的日历（周、月、小月历、顶上一行）照 v2 原型，从 apps/today 的 today.css 原样搬过来（数值没改）；
+ * 系统日程、AI 排的虚线框照 v2 原型 .blk.ev / .ad.ev / .blk.ghost；待办首页的日历（cal-strip）照 18-待办首页 原型 calendar()。
+ * 外边距（离窗口边多远）由宿主给：画布今日在 today.css 里给 .cal-bar / .cal-week / .cal-month 加左右 24。
+ */
+
+/* ---------- 顶上一行：‹ 今天 › · 月 / 周（画布今日） ---------- */
+.cal-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cal-sp {
+  flex: 1;
+}
+.cal-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 6px;
+  border: 1px solid var(--line2);
+  background: var(--card);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.cal-btn:hover {
+  background: var(--fill);
+}
+.cal-btn:disabled {
+  opacity: 0.5;
+}
+.cal-btn:disabled:hover {
+  background: var(--card);
+}
+.cal-ib {
+  width: 28px;
+  height: 28px;
+  border-radius: 5px;
+  display: inline-grid;
+  place-items: center;
+  color: var(--t2);
+  flex: none;
+}
+.cal-ib:hover {
+  background: var(--fill);
+}
+.cal-btn .ci,
+.cal-ib .ci {
+  flex: none;
+}
+.cal-seg {
+  display: inline-flex;
+  gap: 2px;
+}
+.cal-seg button {
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--t2);
+}
+.cal-seg button:hover {
+  background: var(--fill);
+}
+.cal-seg button.on {
+  background: var(--fill2);
+  color: var(--t1);
+  font-weight: 500;
+}
+
+/* ---------- 周：0 到 24 点，一小时 40；头不动，下面的钟点格（.cal-week）滚 ---------- */
+.cal-wk {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.cal-week {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  position: relative;
+}
+.cal-head,
+.cal-allday {
+  display: grid;
+  grid-template-columns: 44px repeat(7, 1fr);
+}
+/* 日子头和「全天」：不垫底色，跟着宿主那块面板（半透明也行）；右边让出格子滚动条的宽，和格子对齐 */
+.cal-stick {
+  flex: none;
+  position: relative;
+  z-index: 4;
+  padding-right: var(--cal-sbw, 0px);
+}
+.cal-head > div {
+  font-size: 12px;
+  color: var(--t2);
+  padding: 4px 6px;
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+}
+.cal-head > div b {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--t1);
+}
+.cal-head > div.today b {
+  color: var(--acc-t);
+}
+.cal-allday {
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  min-height: 44px;
+}
+.cal-allday > div {
+  border-left: 1px solid var(--line);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.cal-allday > div:first-child {
+  border: 0;
+  font-size: 11px;
+  color: var(--t3);
+  justify-content: center;
+  align-items: flex-end;
+  padding-right: 6px;
+}
+.cal-chip {
+  height: 20px;
+  border-radius: 5px;
+  background: var(--fill2);
+  font-size: 12px;
+  padding: 0 6px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  line-height: 20px;
+  flex: none;
+}
+.cal-chip.done {
+  text-decoration: line-through;
+  color: var(--t3);
+}
+.cal-chip.on {
+  box-shadow: 0 0 0 2px var(--acc-ring);
+}
+/* 系统日程（只读）：它日历的颜色，左边一道 */
+.cal-chip.ev {
+  background: color-mix(in srgb, var(--c) 16%, transparent);
+  box-shadow: inset 2px 0 0 var(--c);
+}
+.cal-body {
+  display: grid;
+  grid-template-columns: 44px repeat(7, 1fr);
+  position: relative;
+}
+.cal-hrs > div {
+  height: 40px;
+  font-size: 11px;
+  color: var(--t3);
+  text-align: right;
+  padding-right: 6px;
+  transform: translateY(-7px);
+}
+.cal-hrs > div.under {
+  transform: translateY(2px);
+}
+.cal-col {
+  position: relative;
+  border-left: 1px solid var(--line);
+  background-image: linear-gradient(var(--line) 1px, transparent 1px);
+  background-size: 100% 40px;
+  min-width: 0;
+}
+.cal-col.today {
+  background-color: color-mix(in srgb, var(--acc-soft) 45%, transparent);
+}
+.cal-blk {
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  border-radius: 6px;
+  background: var(--card);
+  box-shadow: var(--shadow);
+  border-left: 3px solid var(--acc);
+  padding: 3px 6px;
+  font-size: 12px;
+  line-height: 1.35;
+  overflow: hidden;
+}
+.cal-blk .bt {
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cal-blk .bm {
+  color: var(--t3);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cal-blk.done {
+  opacity: 0.55;
+}
+.cal-blk.done .bt {
+  text-decoration: line-through;
+}
+.cal-blk.on {
+  box-shadow: 0 0 0 2px var(--acc-ring);
+}
+.cal-blk.ev {
+  background: color-mix(in srgb, var(--c) 15%, var(--win));
+  border-left-color: var(--c);
+  box-shadow: none;
+}
+.cal-blk.ev .bm {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.cal-blk.ev .bm .ci {
+  flex: none;
+}
+.cal-blk.ev .bm .bmt {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+/* 还没定下来的（AI 排的）：虚线框 */
+.cal-blk.ghost {
+  background: var(--acc-soft);
+  border: 1.5px dashed var(--acc-ring);
+  border-left: 3px solid var(--acc);
+  box-shadow: none;
+}
+.cal-now {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--red);
+  z-index: 2;
+}
+.cal-now::before {
+  content: '';
+  position: absolute;
+  left: -4px;
+  top: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--red);
+}
+
+/* ---------- 月 ---------- */
+.cal-month {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.cal-mweek {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+}
+.cal-mweek.head > div {
+  font-size: 12px;
+  color: var(--t2);
+  padding: 4px 6px;
+}
+.cal-mrows {
+  flex: 1;
+  display: grid;
+  grid-auto-rows: 1fr;
+  border-top: 1px solid var(--line);
+  border-left: 1px solid var(--line);
+  min-height: 0;
+}
+.cal-mcell {
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+.cal-dn {
+  font-size: 12px;
+  color: var(--t2);
+  padding: 0 2px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.cal-mcell.out .cal-dn {
+  color: var(--t3);
+  opacity: 0.6;
+}
+.cal-mcell.today .cal-dn b {
+  background: var(--acc-bg);
+  color: var(--acc-on);
+  border-radius: 6px;
+  padding: 0 5px;
+  font-weight: 600;
+}
+.cal-dn b {
+  font-weight: 500;
+}
+.cal-more {
+  font-size: 12px;
+  color: var(--t3);
+  padding: 0 4px;
+}
+/* 月看法的一条：名字在前、钟点小字在后（格子窄，名字要先露出来） */
+.cal-chip.mad {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+.cal-chip.mad .nm {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cal-chip.mad .tm {
+  flex: none;
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--t3);
+}
+.cal-chip.mad .tm.late {
+  color: var(--red-t);
+}
+
+/* ---------- 小月历（画布今日日历左栏） ---------- */
+.cal-mini {
+  padding: 4px 6px 8px;
+}
+.cal-mini-h {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 500;
+  padding: 0 2px 6px;
+}
+.cal-mini-g {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  text-align: center;
+  font-size: 12px;
+}
+.cal-mini-g span,
+.cal-mini-g button {
+  height: 24px;
+  line-height: 24px;
+  border-radius: 6px;
+  color: var(--t2);
+}
+.cal-mini-g button:hover {
+  background: var(--fill);
+}
+.cal-mini-g .w {
+  color: var(--t3);
+  font-size: 11px;
+}
+.cal-mini-g .o {
+  color: var(--t3);
+  opacity: 0.5;
+}
+.cal-mini-g .wk {
+  background: var(--fill2);
+}
+.cal-mini-g .td,
+.cal-mini-g .td:hover {
+  background: var(--acc-bg);
+  color: var(--acc-on);
+  font-weight: 600;
+}
+.cal-mini-g .has {
+  position: relative;
+}
+.cal-mini-g .has::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 2px;
+  width: 3px;
+  height: 3px;
+  margin-left: -1.5px;
+  border-radius: 50%;
+  background: var(--t3);
+}
+.cal-mini-g .td.has::after {
+  background: var(--acc-on);
+}
+
+/* ---------- 待办首页上方的日历（画布笔记，18-待办首页 原型） ---------- */
+.cal-sbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  margin-bottom: 8px;
+}
+.cal-stitle {
+  font-size: 15px;
+  font-weight: 600;
+  padding: 0 4px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.cal-sbar .cal-seg {
+  margin-left: 8px;
+}
+.cal-sbar .cal-seg button {
+  padding: 0 10px;
+}
+.cal-fchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 4px 0 8px;
+  border-radius: 6px;
+  background: var(--fill2);
+  font-size: 12px;
+  color: var(--t1);
+  white-space: nowrap;
+}
+.cal-fchip button {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  display: grid;
+  place-items: center;
+  color: var(--t2);
+}
+.cal-fchip button:hover {
+  background: var(--fill2);
+}
+.cal-swk {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+.cal-scell {
+  height: 104px;
+  border-radius: 8px;
+  padding: 4px 6px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  background: var(--fill);
+}
+.cal-swh {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--t2);
+  height: 24px;
+  flex: none;
+}
+.cal-swh .cal-sdn {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--t1);
+  min-width: 22px;
+  height: 20px;
+  line-height: 20px;
+  text-align: center;
+  border-radius: 6px;
+  font-variant-numeric: tabular-nums;
+}
+.cal-sl {
+  font-size: 12px;
+  color: var(--t2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 18px;
+  padding: 0 2px;
+}
+.cal-sl .tm {
+  color: var(--t3);
+  font-variant-numeric: tabular-nums;
+}
+.cal-sl.mo {
+  color: var(--t3);
+}
+.cal-sl.late {
+  color: var(--red-t);
+}
+.cal-sev {
+  font-size: 12px;
+  line-height: 18px;
+  padding-left: 5px;
+  border-left: 2px solid var(--ec);
+  color: var(--t2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin: 0 2px;
+}
+.cal-sev .num {
+  font-variant-numeric: tabular-nums;
+}
+.cal-smh {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  font-size: 12px;
+  color: var(--t3);
+  text-align: center;
+  padding-bottom: 2px;
+}
+.cal-smg {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0 2px;
+}
+.cal-smc {
+  height: 34px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  border-radius: 6px;
+}
+.cal-smc .cal-sdn {
+  font-size: 13px;
+  min-width: 24px;
+  height: 20px;
+  line-height: 20px;
+  text-align: center;
+  border-radius: 6px;
+  font-variant-numeric: tabular-nums;
+}
+.cal-scell.today .cal-sdn,
+.cal-smc.today .cal-sdn {
+  background: var(--acc-bg);
+  color: var(--acc-on) !important;
+  font-weight: 600;
+}
+.cal-smc.out .cal-sdn {
+  color: var(--t3);
+  opacity: 0.6;
+}
+.cal-scell:hover {
+  background: var(--fill2);
+}
+.cal-smc:hover {
+  background: var(--fill);
+}
+.cal-scell.sel,
+.cal-smc.sel {
+  background: var(--fill2);
+  box-shadow: inset 0 0 0 1px var(--line2);
+}
+.cal-dots {
+  display: flex;
+  gap: 3px;
+  height: 5px;
+}
+.cal-dots i {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--t3);
+}
+.cal-dots i.late {
+  background: var(--red);
+}
+.cal-dots i.ev {
+  box-sizing: border-box;
+  border: 1.5px solid var(--ec);
+  background: transparent;
+}
+
+/* ---------- 拖动（useDragDrop） ---------- */
+.cal-ghost {
+  position: fixed;
+  z-index: 100;
+  pointer-events: none;
+  background: var(--pop);
+  box-shadow: var(--shadow-up);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 13px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  transform: translate(10px, -50%) rotate(-1.5deg);
+  white-space: nowrap;
+}
+.cal-lift {
+  opacity: 0.4;
+}
+[data-drop].cal-over {
+  background: var(--acc-soft) !important;
+  box-shadow: inset 0 0 0 1.5px var(--acc-ring);
+}
+.cal-slot {
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  border-radius: 6px;
+  border: 1.5px dashed var(--acc);
+  background: var(--acc-soft);
+  font-size: 11px;
+  padding: 2px 6px;
+  color: var(--acc-t);
+  pointer-events: none;
+  z-index: 3;
+}

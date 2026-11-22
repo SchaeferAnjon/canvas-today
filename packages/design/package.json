@@ -9,6 +9,8 @@
     "./ui.css": "./src/ui.css",
     "./notes.css": "./src/notes.css",
     "./themes.css": "./src/themes.css",
+    "./settings": "./src/settings.tsx",
+    "./settings.css": "./src/settings.css",
     "./codicon-svg": "./src/codicon-svg.ts",
     "./codicons-all": "./src/codicons-all.gen.ts"
   },

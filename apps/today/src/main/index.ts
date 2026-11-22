@@ -9,20 +9,26 @@ import { join, resolve } from 'node:path'
 import * as git from '@cn/git'
 import { Updater } from '../../../notes/src/main/updater'
 import { activeSkin, skinOf } from '../../../notes/src/shared/appearance'
-import { deviceDir } from '@cn/tasks'
-import type { AddCtx, AppState, EditReq, GitInfo } from '../shared/api'
+import { deviceDir, lineAt, minutesOf, splitLines } from '@cn/tasks'
+import type { AddCtx, AiSlot, AppState, EditReq, FocusOp, FocusTask, GitInfo, HabitOp, TaskView } from '../shared/api'
+import type { Busy, SchedCandidate } from '../shared/ai-plan'
 import PKG from '../../package.json'
 import { BRAND, noteUrl, releaseUrl } from '../shared/brand'
 import { type Lang, tr } from '../shared/i18n'
 import type { TodaySettings } from '../shared/settings'
-import { isoOf } from '../shared/when'
+import { findAgain, listed, open } from '../shared/views'
+import { isoOf, isoPlus, localStamp } from '../shared/when'
 import { clockOffset, now, onClock } from './clock'
 import { Committer } from './commit'
-import { addTask, applyEdit, newList } from './edits'
-import { appMenu, taskMenu } from './menu'
+import { aiLabel, aiPick, aiSchedule, aiSplit, warmUp } from './ai'
+import { CalendarLink } from './calendar'
+import { addSubtasks, addTask, applyEdit, ensureTaskId, newList, setTimes } from './edits'
+import { FocusTimer } from './focus'
+import { habitEdit } from './habits'
+import { appMenu, habitMenu, taskMenu } from './menu'
 import { RemMirror } from './mirror'
 import { helperCommand, RemHelper } from './rem-helper'
-import { Reminders } from './remind'
+import { notifier, Reminders } from './remind'
 import { effectiveLook, notesDataDir, notesVault, SettingsFile, watchNotesSettings } from './settings'
 import { E2E, guardScreen } from './test-mode'
 import { MenuBar } from './tray'
@@ -42,6 +48,10 @@ let reminders: Reminders | null = null
 /** 镜像进系统提醒事项（task-b9y8i）：whenReady 里建好 */
 let mirror: RemMirror | null = null
 let updater: Updater | null = null
+/** 番茄钟（main/focus.ts）：whenReady 里建好 */
+let focus: FocusTimer | null = null
+/** 系统日历（只读，main/calendar.ts）：和提醒事项共用一个小助手 */
+let calendar: CalendarLink | null = null
 /** 检查更新建好了（发布包要先加载 electron-updater）；界面来问之前先等它 */
 let updaterReady: Promise<void> = Promise.resolve()
 let quitting = false
@@ -137,6 +147,7 @@ async function openVault(dir: string): Promise<void> {
   }
   v.onWrote = (paths, msg) => committer?.add(paths, msg)
   v.onLogs = () => void reminders?.loadEvents().then(() => reminders?.soon())
+  v.onFocusLogs = () => void focus?.load()
   v.watch()
   // 先认出哪些镜像着（索引里 ringBy: 'reminders'），本机通知再开始排：重开软件时不把提醒事项已经响过的再补响一次
   mirror?.setVault(v)
@@ -150,10 +161,12 @@ async function openVault(dir: string): Promise<void> {
       if (!r.ok) broadcast('ct:say', tr(lang(), 'gone'))
     },
     open: (t) => showMain({ key: t.key }),
+    openNote: (t) => void shell.openExternal(noteUrl(t.path, t.line + 1)).catch((e) => console.error('打不开画布笔记', e)),
     say: (text) => broadcast('ct:say', text),
     wrote: (paths, msg) => committer?.add(paths, msg),
   })
   await reminders.start()
+  await focus?.load()
   if (!process.env.CT_VAULT) settings.set({ lastVault: root })
 }
 
@@ -252,6 +265,62 @@ const menuBar = new MenuBar({ preload: preload(), load, showMain: () => showMain
 
 // ---------- 界面问的 ----------
 
+/** 界面交来的专注动作：一项项查 */
+function focusOp(x: unknown): FocusOp {
+  const o = (x && typeof x === 'object' ? x : {}) as Record<string, unknown>
+  const key = o.key === null || typeof o.key === 'string' ? (o.key as string | null) : undefined
+  if (o.op === 'start') return o.key === undefined ? { op: 'start' } : key !== undefined ? { op: 'start', key } : bad()
+  if (o.op === 'pause' || o.op === 'stop') return { op: o.op }
+  if (o.op === 'task' && key !== undefined) return { op: 'task', key }
+  return bad()
+}
+const bad = (): never => {
+  throw new Error('专注的参数不对')
+}
+
+const focusTaskOf = (t: TaskView): FocusTask => ({ key: t.key, id: t.id, path: t.path, line: t.line, raw: t.raw, title: t.title })
+
+/** 番茄钟：满了记进库里、弹通知、界面说一句 */
+function setupFocus() {
+  focus = new FocusTimer({
+    vault: () => vault,
+    device: DEVICE,
+    now,
+    find: (t) => {
+      const x = vault ? findAgain(t, vault.snapshot().tasks) : null
+      return x ? focusTaskOf(x) : null
+    },
+    ensureId: async (t) => {
+      if (!vault) return null
+      const r = await ensureTaskId(vault, t)
+      return r ? { ...t, line: r.line, raw: r.raw, id: r.id } : null
+    },
+    done: (r, file) => {
+      const l = lang()
+      notifier().show({ title: tr(l, 'focusNotif'), body: tr(l, 'focusNotifBody', r.title), actions: [], key: r.id ?? '', due: r.end, at: r.end }, () => showMain())
+      broadcast('ct:notice', { msg: tr(l, 'focusDone', r.title), sub: tr(l, 'focusDoneSub', file) })
+    },
+    emit: (info) => broadcast('ct:focus', info),
+  })
+}
+
+/** 界面交来的习惯改动：一项项查 */
+function habitOp(x: unknown): HabitOp {
+  const o = (x && typeof x === 'object' ? x : {}) as Record<string, unknown>
+  const str = (k: string) => {
+    if (typeof o[k] !== 'string') throw new Error('习惯的参数不对')
+    return o[k] as string
+  }
+  if (o.op === 'check') {
+    if (typeof o.on !== 'boolean' || !/^\d{4}-\d{2}-\d{2}$/.test(str('date'))) throw new Error('习惯的参数不对')
+    return { op: 'check', path: str('path'), date: str('date'), on: o.on }
+  }
+  if (o.op === 'new') return { op: 'new', name: str('name'), rule: str('rule') }
+  if (o.op === 'rule') return { op: 'rule', path: str('path'), rule: str('rule') }
+  if (o.op === 'delete') return { op: 'delete', path: str('path') }
+  throw new Error('习惯的参数不对')
+}
+
 function needVault(): TaskVault {
   if (!vault) throw new Error('还没有打开库')
   return vault
@@ -332,6 +401,111 @@ function registerIpc() {
     if (!t || !w) return null
     return taskMenu(w, t, today(), l === 'en' ? 'en' : 'zh')
   })
+  ipcMain.handle('ct:habit', (_e, op: unknown) => habitEdit(needVault(), habitOp(op), today()))
+  ipcMain.handle('ct:habitMenu', async (e, path: unknown, l: Lang) => {
+    const h = needVault()
+      .snapshot()
+      .habits.find((x) => x.path === path)
+    const w = BrowserWindow.fromWebContents(e.sender)
+    if (!h || !w) return null
+    return habitMenu(w, h, l === 'en' ? 'en' : 'zh')
+  })
+  // ---------- AI：拆成小步、排进空着的时间（先给看，收下才写） ----------
+  const jobs = new Map<string, AbortController>()
+  const job = (id: unknown) => {
+    if (typeof id !== 'string' || !id) throw new Error('AI 的参数不对')
+    const ac = new AbortController()
+    jobs.get(id)?.abort()
+    jobs.set(id, ac)
+    return { ac, done: () => jobs.get(id) === ac && jobs.delete(id) }
+  }
+  const failText = (e: unknown) => ({ ok: false as const, message: String((e as Error)?.message ?? e), ...((e as Error)?.name === 'AbortError' ? { aborted: true } : {}) })
+  ipcMain.handle('ct:aiInfo', () => aiLabel(aiPick(notesDir)))
+  ipcMain.handle('ct:aiCancel', (_e, id: unknown) => void (typeof id === 'string' && jobs.get(id)?.abort()))
+  ipcMain.handle('ct:aiSplit', async (_e, key: unknown, id: unknown) => {
+    const v = needVault()
+    const s = v.snapshot()
+    const t = s.tasks.find((x) => x.key === key)
+    if (!t) return { ok: false, message: tr(lang(), 'gone') }
+    const text = (await v.current(t.path))?.text ?? ''
+    const lines = splitLines(text)
+    const around = lines.slice(Math.max(0, t.line - 6), t.line + 7).map((_, i) => lineAt(text, Math.max(0, t.line - 6) + i) ?? '').join('\n')
+    const subs = t.subs.map((k) => s.tasks.find((x) => x.key === k)?.title).filter((x): x is string => !!x)
+    const j = job(id)
+    try {
+      return { ok: true, steps: await aiSplit(aiPick(notesDir), { title: t.title, date: t.date, path: t.path, heading: t.heading, subs, around }, v.root, j.ac.signal) }
+    } catch (e) {
+      return failText(e)
+    } finally {
+      j.done()
+    }
+  })
+  ipcMain.handle('ct:aiSplitAccept', (_e, key: unknown, steps: unknown) => {
+    if (!Array.isArray(steps) || !steps.every((x) => typeof x === 'string')) throw new Error('AI 的参数不对')
+    const v = needVault()
+    const t = v.snapshot().tasks.find((x) => x.key === key)
+    if (!t) return { ok: false, reason: 'gone' }
+    return addSubtasks(v, t, steps as string[])
+  })
+  ipcMain.handle('ct:aiSchedule', async (_e, id: unknown) => {
+    const v = needVault()
+    const d = today()
+    const tom = isoPlus(d, 1)
+    const nowT = localStamp(now()).slice(11, 16)
+    const tasks = v.snapshot().tasks
+    const cands: SchedCandidate[] = tasks.filter((t) => open(t) && listed(t) && !t.time && (t.date === d || t.date === tom)).map((t) => ({ key: t.key, title: t.title, date: t.date!, prio: t.prio }))
+    const busy: Busy[] = tasks
+      .filter((t) => !t.done && !t.cancelled && t.time && (t.date === d || t.date === tom))
+      .map((t) => ({ date: t.date!, from: minutesOf(t.time!), to: Math.min(1440, minutesOf(t.time!) + 60), title: t.title }))
+    const evs = await calendar!.events(d, tom)
+    for (const e of evs) {
+      if (e.allDay) continue
+      for (const day of [d, tom]) {
+        const sd = e.start.slice(0, 10)
+        const ed = e.end.slice(0, 10)
+        if (day < sd || day > ed) continue
+        busy.push({ date: day, from: day === sd ? minutesOf(e.start.slice(11, 16)) : 0, to: day === ed ? minutesOf(e.end.slice(11, 16)) : 1440, title: e.title })
+      }
+    }
+    const j = job(id)
+    try {
+      const slots = await aiSchedule(aiPick(notesDir), { date: d, time: nowT }, cands, busy, v.root, j.ac.signal)
+      const byKey = new Map(cands.map((c) => [c.key, c.title]))
+      return { ok: true, slots: slots.map((x) => ({ ...x, title: byKey.get(x.key) ?? '' })), candidates: cands.length, events: evs.filter((e) => !e.allDay).length }
+    } catch (e) {
+      return failText(e)
+    } finally {
+      j.done()
+    }
+  })
+  ipcMain.handle('ct:aiScheduleAccept', (_e, slots: unknown) => {
+    if (!Array.isArray(slots)) throw new Error('AI 的参数不对')
+    const v = needVault()
+    const tasks = v.snapshot().tasks
+    const items = (slots as AiSlot[]).flatMap((x) => {
+      const t = tasks.find((y) => y.key === x?.key)
+      return t && typeof x.time === 'string' && /^\d{2}:\d{2}$/.test(x.time) ? [{ path: t.path, line: t.line, raw: t.raw, title: t.title, time: x.time }] : []
+    })
+    return setTimes(v, items, today())
+  })
+
+  ipcMain.handle('ct:focusInfo', () => focus!.info())
+  ipcMain.handle('ct:focus', (_e, op: unknown) => {
+    const o = focusOp(op)
+    const byKey = (k: string | null | undefined) => {
+      if (!k) return null
+      const t = needVault()
+        .snapshot()
+        .tasks.find((x) => x.key === k)
+      if (!t) throw new Error('这一条找不到了')
+      return focusTaskOf(t)
+    }
+    if (o.op === 'start') focus!.start(o.key === undefined ? undefined : byKey(o.key))
+    else if (o.op === 'pause') focus!.pause()
+    else if (o.op === 'stop') focus!.stop()
+    else focus!.setTask(byKey(o.key))
+    return focus!.info()
+  })
   ipcMain.handle('ct:showMain', (_e, sel?: { key: string }) => showMain(sel))
   ipcMain.handle('ct:updateStatus', async () => {
     await updaterReady
@@ -383,11 +557,40 @@ function registerIpc() {
   ipcMain.handle('ct:remDismissBanner', () => mirror!.dismissBanner())
   ipcMain.handle('ct:remOpenPrivacy', () => mirror!.openPrivacy())
   ipcMain.handle('ct:remOpenICloud', () => mirror!.openICloud())
+
+  // ---------- 系统日历（只读） ----------
+  const day = (v: unknown) => {
+    if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v)) throw new Error('日子的参数不对')
+    return v
+  }
+  ipcMain.handle('ct:calState', () => calendar!.state())
+  ipcMain.handle('ct:calConnect', (_e, andReminders: unknown) => calendar!.connect(andReminders === true))
+  ipcMain.handle('ct:calShow', (_e, on: unknown) => {
+    if (typeof on !== 'boolean') throw new Error('日历开关的参数不对')
+    return calendar!.setShow(on)
+  })
+  ipcMain.handle('ct:calEvents', (_e, from: unknown, to: unknown) => calendar!.events(day(from), day(to)))
+  ipcMain.handle('ct:calOpenPrivacy', () => calendar!.openPrivacy())
 }
 
 /** 提醒事项小助手和镜像：测试模式里小助手一律带 --memory（假提醒事项），globalThis.ctRem 让测试像人一样在提醒事项里改 */
 function setupMirror() {
   const helper = new RemHelper(helperCommand(process.env, { e2e: E2E, packaged: app.isPackaged, execPath: process.execPath, here: __dirname }))
+  calendar = new CalendarLink(helper, {
+    settings: () => settings.read(),
+    save: (calendar) => void settings.set({ calendar }),
+    lang,
+    state: (s) => broadcast('ct:cal', s),
+    changed: () => broadcast('ct:calChanged'),
+    notice: (n) => broadcast('ct:notice', n),
+    openExternal: (url) => shell.openExternal(url),
+    connectReminders: async () => {
+      const r = mirror!.state()
+      if (r.connected) return null
+      const s = await mirror!.connect(true)
+      return s.connected && s.active ? { mirrored: s.mirrored, list: s.list?.title ?? '' } : null
+    },
+  })
   mirror = new RemMirror(helper, join(app.getPath('userData'), 'reminders-mirror.json'), {
     settings: () => settings.read(),
     saveRem: (p) => void settings.set({ reminders: { ...settings.read().reminders, ...p } }),
@@ -402,6 +605,7 @@ function setupMirror() {
   if (E2E && helper.memory)
     (globalThis as unknown as { ctRem: unknown }).ctRem = {
       external: (p: Record<string, unknown>) => helper.request('test.external', p),
+      set: (p: Record<string, unknown>) => helper.request('test.set', p),
       dump: () => helper.request('test.dump'),
     }
 }
@@ -496,15 +700,19 @@ app.whenReady().then(async () => {
   if (app.isPackaged && !E2E) app.setAsDefaultProtocolClient(BRAND.scheme)
   registerIpc()
   setupMirror()
+  setupFocus()
   appMenu(lang(), menuHandlers)
   updaterReady = setupUpdater()
   const dir = vaultDir()
   if (dir) await openVault(dir)
   createWindow()
+  void calendar?.refresh()
+  void warmUp()
   menuBar.set(settings.read().tray)
   onClock((off) => {
     broadcast('ct:clock', off)
     reminders?.soon()
+    focus?.check()
   })
   watchNotesSettings(notesDir, () => {
     const s = settings.read()

@@ -1,0 +1,108 @@
+/** 英文表：几处都用的、语言设置、菜单栏和菜单栏图标的菜单、检查更新 */
+import { count, inline, type Table } from '../core'
+
+export const COMMON: Table = {
+  // ---------- 语言（设置 › 一般最上面一组、主进程） ----------
+  语言: 'Language',
+  界面语言: 'Interface language',
+  '菜单、按钮、提示用哪种语言，改了当场换；笔记、文件夹名和AI已写下的回答不跟着变': 'Menus, buttons and messages; changes right away. Your notes, folder names and AI answers already written stay as they are.',
+  '跟随系统（{name}）': 'Same as system ({name})',
+  '界面换成{name}；系统自带的几处（编辑菜单、文件对话框）重开后换': 'Now in {name}; system items (Edit menu, file dialogs) switch after a restart',
+  语言参数不对: 'Unknown language',
+
+  // ---------- 菜单栏（macOS 菜单栏照系统习惯每个词首字母大写） ----------
+  '菜单栏::设置…': 'Settings…',
+  '菜单栏::文件': 'File',
+  '菜单栏::新建笔记': 'New Note',
+  '菜单栏::帮助': 'Help',
+  '菜单栏::打开日志文件夹': 'Open Logs Folder',
+  '菜单栏::新建白板': 'New Board',
+  '菜单栏::新建一门课': 'New Course',
+  '菜单栏::新建文件夹': 'New Folder',
+  '菜单栏::存成书桌…': 'Save as Desk…',
+  '菜单栏::拍一张导图': 'Snap a Mind Map',
+  '菜单栏::导入旧笔记…': 'Import Notes…',
+  '菜单栏::关闭': 'Close',
+  '菜单栏::显示': 'View',
+  '菜单栏::收起 / 展开左栏': 'Toggle Left Sidebar',
+  '菜单栏::收起 / 展开右栏': 'Toggle Right Sidebar',
+  '菜单栏::收起 / 展开中间栏': 'Toggle Center Pane',
+  '菜单栏::左栏：文件': 'Left Sidebar: Files',
+  '菜单栏::左栏：最近': 'Left Sidebar: Recent',
+  '菜单栏::左栏：书桌': 'Left Sidebar: Desks',
+  '菜单栏::梦游报告': 'Dream Report',
+  '菜单栏::大纲': 'Outline',
+  '菜单栏::网页': 'Web',
+  '菜单栏::历史': 'History',
+  '菜单栏::白板 / 文档切换': 'Switch Board / Doc',
+  '菜单栏::放大': 'Zoom In',
+  '菜单栏::缩小': 'Zoom Out',
+  '菜单栏::原大': 'Actual Size',
+  '菜单栏::前往': 'Go',
+  '菜单栏::后退': 'Back',
+  '菜单栏::前进': 'Forward',
+  '菜单栏::回到首页': 'Home',
+  '菜单栏::按名字跳到…': 'Open by Name…',
+  '菜单栏::搜索…': 'Search…',
+  '菜单栏::速记': 'Quick Note',
+  '菜单栏::打开 {app}': 'Open {app}',
+  '菜单栏::现在梦游': 'Dream Now',
+  '菜单栏::退出': 'Quit',
+  '菜单栏::重启并更新到 {v}': 'Restart to Update to {v}',
+  '菜单栏::正在检查更新…': 'Checking for Updates…',
+  '菜单栏::正在下载新版本…': 'Downloading Update…',
+  '菜单栏::检查更新…': 'Check for Updates…',
+
+  // ---------- 检查更新（设置 › 一般、底栏） ----------
+  '新版本的签名和装着的这一版对不上，没有装；去官网重新下载安装一次就好': 'The new version’s signature doesn’t match this one, so it wasn’t installed. Download it again from the website.',
+  '{app}在只读的位置（比如直接从安装盘里打开），装不上新版本；挪到「应用程序」再打开': '{app} is in a read-only place (like the install disk), so updates can’t install. Move it to Applications and open it again.',
+  '新版本{v}的安装包下载不到（{code}），过一会儿再试': 'Couldn’t download version {v} ({code}). Try again later.',
+  'GitHub上还没有能自动更新的新版本': 'No auto-update release on GitHub yet',
+  'GitHub暂时不让查（查得太频繁），一小时后会自动再查': 'GitHub is limiting checks for now; it will try again in an hour',
+  '连不上GitHub，检查一下网络；过一会儿会自动再查': 'Can’t reach GitHub. Check your network; it will try again soon',
+  '磁盘空间不够，新版本没下完；腾出一些空间再查': 'Not enough disk space to finish the download. Free some space and check again',
+  '开发版，不自动更新': 'Development build, no auto-updates',
+  '正在查GitHub上有没有新版本…': 'Checking GitHub for a new version…',
+  '正在下载新版本{v} · {percent}%': 'Downloading version {v} · {percent}%',
+  '新版本{v}已下好，重启就能用': 'Version {v} is ready; restart to use it',
+  '已是最新 · {when}查过': (p) => `Up to date · checked ${inline(p.when)}`,
+  '没装上：{text}': 'Not installed: {text}',
+  '没查成：{text}': 'Couldn’t check: {text}',
+  '自动检查已关，点右边查一次': 'Automatic checks are off; check once on the right',
+  '上次{when}查过，是最新的': (p) => `Checked ${inline(p.when)}; up to date`,
+  '还没查过；打开30秒后会自动查一次': 'Not checked yet; checks 30 seconds after opening',
+
+  // ---------- 几处都用的 ----------
+  设置: 'Settings',
+  撤回: 'Undo',
+  取消: 'Cancel',
+  '已存 · {hint}': 'Saved · {hint}',
+
+  // ---------- 速记小窗、菜单栏图标（main/quick.ts、renderer/quick/） ----------
+  速记: 'Quick note',
+  '还没有打开库，先打开 {app} 选一个文件夹': 'No vault is open yet. Open {app} and choose a folder first.',
+  速记参数不对: 'Invalid quick note',
+  速记是空的: 'The quick note is empty',
+  '速记 · 回车进收件箱': 'Quick note · Return saves to the Inbox',
+  速记内容: 'Quick note text',
+  '想说点什么就写在这里，也可以直接回车': 'Add a thought here, or just press Enter',
+  '想到什么，写下来': 'Write down what’s on your mind',
+  '来自{app}': 'From {app}',
+  前台软件: 'the front app',
+  '允许「辅助功能」后，按 {key} 时选中的字和来源会一起带上来': 'Allow Accessibility so {key} brings along selected text',
+  去允许: 'Allow…',
+  不用了: 'No thanks',
+  存进收件箱: 'Save to Inbox',
+  换行: 'New line',
+
+  // ---------- 日期（shared/when.ts） ----------
+  今天: 'Today',
+  昨天: 'Yesterday',
+
+  // ---------- 文档里的 AI 块（右键、块菜单，task-dtc34） ----------
+  变成我的字: 'Make it my writing',
+  '标成 AI 写的': 'Mark as written by AI',
+
+  // ---------- 数量（中文「3篇」，英文分单复数） ----------
+  '{n}篇': (p) => count(p.n, 'note'),
+}

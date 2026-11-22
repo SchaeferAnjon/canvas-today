@@ -22,3 +22,15 @@ public protocol ReminderStore: AnyObject {
   /// 一批改完一起存（EventKit 的 commit）
   func commit() throws
 }
+
+/// 系统日历（只读）：画布今日的日历里画日程（task-ykkoz）。真的是 EKStore，测试和 --memory 是 MemoryStore；
+/// 别的只认提醒事项的 store（测试里的假的）不认日历的命令
+public protocol CalendarStore: AnyObject {
+  /// 日历的授权（不弹窗）：notDetermined、denied、restricted、full、writeOnly
+  func calendarStatus() -> Status
+  /// 第一次时系统问一次（「允许完全访问」）
+  func requestCalendarAccess() -> Status
+  func calendars() throws -> [CalInfo]
+  /// from、to 是本地日子「2026-11-22」（都含）
+  func events(from: String, to: String) throws -> [EventItem]
+}

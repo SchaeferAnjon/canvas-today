@@ -1,11 +1,13 @@
 /**
  * 系统菜单（照家族规矩：右键一律系统原生菜单，DESIGN.v3 9.1）。
- * 待办的右键：今天 / 明天 / 下周一（右边小字是哪天）· 打开笔记，到这一行 · 删除。原型里的「开始专注 25 分钟」第一批没有专注，不放。
+ * 待办的右键：今天 / 明天 / 下周一（右边小字是哪天）· 开始专注 25 分钟 · 打开笔记，到这一行 · 删除（照原型）。
+ * 习惯的右键：打开笔记 · 重复 ▸（每天、工作日、每周一、三、五……）· 删除。
  * 软件菜单栏：中英文跟着设置里的语言；应用菜单里「关于」下面是「检查更新…」（下好了是「重启并更新到 x」）。
  */
 import { BrowserWindow, Menu, type MenuItemConstructorOptions } from 'electron'
-import type { MenuPick, TaskView, UpdateState } from '../shared/api'
-import { type Lang, tr } from '../shared/i18n'
+import { HABIT_RULES } from '@cn/tasks'
+import type { HabitMenuPick, HabitView, MenuPick, TaskView, UpdateState } from '../shared/api'
+import { type Lang, repeatLabel, tr } from '../shared/i18n'
 import { menuLabel } from '../shared/update'
 import { dayLabel, isoPlus, mdLabel, thirdPick } from '../shared/when'
 
@@ -22,9 +24,29 @@ export function taskMenu(win: BrowserWindow, t: TaskView, today: string, lang: L
     const items: MenuItemConstructorOptions[] = [
       ...days.map(([d, label]): MenuItemConstructorOptions => ({ label, sublabel: mdLabel(lang, d), enabled: t.date !== d, click: () => (picked = { kind: 'date', date: d }) })),
       { type: 'separator' },
+      { label: tr(lang, 'mFocus'), enabled: !t.done && !t.cancelled, click: () => (picked = { kind: 'focus' }) },
       { label: tr(lang, 'mOpen'), click: () => (picked = { kind: 'open' }) },
       { type: 'separator' },
       { label: tr(lang, 'mDelete'), click: () => (picked = { kind: 'delete' }) },
+    ]
+    Menu.buildFromTemplate(items).popup({ window: win, callback: () => resolve(picked) })
+  })
+}
+
+/** 习惯的右键：打开笔记 · 重复 ▸ · 删除 */
+export function habitMenu(win: BrowserWindow, h: HabitView, lang: Lang): Promise<HabitMenuPick> {
+  return new Promise((resolve) => {
+    let picked: HabitMenuPick = null
+    const rules = HABIT_RULES.includes(h.rule) ? HABIT_RULES : [...HABIT_RULES, h.rule]
+    const items: MenuItemConstructorOptions[] = [
+      { label: tr(lang, 'mHabitOpen'), click: () => (picked = { kind: 'open' }) },
+      {
+        label: tr(lang, 'mHabitRule'),
+        enabled: !h.readOnly,
+        submenu: rules.map((rule): MenuItemConstructorOptions => ({ label: repeatLabel(lang, rule), type: 'checkbox', checked: rule === h.rule, click: () => (picked = rule === h.rule ? null : { kind: 'rule', rule }) })),
+      },
+      { type: 'separator' },
+      { label: tr(lang, 'mDelete'), enabled: !h.readOnly, click: () => (picked = { kind: 'delete' }) },
     ]
     Menu.buildFromTemplate(items).popup({ window: win, callback: () => resolve(picked) })
   })

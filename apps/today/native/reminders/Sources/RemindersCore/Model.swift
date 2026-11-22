@@ -209,3 +209,53 @@ public struct StoreError: Error {
     self.message = message
   }
 }
+
+/// 系统日历里的一个日历（画布今日只读日程，不写）
+public struct CalInfo: Codable, Equatable {
+  public var id: String
+  public var title: String
+  /// 日历的颜色「#4F7CAC」
+  public var color: String?
+  /// 账户名（iCloud、在我的 Mac 上…）
+  public var source: String
+
+  public init(id: String, title: String, color: String?, source: String) {
+    self.id = id
+    self.title = title
+    self.color = color
+    self.source = source
+  }
+
+  public func json() -> JSONValue {
+    .object(["id": .string(id), "title": .string(title), "color": .opt(color), "source": .string(source)])
+  }
+}
+
+/// 一个日程（重复日程的每一次各是一个）：全天的 start、end 是那几天「2026-11-23」（都含）；定时的是本地钟点「2026-11-23T09:30」
+public struct EventItem: Codable, Equatable {
+  public var id: String
+  public var title: String
+  /// 哪个日历（calendarIdentifier）
+  public var calendar: String
+  public var allDay: Bool
+  public var start: String
+  public var end: String
+
+  public init(id: String, title: String, calendar: String, allDay: Bool, start: String, end: String) {
+    self.id = id
+    self.title = title
+    self.calendar = calendar
+    self.allDay = allDay
+    self.start = start
+    self.end = end
+  }
+
+  public func json() -> JSONValue {
+    .object(["id": .string(id), "title": .string(title), "calendar": .string(calendar), "allDay": .bool(allDay), "start": .string(start), "end": .string(end)])
+  }
+
+  /// 和 from…to 这几天（本地日子，都含）有没有重叠
+  public func overlaps(from: String, to: String) -> Bool {
+    String(start.prefix(10)) <= to && String(end.prefix(10)) >= from
+  }
+}

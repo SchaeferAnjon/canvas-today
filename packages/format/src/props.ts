@@ -13,7 +13,7 @@ const FM = /^---\n([\s\S]*?\n)?---(?:\n|$)/
 const LINE = /^([^\s:#\-][^:\n]*?):[ \t]*(.*?)[ \t]*$/
 
 /** 软件自己用的键，不当属性给人看（bookId：微信读书书摘认书的记号，CN-123） */
-export const HIDDEN_KEYS = new Set(['type', 'links', 'color', 'icon', 'created', 'updated', 'source', 'draft', 'AI填的', '白板样式', 'import-id', 'bookId'])
+export const HIDDEN_KEYS = new Set(['type', 'links', 'color', 'icon', 'created', 'updated', 'source', 'draft', 'AI填的', '白板样式', '导图布局', 'import-id', 'bookId'])
 
 /** 以前写在 type 里的类型（微信读书同步写过 type: weread）：读的时候当这个「类型」，设类型时就地换掉那一行（CN-131） */
 const LEGACY_TYPES: Record<string, string> = { weread: '书摘' }

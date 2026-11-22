@@ -588,6 +588,33 @@ strong {
   border-radius: 6px;
 }
 
+/* B 有窗口背景图时三块岛都半透明、透出背景图（2026-11-22 用户：「这个大白底能不能做成…半透明的」，照 v2 和画布笔记首页 B）；
+   颜色、透多少、模糊是 @cn/design themes.css 的 --isle*（画布笔记首页 B 也用）。不用图时照旧是实色：后面是一块纯色，透了只是变色 */
+[data-winbg='photo'] .fb .left,
+[data-winbg='photo'] .fb .center,
+[data-winbg='photo'] .fb .right {
+  -webkit-backdrop-filter: var(--isle-blur);
+  backdrop-filter: var(--isle-blur);
+  --t2: var(--isle-t2);
+  --t3: var(--isle-t3);
+}
+[data-winbg='photo'] .fb .left {
+  background: var(--isle-side);
+}
+[data-winbg='photo'] .fb .center {
+  background: var(--isle);
+}
+[data-winbg='photo'] .fb .right {
+  background: var(--isle-pop);
+}
+[data-winbg='photo'] .fb .content,
+[data-winbg='photo'] .fb .tabs {
+  background: transparent;
+}
+[data-winbg='photo'] .fb .tab.on {
+  background: var(--isle-card);
+}
+
 /* 当前标签的标记跟着主题（themes.css 的结构差异，<html data-tabmark>） */
 [data-tabmark='bottom'] .fa .tab.on::after {
   content: '';
@@ -704,11 +731,6 @@ strong {
   padding: 0;
   height: 26px;
 }
-[data-drop].over {
-  background: var(--acc-soft) !important;
-  box-shadow: inset 0 0 0 1.5px var(--acc-ring);
-}
-
 /* ---------- 列表 ---------- */
 .vhead {
   padding: 22px 32px 6px;
@@ -837,9 +859,6 @@ strong {
 .row.done .rt {
   color: var(--t3);
   text-decoration: line-through;
-}
-.row.lift {
-  opacity: 0.4;
 }
 .flash {
   animation: flash 1.6s ease-out;
@@ -1157,16 +1176,80 @@ select.sel {
   text-underline-offset: 2px;
 }
 
-/* ---------- 日历 ---------- */
-.calbar {
+/* ---------- 日历（样子在共用的 @cn/calendar/calendar.css，这里只给离窗口边的距离） ---------- */
+/* 周看法的格子一直显示滚动条时窄 11（--cal-sbw，WeekGrid 量的）：上面那一排、AI 那条右边跟着让出来，三样右边对齐 */
+.content > .cal-bar {
+  padding: 0 calc(24px + var(--cal-sbw, 0px)) 8px 24px;
+}
+.content > .aibar {
+  margin-right: calc(24px + var(--cal-sbw, 0px));
+}
+/* 周看法：滚动条贴着面板右边，格子和日子头离边 24（头右边再让出滚动条的宽） */
+.content > .cal-wk > .cal-stick {
+  padding: 0 calc(24px + var(--cal-sbw, 0px)) 0 24px;
+}
+.content > .cal-wk > .cal-week {
+  padding: 0 24px 12px;
+}
+.content > .cal-month {
+  padding: 0 24px 16px;
+}
+/* 日历左栏：连接系统日历的卡、系统日历的列表（原型 calPanel） */
+.conn {
+  margin: 6px 4px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+  background: var(--card);
+}
+.conn b {
+  font-weight: 500;
+  display: block;
+  margin-bottom: 4px;
+}
+.conn p {
+  font-size: 12px;
+  color: var(--t2);
+  margin: 0 0 10px;
+}
+.conn ol {
+  font-size: 12px;
+  color: var(--t2);
+  margin: 0 0 10px;
+  padding-left: 18px;
+}
+.calrow {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 24px 8px;
+  height: 26px;
+  padding: 0 8px;
+  font-size: 13px;
 }
-.calbar .sp {
+.calrow i {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  background: var(--c);
+  flex: none;
+}
+.calrow .nm {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.calrow .sp,
+.left .sec .sp {
   flex: 1;
 }
+.left .sec .srcname {
+  font-weight: 400;
+}
+.hint.calhint {
+  padding-left: 8px;
+}
+/* 分段（设置里的外观、语言） */
 .seg {
   display: inline-flex;
   gap: 2px;
@@ -1185,313 +1268,6 @@ select.sel {
   background: var(--fill2);
   color: var(--t1);
   font-weight: 500;
-}
-.cgrid {
-  flex: 1;
-  overflow: auto;
-  padding: 0 24px 12px;
-  position: relative;
-}
-.chead,
-.callday {
-  display: grid;
-  grid-template-columns: 44px repeat(7, 1fr);
-}
-.cstick {
-  position: sticky;
-  top: 0;
-  z-index: 4;
-  background: var(--win);
-}
-.chead div {
-  font-size: 12px;
-  color: var(--t2);
-  padding: 4px 6px;
-  display: flex;
-  gap: 6px;
-  align-items: baseline;
-}
-.chead div b {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--t1);
-}
-.chead div.today b {
-  color: var(--acc-t);
-}
-.callday {
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-  min-height: 44px;
-}
-.callday > div {
-  border-left: 1px solid var(--line);
-  padding: 4px;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  min-width: 0;
-}
-.callday > div:first-child {
-  border: 0;
-  font-size: 11px;
-  color: var(--t3);
-  justify-content: center;
-  align-items: flex-end;
-  padding-right: 6px;
-}
-.ad {
-  height: 20px;
-  border-radius: 5px;
-  background: var(--fill2);
-  font-size: 12px;
-  padding: 0 6px;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  line-height: 20px;
-  flex: none;
-}
-.ad.done {
-  text-decoration: line-through;
-  color: var(--t3);
-}
-.ad.on {
-  box-shadow: 0 0 0 2px var(--acc-ring);
-}
-.cbody {
-  display: grid;
-  grid-template-columns: 44px repeat(7, 1fr);
-  position: relative;
-}
-.hrs div {
-  height: 40px;
-  font-size: 11px;
-  color: var(--t3);
-  text-align: right;
-  padding-right: 6px;
-  transform: translateY(-7px);
-}
-.hrs div.under {
-  transform: translateY(2px);
-}
-.ccol {
-  position: relative;
-  border-left: 1px solid var(--line);
-  background-image: linear-gradient(var(--line) 1px, transparent 1px);
-  background-size: 100% 40px;
-  min-width: 0;
-}
-.ccol.today {
-  background-color: color-mix(in srgb, var(--acc-soft) 45%, transparent);
-}
-.blk {
-  position: absolute;
-  left: 3px;
-  right: 3px;
-  border-radius: 6px;
-  background: var(--card);
-  box-shadow: var(--shadow);
-  border-left: 3px solid var(--acc);
-  padding: 3px 6px;
-  font-size: 12px;
-  line-height: 1.35;
-  overflow: hidden;
-}
-.blk .bt {
-  font-weight: 500;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.blk .bm {
-  color: var(--t3);
-  font-size: 11px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.blk.done {
-  opacity: 0.55;
-}
-.blk.done .bt {
-  text-decoration: line-through;
-}
-.blk.on {
-  box-shadow: 0 0 0 2px var(--acc-ring);
-}
-.nowline {
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: var(--red);
-  z-index: 2;
-}
-.nowline::before {
-  content: '';
-  position: absolute;
-  left: -4px;
-  top: -3px;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--red);
-}
-.slotprev {
-  position: absolute;
-  left: 3px;
-  right: 3px;
-  border-radius: 6px;
-  border: 1.5px dashed var(--acc);
-  background: var(--acc-soft);
-  font-size: 11px;
-  padding: 2px 6px;
-  color: var(--acc-t);
-  pointer-events: none;
-  z-index: 3;
-}
-/* 月 */
-.mgrid {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  padding: 0 24px 16px;
-}
-.mweek {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-}
-.mweek.head div {
-  font-size: 12px;
-  color: var(--t2);
-  padding: 4px 6px;
-}
-.mrows {
-  flex: 1;
-  display: grid;
-  grid-auto-rows: 1fr;
-  border-top: 1px solid var(--line);
-  border-left: 1px solid var(--line);
-  min-height: 0;
-}
-.mcell {
-  border-right: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-  padding: 4px;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-}
-.mcell .dn {
-  font-size: 12px;
-  color: var(--t2);
-  padding: 0 2px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.mcell.out .dn {
-  color: var(--t3);
-  opacity: 0.6;
-}
-.mcell.today .dn b {
-  background: var(--acc-bg);
-  color: var(--acc-on);
-  border-radius: 6px;
-  padding: 0 5px;
-  font-weight: 600;
-}
-.mcell .dn b {
-  font-weight: 500;
-}
-.mcell .more {
-  padding: 0 4px;
-}
-/* 月看法的一条：名字在前、钟点小字在后（格子窄，名字要先露出来） */
-.ad.mad {
-  display: flex;
-  align-items: baseline;
-  gap: 4px;
-}
-.ad.mad .nm {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.ad.mad .tm {
-  flex: none;
-  margin-left: auto;
-  font-size: 11px;
-  color: var(--t3);
-}
-.mm {
-  padding: 4px 6px 8px;
-}
-.mm .mh {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-weight: 500;
-  padding: 0 2px 6px;
-}
-.mm .mh .sp {
-  flex: 1;
-}
-.mm .g {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 2px;
-  text-align: center;
-  font-size: 12px;
-}
-.mm .g span,
-.mm .g button {
-  height: 24px;
-  line-height: 24px;
-  border-radius: 6px;
-  color: var(--t2);
-}
-.mm .g button:hover {
-  background: var(--fill);
-}
-.mm .g .w {
-  color: var(--t3);
-  font-size: 11px;
-}
-.mm .g .o {
-  color: var(--t3);
-  opacity: 0.5;
-}
-.mm .g .wk {
-  background: var(--fill2);
-}
-.mm .g .td,
-.mm .g .td:hover {
-  background: var(--acc-bg);
-  color: var(--acc-on);
-  font-weight: 600;
-}
-.mm .g .has {
-  position: relative;
-}
-.mm .g .has::after {
-  content: '';
-  position: absolute;
-  left: 50%;
-  bottom: 2px;
-  width: 3px;
-  height: 3px;
-  margin-left: -1.5px;
-  border-radius: 50%;
-  background: var(--t3);
-}
-.mm .g .td.has::after {
-  background: var(--acc-on);
 }
 
 /* ---------- 四象限 ---------- */
@@ -1550,6 +1326,287 @@ select.sel {
   height: 34px;
 }
 
+/* ---------- AI（原型 detail() 的 .ai、calView 的 .aibar）：虚线框，先给看，收下才写 ---------- */
+.aisplit {
+  margin-top: 6px;
+}
+.ai {
+  border: 1px dashed var(--acc-ring);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: var(--acc-soft);
+  margin-top: 8px;
+}
+.ai .ah {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--t2);
+}
+.ai .ah b {
+  color: var(--t1);
+  font-weight: 500;
+  flex: none;
+}
+.ai .ah b.aerr,
+.aibar b.aerr {
+  flex: 1;
+  color: var(--red-t);
+  font-weight: 400;
+}
+.ai .ah span {
+  min-width: 0;
+}
+.ai .it {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 28px;
+}
+.ai .it i {
+  width: 14px;
+  height: 14px;
+  border: 1.5px dashed var(--acc-ring);
+  border-radius: 4px;
+  flex: none;
+}
+.thinking {
+  display: inline-block;
+  width: 46px;
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--fill2), var(--acc-ring), var(--fill2));
+  background-size: 200% 100%;
+  animation: thinking 1s linear infinite;
+  flex: none;
+}
+@keyframes thinking {
+  to {
+    background-position: -200% 0;
+  }
+}
+.aibar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 24px 8px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px dashed var(--acc-ring);
+  background: var(--acc-soft);
+  font-size: 12px;
+  color: var(--t2);
+  flex: none;
+}
+.aibar b {
+  color: var(--t1);
+  font-weight: 500;
+}
+.aibar .sp {
+  flex: 1;
+}
+.ci.eng {
+  flex: none;
+}
+
+/* ---------- 专注（原型 focusView） ---------- */
+.focus {
+  display: flex;
+  gap: 32px;
+  padding: 16px 32px;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.fleft {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  flex: none;
+}
+.fbtns {
+  display: flex;
+  gap: 8px;
+}
+.ring {
+  position: relative;
+  flex: none;
+  width: 240px;
+  height: 240px;
+}
+.ring svg {
+  transform: rotate(-90deg);
+}
+.ring .tm {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.ring .tm b {
+  font: 600 40px/1 var(--sans);
+  font-variant-numeric: tabular-nums;
+}
+.ring .tm span {
+  font-size: 12px;
+  color: var(--t3);
+  margin-top: 6px;
+  max-width: 190px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.fl {
+  flex: 1;
+  min-width: 0;
+}
+.fl .dsec:first-child {
+  margin-top: 0;
+}
+.fl > .sel {
+  width: 100%;
+  height: 30px;
+}
+.rec {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 36px;
+  border-bottom: 1px solid var(--line);
+}
+.rec .rt {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.rec .racc {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--t2);
+  flex: none;
+}
+.dfocus {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.status .fbar {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- 习惯（原型 habitView） ---------- */
+.hab {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  height: 56px;
+  border-bottom: 1px solid var(--line);
+  padding: 0 8px;
+}
+.hab .hn {
+  flex: 1;
+  min-width: 0;
+}
+.hab .hn b {
+  font-weight: 500;
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.hab .hn span {
+  font-size: 12px;
+  color: var(--t3);
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.days {
+  display: flex;
+  gap: 6px;
+}
+.days button {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: var(--fill);
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  color: var(--t3);
+}
+.days button.y {
+  background: var(--acc-soft);
+  color: var(--acc-t);
+}
+.days button.x {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--line2);
+}
+.days button:not(:disabled):hover {
+  box-shadow: inset 0 0 0 1px var(--acc-ring);
+}
+.hcheck {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1.5px solid var(--line2);
+  display: grid;
+  place-items: center;
+  color: var(--acc-on);
+  flex: none;
+}
+.hcheck:not(.on):not(:disabled):hover {
+  border-color: var(--acc);
+}
+.hcheck.on {
+  background: var(--acc-bg);
+  border-color: var(--acc-bg);
+}
+.hrest {
+  width: 30px;
+  text-align: center;
+  flex: none;
+}
+.habadd {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 44px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--line);
+  color: var(--t3);
+}
+.habadd input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: none;
+  font-size: 13px;
+  height: 30px;
+}
+.habadd input::placeholder {
+  color: var(--t3);
+}
+.store {
+  font-size: 12px;
+  color: var(--t3);
+  margin-top: 12px;
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+}
+.store .ci {
+  margin-top: 2px;
+}
+
 /* ---------- 浮层 ---------- */
 .toast {
   position: fixed;
@@ -1577,21 +1634,6 @@ select.sel {
   font-size: 12px;
   color: var(--t3);
   overflow-wrap: anywhere;
-}
-.dragghost {
-  position: fixed;
-  z-index: 100;
-  pointer-events: none;
-  background: var(--pop);
-  box-shadow: var(--shadow-up);
-  border-radius: 8px;
-  padding: 6px 12px;
-  font-size: 13px;
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  transform: translate(10px, -50%) rotate(-1.5deg);
-  white-space: nowrap;
 }
 .scrim {
   position: fixed;
@@ -1807,9 +1849,6 @@ select.sel {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-.setw .srow[data-row='update'] {
-  position: relative;
 }
 .btn:disabled {
   opacity: 0.5;
@@ -2030,12 +2069,24 @@ select.sel {
   white-space: nowrap;
 }
 
-/* 设置里提醒事项那一行的状态句（这一节唯一说现在怎么样的字）：--t2，在弹窗 --pop 底上够清楚 */
-.setw .srow[data-row='rem'] .sl > span {
+/* 设置（框架是 @cn/design/settings，同画布笔记）里画布今日自己的几处：
+   提醒事项那一行的状态句是这一节唯一说现在怎么样的字，比别的说明深一档（--t2）；出错的那一句红字；下载新版本的进度条在说明下面 */
+.sa-row[data-row='rem'] .sa-ds > span {
   color: var(--t2);
 }
-.setw .srow[data-row='rem'] .sl > span.uerr {
+.sa-ds .uerr,
+.sa-row[data-row='rem'] .sa-ds > span.uerr {
   color: var(--red-t);
+}
+.sa-ds .ubar {
+  position: static;
+  margin-top: 6px;
+}
+/* 主题：十个小窗口色块，一张细线表那样的框（圆角 12，同 .sa-card） */
+.set .skins {
+  border-radius: 12px;
+  background: none;
+  padding: 10px 12px;
 }
 
 /* 导入提醒事项：样子同设置弹窗（.setw），一组一块；顶边固定在 120（两步之间标题和 × 不挪），内容多了往下长、在弹窗里滚 */

@@ -73,6 +73,7 @@ test('打好的 Canvas Today.app：测试模式起得来，快速加、勾掉改
     await expect(page.getByTestId('update-line')).toContainText(`版本${VERSION}`)
     expect(await app.evaluate(() => Array.isArray((globalThis as unknown as { ctNotifs: unknown[] }).ctNotifs))).toBe(true)
     // 包里的提醒事项小助手开得起来：连接提醒事项，带 🔔 的两条（交论文初稿、订冰岛租车）镜像进假提醒事项的「画布今日」
+    await page.getByRole('dialog', { name: '设置' }).getByRole('navigation').getByRole('button', { name: '日历和提醒事项' }).click()
     const rem = page.locator('[data-row="rem"]')
     await rem.getByRole('button', { name: '连接提醒事项' }).click()
     await expect(rem).toContainText('已连接iCloud', { timeout: 15_000 })

@@ -541,3 +541,42 @@ export async function commitsSince(dir: string, since: Date): Promise<{ t: numbe
       return { t: Number(t) * 1000, files: files.filter(Boolean) }
     })
 }
+
+export interface LineTimes {
+  /** 工作区里这个文件的每一行 */
+  lines: string[]
+  /** 每一行所在提交的作者时间（毫秒）；还没提交的行是 0 */
+  at: number[]
+}
+
+/**
+ * 解析 `git blame --porcelain`：每一行字前面一行头「提交号 原行号 现行号 [行数]」，同一提交第一次出现时跟着 author-time 等几行，
+ * 再出现就不带了，所以按提交号记时间；字是 tab 开头的那一行。全 0 的提交号是还没提交的字（时间记 0）。
+ */
+export function parseBlame(out: string): LineTimes {
+  const time = new Map<string, number>()
+  const lines: string[] = []
+  const at: number[] = []
+  let sha = ''
+  for (const l of out.split('\n')) {
+    if (l.startsWith('\t')) {
+      lines.push(l.slice(1))
+      at.push(/^0+$/.test(sha) ? 0 : (time.get(sha) ?? 0))
+      continue
+    }
+    const head = /^([0-9a-f]{40}) \d+ \d+/.exec(l)
+    if (head) sha = head[1]!
+    else if (l.startsWith('author-time ')) time.set(sha, Number(l.slice('author-time '.length)) * 1000)
+  }
+  return { lines, at }
+}
+
+/** 这个文件（工作区里的字）每一行是哪次提交写的、作者时间；库里还没有它的历史（没跟踪、还没有任何提交）返回 null */
+export async function lineTimes(dir: string, path: string): Promise<LineTimes | null> {
+  try {
+    return parseBlame(await git(dir, ['blame', '--porcelain', '--', path]))
+  } catch (e) {
+    if (e instanceof GitError && /no such ref: HEAD|no such path .* in HEAD|does not have any commits/.test(e.stderr)) return null
+    throw e
+  }
+}

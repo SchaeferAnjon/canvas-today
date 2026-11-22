@@ -175,6 +175,40 @@ describe('单独成行的 $$…$$、\\[…\\]', () => {
   })
 })
 
+describe('引文里单独成行的 $$…$$（剪藏进来的 > $$ … > $$，task-6cxtc）', () => {
+  it('> $$ 开头一行、> $$ 结尾一行夹着：认成单独成行的，LaTeX 去掉每行的「> 」；记下行首的「> 」', () => {
+    const text = '> 先看\n> $$\n> \\mathbf{A}=\\begin{bmatrix} a \\\\\n> b \\end{bmatrix} \\tag{2.3.7}\n> $$\n> 后面\n—— [来源](https://x.org)'
+    const s = findMath(text)
+    expect(s).toHaveLength(1)
+    expect(s[0]!.block).toBe(true)
+    expect(s[0]!.tex).toBe('\\mathbf{A}=\\begin{bmatrix} a \\\\\nb \\end{bmatrix} \\tag{2.3.7}')
+    expect(s[0]!.quote).toBe('> ')
+    expect(text.slice(s[0]!.from, s[0]!.to)).toBe('$$\n> \\mathbf{A}=\\begin{bmatrix} a \\\\\n> b \\end{bmatrix} \\tag{2.3.7}\n> $$')
+  })
+
+  it('一行写完的 > $$x$$、嵌套的 > > $$；提示块里的也认', () => {
+    expect(found('> $$x^2$$')).toEqual([['$$x^2$$', 'x^2', true]])
+    expect(found('> > $$\n> > y\n> > $$')).toEqual([['$$\n> > y\n> > $$', 'y', true]])
+    expect(found('> [!ai] 讲解一下\n> 看\n> $$\n> z\n> $$')).toEqual([['$$\n> z\n> $$', 'z', true]])
+  })
+
+  it('引文断了（下一行没有「> 」、换了层数、中间「>」空行）：不算', () => {
+    expect(findMath('> $$\nx\n$$').filter((m) => m.block)).toEqual([])
+    expect(findMath('> $$\n> > x\n> $$').filter((m) => m.block)).toEqual([])
+    expect(findMath('> $$\n>\n> x\n> $$').filter((m) => m.block)).toEqual([])
+  })
+
+  it('引文里的代码块里的 $$ 不算', () => {
+    expect(findMath('> ```\n> $$\n> x\n> $$\n> ```')).toEqual([])
+    // 引文里没收尾的代码块不吞掉引文外面的
+    expect(found('> ```\n> a\n\n$$\ny\n$$')).toEqual([['$$\ny\n$$', 'y', true]])
+  })
+
+  it('mapMath：引文里的公式换成别的写法，换行后面补回「> 」', () => {
+    expect(mapMath('> $$\n> a\n> b\n> $$', (s) => `\\[${s.tex}\\]`)).toBe('> \\[a\n> b\\]')
+  })
+})
+
 describe('测试用的那一篇（MATH_DOC，端到端测试也用它）', () => {
   it('行内的、单独成行的各几个；钱数、代码、\\$ 不算；写错的照样认出来（排的时候才知道错）', () => {
     const s = findMath(MATH_DOC)

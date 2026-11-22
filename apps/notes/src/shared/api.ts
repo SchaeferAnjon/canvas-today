@@ -53,6 +53,8 @@ export interface NoteFile {
   digest?: boolean
   /** 数据库的一条（它所在的文件夹是库里某个数据库的数据源）：数据源文件夹的名字，「最近」里标出是哪个表的 */
   table?: string
+  /** 属性 所属白板 / 所属笔记 里那一篇的名字（从白板、笔记拍的导图，task-wuv05）：面包屑多一节回到它 */
+  parent?: string
   /** frontmatter 里 type: board 的是白板 */
   /** nodes：导图白板的节点数（导图的节点不算卡片） */
   board?: { color: string; cards: number; icon?: string; thumb: ThumbRect[]; nodes?: number }
@@ -195,8 +197,8 @@ export interface CnApi {
   createNote(folder: string, name: string, text: string): Promise<string>
   /** 改名（同一个文件夹里），别的笔记里的 [[旧名]] 一起改；返回新路径。free：重名时加「 2」，不报错（第一行标题跟着改名时用） */
   renameNote(path: string, newName: string, free?: boolean): Promise<string>
-  /** 新建白板，返回相对路径 */
-  createBoard(folder: string, name: string): Promise<string>
+  /** 新建白板，返回相对路径；parent：白板工具板「子白板」建的，属性记 `所属白板`（目录树里挂在父白板下面，task-wuv05） */
+  createBoard(folder: string, name: string, parent?: string): Promise<string>
   /** 移到废纸篓（Git 里也算删除，能从历史找回） */
   trashNote(path: string): Promise<void>
   /** PDF、HTML、图片这些（不是笔记）移到废纸篓，当场单独一次提交（历史里能撤回） */
@@ -274,6 +276,8 @@ export interface CnApi {
   sync(): Promise<SyncOutcome>
   /** hideInternal：跳过只动了软件自己设置的提交、不列设置文件（CN-116） */
   history(limit: number, opts?: { hideInternal?: boolean }): Promise<CommitInfo[]>
+  /** 那篇（工作区里的字）每一行和它所在提交的作者时间（毫秒，还没提交的行是 0）；库里还没有它的历史时是 null */
+  lineTimes(path: string): Promise<{ lines: string[]; at: number[] } | null>
   /** 那次提交删掉的（用户的）文件、其中现在还能放回的（CN-108） */
   restorable(hash: string): Promise<{ deleted: string[]; available: string[] }>
   /** 放回那次删掉的文件；only 只放这几篇 */

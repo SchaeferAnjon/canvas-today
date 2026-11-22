@@ -5,6 +5,7 @@
  */
 import { CATEGORY_NAMES } from './categories'
 import { CLIPS, INBOX } from './layout'
+import { type Lang, list, tIn, uiLang } from './i18n'
 
 /** 梦游能做的事，一样一个开关 */
 export type DreamStep = 'file' | 'rename' | 'link' | 'week' | 'viz' | 'attach' | 'dup' | 'video'
@@ -110,15 +111,15 @@ export function idleDue(o: { s: DreamSettings; idleSec: number; last: { closed: 
 }
 
 /** 「整理收件箱、补双链、找重复、写本周小结」：正在梦游、首页卡片上说它会做什么（只说开着的；全开时和以前一字不差） */
-export function dreamDoes(s: DreamSettings): string {
+export function dreamDoes(s: DreamSettings, lang: Lang = uiLang()): string {
   const out: string[] = []
-  if (filesOn(s)) out.push(s.steps.file ? '整理收件箱' : '给收件箱的笔记改名')
-  if (s.steps.link && linkFolders(s).length) out.push('补双链')
-  if (s.steps.dup || s.steps.video) out.push('找重复')
-  if (weekOn(s)) out.push('写本周小结')
+  if (filesOn(s)) out.push(s.steps.file ? tIn(lang, '整理收件箱', { ctx: '梦游做的事' }) : tIn(lang, '给收件箱的笔记改名', { ctx: '梦游做的事' }))
+  if (s.steps.link && linkFolders(s).length) out.push(tIn(lang, '补双链', { ctx: '梦游做的事' }))
+  if (s.steps.dup || s.steps.video) out.push(tIn(lang, '找重复', { ctx: '梦游做的事' }))
+  if (weekOn(s)) out.push(tIn(lang, '写本周小结', { ctx: '梦游做的事' }))
   if (!out.length) {
-    if (s.steps.viz) out.push('做可视化')
-    if (s.steps.attach) out.push('挪老图')
+    if (s.steps.viz) out.push(tIn(lang, '做可视化', { ctx: '梦游做的事' }))
+    if (s.steps.attach) out.push(tIn(lang, '挪老图', { ctx: '梦游做的事' }))
   }
-  return out.join('、')
+  return list(out, lang)
 }

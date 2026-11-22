@@ -29,7 +29,7 @@ test('详情里改提醒「准时」→ 到点弹通知 → 推迟 10 分钟写�
     expect(await notifs(run)).toEqual([])
     await setClock(run, '2026-11-23T14:59:57')
     await expect.poll(async () => (await notifs(run)).length, { timeout: 10_000 }).toBe(1)
-    expect((await notifs(run))[0]).toMatchObject({ title: '交论文初稿', body: '今天 15:00 到期 · 小论文计划', actions: ['勾掉', '10 分钟后', '1 小时后', '明天'], key: id, due: '2026-11-23T15:00', at: '2026-11-23T15:00' })
+    expect((await notifs(run))[0]).toMatchObject({ title: '交论文初稿', body: '今天 15:00 到期 · 小论文计划', actions: ['勾掉', '10 分钟后', '1 小时后', '明天', '打开笔记'], key: id, due: '2026-11-23T15:00', at: '2026-11-23T15:00' })
     await act(run, 0, '10m')
     await expect(page.locator('.toast')).toContainText('推迟到今天 15:10再提醒')
     await expect(page.locator('.toast')).toContainText(`${LOG} 加了一行「推迟」`)
@@ -62,6 +62,11 @@ test('「到点的样子」马上弹一次（不记进记录）；软件开着�
     await expect.poll(async () => (await notifs(run)).length).toBe(1)
     expect((await notifs(run))[0]).toMatchObject({ title: '订冰岛租车', body: '今天 20:00 到期 · 冰岛行程' })
     expect(logLines(run)).toEqual([])
+    // 通知上「打开笔记」（原型的第三颗）：交给画布笔记，到这一行
+    await act(run, 0, 'open')
+    await expect
+      .poll(() => run.app.evaluate(() => (globalThis as unknown as { cnScreen: string[] }).cnScreen.at(-1)))
+      .toBe(`用浏览器打开 canvas-notes://open?file=${encodeURIComponent('生活/冰岛行程.md')}&line=7`)
     // 钟一下拨过了点（像合上盖子睡了一会儿）：补响一次，记一行
     await setClock(run, '2026-11-24T20:30:00')
     await expect.poll(async () => (await notifs(run)).length, { timeout: 10_000 }).toBe(2)

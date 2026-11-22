@@ -5,6 +5,7 @@
  *   所以「$5 和 $6」「一杯 $5，两杯 $10」是钱数不是公式；
  * - 行内 `\(…\)`；一行中间的 `$$…$$`、`\[…\]` 也认（排成行内的样子）；
  * - 单独成行的 `$$…$$`、`\[…\]`：一行写完，或开头一行、结尾一行夹着几行（中间不许有空行，免得一个落单的 `$$` 吞掉后面整篇）；
+ *   引文、提示块里的也认（每行前面同样的「> 」，剪藏进来的 `> $$ … > $$`，task-6cxtc）；
  * - `\$` 是普通的美元符号；代码块、行内代码、HTML 注释、文件开头的属性里的都不算。
  * 只认位置，不排版、不改字（排版在界面里用 KaTeX）。
  */
@@ -22,6 +23,8 @@ export interface MathSpan {
   display: boolean
   /** 单独占一行或几行（前后没有别的字）：画成居中的一整块 */
   block: boolean
+  /** 引文里单独成行的：每行行首的「> 」（`from` 在它后面，中间几行的照样在 [from, to) 里，`tex` 里去掉了） */
+  quote?: string
 }
 
 const FENCE = /^ {0,3}(`{3,}|~{3,})/
@@ -162,6 +165,12 @@ export function mathBlockAt(lines: readonly string[], i: number): { end: number;
   return null
 }
 
+/** 行首的引文记号（「> 」「> > 」，一层前面最多 3 个空格） */
+const QUOTE_MARK = /^(?: {0,3}>[ \t]?)+/
+const quoteOf = (line: string) => QUOTE_MARK.exec(line)?.[0] ?? ''
+/** 引文的层数（「> > 」两层）：同一段引文要层数一样 */
+const depth = (q: string) => q.replace(/[^>]/g, '').length
+
 /** 整篇里的公式（位置相对整篇），按先后排好 */
 export function findMath(text: string): MathSpan[] {
   const out: MathSpan[] = []
@@ -174,16 +183,22 @@ export function findMath(text: string): MathSpan[] {
     pos += l.length + 1
   }
   let fence: string | null = null
+  /** 代码块开在第几层引文里（引文断了代码块也跟着断，不吞掉引文外面的） */
+  let fenceDepth = 0
   let comment = false
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]!
-    const f = FENCE.exec(line)
+    const q = quoteOf(line)
+    const body = line.slice(q.length)
+    if (fence && fenceDepth > 0 && depth(q) !== fenceDepth) fence = null
+    const f = FENCE.exec(body)
     if (fence) {
-      if (f && f[1]![0] === fence[0] && f[1]!.length >= fence.length && !line.slice(f[0].length).trim()) fence = null
+      if (f && f[1]![0] === fence[0] && f[1]!.length >= fence.length && !body.slice(f[0].length).trim()) fence = null
       continue
     }
     if (f) {
       fence = f[1]!
+      fenceDepth = depth(q)
       continue
     }
     // 跨行的 HTML 注释（白板的位置行都在一行里；这里管的是手写的多行注释）
@@ -195,14 +210,25 @@ export function findMath(text: string): MathSpan[] {
       comment = true
       continue
     }
-    const b = mathBlockAt(lines, i)
+    // 引文里的：同一层引文接着的几行去掉「> 」再认
+    let b: ReturnType<typeof mathBlockAt> = null
+    if (!q) b = mathBlockAt(lines, i)
+    else if (BLOCK_OPEN.test(body)) {
+      const quoted: string[] = []
+      for (let k = i; k < lines.length; k++) {
+        const qk = quoteOf(lines[k]!)
+        if (!qk || depth(qk) !== depth(q)) break
+        quoted.push(lines[k]!.slice(qk.length))
+      }
+      b = mathBlockAt(quoted, 0)
+    }
     if (b) {
-      const from = starts[i]! + b.indent
-      const lastLine = lines[b.end]!.trimEnd()
-      const to = starts[b.end]! + lastLine.length
-      const open = 2
-      out.push({ from, to, open, close: 2, tex: b.tex, display: true, block: true })
-      i = b.end
+      const end = q ? i + b.end : b.end
+      const from = starts[i]! + q.length + b.indent
+      const lastLine = lines[end]!.trimEnd()
+      const to = starts[end]! + lastLine.length
+      out.push({ from, to, open: 2, close: 2, tex: b.tex, display: true, block: true, ...(q ? { quote: q } : {}) })
+      i = end
       continue
     }
     for (const s of inlineMath(line)) out.push({ ...s, from: starts[i]! + s.from, to: starts[i]! + s.to })
@@ -215,7 +241,8 @@ export function mapMath(text: string, math: (s: MathSpan) => string, rest: (t: s
   let out = ''
   let last = 0
   for (const s of findMath(text)) {
-    out += rest(text.slice(last, s.from)) + math(s)
+    const m = math(s)
+    out += rest(text.slice(last, s.from)) + (s.quote ? m.replace(/\n/g, `\n${s.quote}`) : m)
     last = s.to
   }
   return out + rest(text.slice(last))

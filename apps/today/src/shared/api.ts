@@ -1,5 +1,7 @@
 /** 主进程和界面之间说的话（window.ct）。界面只拿到索引的样子，改文件一律交给主进程。 */
-import type { Prio, RingBy } from '@cn/tasks'
+import type { CalEvent } from '@cn/calendar'
+import type { EngineId } from '../../../notes/src/shared/agent'
+import type { FocusRecord, Habit, Prio, RingBy } from '@cn/tasks'
 import type { Lang } from './i18n'
 import type { TodayAppearance, TodaySettings } from './settings'
 
@@ -51,11 +53,18 @@ export interface NoteView {
   mtimeMs: number
 }
 
+/** 一个习惯（习惯/<名字>.md，@cn/tasks habit.ts） */
+export interface HabitView extends Habit {
+  /** 不是 UTF-8、换行不规整：只读，不打卡 */
+  readOnly: boolean
+}
+
 export interface Snapshot {
   /** 每改一次加一 */
   version: number
   tasks: TaskView[]
   notes: NoteView[]
+  habits: HabitView[]
 }
 
 export interface VaultInfo {
@@ -128,7 +137,77 @@ export type AddResult =
 export type UndoResult = { ok: true } | { ok: false; reason: 'changed' | 'gone' | 'failed' }
 
 /** 右键菜单里点了哪一项 */
-export type MenuPick = { kind: 'date'; date: string } | { kind: 'open' } | { kind: 'delete' } | { kind: 'copyLink' } | null
+export type MenuPick = { kind: 'date'; date: string } | { kind: 'focus' } | { kind: 'open' } | { kind: 'delete' } | { kind: 'copyLink' } | null
+
+// ---------- 专注（番茄钟，main/focus.ts；记录 @cn/tasks focus.ts） ----------
+
+/** 专注挂的那一条 */
+export interface FocusTask {
+  key: string
+  id: string | null
+  path: string
+  line: number
+  raw: string
+  title: string
+}
+
+export interface FocusInfo {
+  task: FocusTask | null
+  running: boolean
+  /** 还剩几毫秒（发出来那一刻） */
+  left: number
+  /** 走着的时候什么时候到点（软件的钟，毫秒）；停着是 null */
+  endsAt: number | null
+  /** 一个番茄多长（毫秒） */
+  total: number
+  /** 今天的记录（几台设备合起来，按开始的先后） */
+  today: FocusRecord[]
+  /** 每个 🆔 专注过几次（详情里的 🍅） */
+  counts: Record<string, number>
+  /** 这台设备这个月的记录文件 */
+  file: string
+}
+
+/** 界面交来的：哪一条用索引里的 key 说（主进程照它找到那一条）；start 不给 key 是接着现在这一条 */
+export type FocusOp = { op: 'start'; key?: string | null } | { op: 'pause' } | { op: 'stop' } | { op: 'task'; key: string | null }
+
+// ---------- AI（main/ai.ts：拆成小步、排进空着的时间；用画布笔记设置里「小活」那一家） ----------
+
+export interface AiInfo {
+  engine: EngineId
+  /** 「Claude Code」 */
+  label: string
+  /** 「Claude Code · Haiku」 */
+  full: string
+}
+
+export type AiSplitResult = { ok: true; steps: string[] } | { ok: false; message: string; aborted?: boolean }
+
+/** AI 排好的一条（虚线框）：哪一条、哪天几点、多长 */
+export interface AiSlot {
+  key: string
+  title: string
+  date: string
+  time: string
+  minutes: number
+}
+
+export type AiSchedResult = { ok: true; slots: AiSlot[]; candidates: number; events: number } | { ok: false; message: string; aborted?: boolean }
+
+export type AiSchedAccept = { ok: true; undo: string; n: number } | { ok: false; reason: 'gone' | 'readonly' | 'failed'; message?: string }
+
+// ---------- 习惯（习惯/<名字>.md，@cn/tasks habit.ts） ----------
+
+export type HabitOp =
+  | { op: 'check'; path: string; date: string; on: boolean }
+  | { op: 'new'; name: string; rule: string }
+  | { op: 'rule'; path: string; rule: string }
+  | { op: 'delete'; path: string }
+
+export type HabitResult = { ok: true; undo: string; path: string } | { ok: false; reason: 'exists' | 'empty' | 'gone' | 'readonly' | 'failed'; message?: string }
+
+/** 习惯的右键菜单里点了哪一项 */
+export type HabitMenuPick = { kind: 'open' } | { kind: 'rule'; rule: string } | { kind: 'delete' } | null
 
 /** 到点的提醒（测试模式里通知换成记录器，测试读它） */
 export interface NotifShot {
@@ -166,6 +245,21 @@ export interface RemState {
   error: string | null
   /** 顶上那条「没开 iCloud 提醒事项」要出 */
   banner: 'noICloud' | null
+}
+
+/** 系统日历（只读，main/calendar.ts）：设置里一节、日历左栏、底栏要知道的 */
+export interface CalState {
+  /** 小助手在不在 */
+  available: boolean
+  auth: RemAuth | 'unknown'
+  /** 系统正在问能不能访问日历 */
+  asking: boolean
+  /** 设置里「显示系统日历的日程」 */
+  show: boolean
+  /** 真在画：开着、给了权限 */
+  active: boolean
+  calendars: { id: string; title: string; color: string; source: string }[]
+  error: string | null
 }
 
 /** 提醒事项里的一个列表 */
@@ -226,6 +320,20 @@ export interface CtApi {
   onSettings(cb: (s: { settings: TodaySettings; look: TodayAppearance }) => void): () => void
   /** 系统右键菜单（照家族规矩用原生菜单） */
   taskMenu(key: string, lang: Lang): Promise<MenuPick>
+  /** 打卡、取消、新建、改重复、删掉一个习惯 */
+  habit(op: HabitOp): Promise<HabitResult>
+  habitMenu(path: string, lang: Lang): Promise<HabitMenuPick>
+  /** AI：用哪一家；拆成小步（先给看）、收下；排进空着的时间（先给看）、收下；job 是这一问的编号，aiCancel 停下 */
+  aiInfo(): Promise<AiInfo>
+  aiSplit(key: string, job: string): Promise<AiSplitResult>
+  aiSplitAccept(key: string, steps: string[]): Promise<EditResult>
+  aiSchedule(job: string): Promise<AiSchedResult>
+  aiScheduleAccept(slots: AiSlot[]): Promise<AiSchedAccept>
+  aiCancel(job: string): Promise<void>
+  /** 专注：开始、暂停、放弃、换一条 */
+  focus(op: FocusOp): Promise<FocusInfo>
+  focusInfo(): Promise<FocusInfo>
+  onFocus(cb: (f: FocusInfo) => void): () => void
   /** canvas-today://task/<🆔>、通知、菜单栏小窗点了一条：界面选中它 */
   onOpenTask(cb: (sel: { id?: string; key?: string }) => void): () => void
   onClock(cb: (offset: number) => void): () => void
@@ -269,6 +377,19 @@ export interface CtApi {
   /** 打开系统设置里的 Apple 账户（iCloud 在那里） */
   remOpenICloud(): Promise<void>
   onNotice(cb: (n: Notice) => void): () => void
+
+  // ---------- 系统日历（只读） ----------
+  calState(): Promise<CalState>
+  onCal(cb: (s: CalState) => void): () => void
+  /** 连接：第一次系统问一次；andReminders：提醒事项没连的顺手连上 */
+  calConnect(andReminders: boolean): Promise<CalState>
+  /** 设置里「显示系统日历的日程」 */
+  calShow(on: boolean): Promise<CalState>
+  /** 这几天（本地日子，都含）的日程 */
+  calEvents(from: string, to: string): Promise<CalEvent[]>
+  /** 日历 App 里改了：重读 */
+  onCalChanged(cb: () => void): () => void
+  calOpenPrivacy(): Promise<void>
 }
 
 declare global {

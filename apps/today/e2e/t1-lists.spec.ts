@@ -117,7 +117,7 @@ test('右键：系统菜单（今天、明天、下周的哪天，打开笔记�
     const before = run.read('课程/ecp/Lecture05 笔记.md')
     await row(page, '交 ecp 作业 2').click({ button: 'right' })
     const m = await openedMenu(run)
-    expect(m.map((i) => i.label)).toEqual(['今天', '明天', '周二', '—', '打开笔记，到这一行', '—', '删除'])
+    expect(m.map((i) => i.label)).toEqual(['今天', '明天', '周二', '—', '开始专注 25 分钟', '打开笔记，到这一行', '—', '删除'])
     expect(m.slice(0, 3).map((i) => i.sublabel)).toEqual(['11月22日', '11月23日', '11月24日'])
     await pickMenu(run, '删除')
     await expect(page.locator('.toast')).toContainText('删掉了「交 ecp 作业 2」')

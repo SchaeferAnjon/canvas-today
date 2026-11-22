@@ -42,14 +42,14 @@ test('切 English：界面全换，快速加「hand in paper tomorrow 3pm」写�
     // 右键菜单
     await row(page, '交论文初稿').click({ button: 'right' })
     const m = await openedMenu(run)
-    expect(m.map((i) => i.label)).toEqual(['Today', 'Tomorrow', 'Tue', '—', 'Open Note at This Line', '—', 'Delete'])
+    expect(m.map((i) => i.label)).toEqual(['Today', 'Tomorrow', 'Tue', '—', 'Focus for 25 Minutes', 'Open Note at This Line', '—', 'Delete'])
     expect(m[0]!.sublabel).toBe('Nov 22')
     await pickMenu(run, 'Today')
     await expect(page.locator('.toast')).toContainText('“交论文初稿” moved to Today 15:00')
     // 日历、四象限
     await page.locator('.ab[data-k="calendar"]').click()
     await expect(page.locator('.vhead h1')).toHaveText('Calendar')
-    await expect(page.locator('.callday > div').first()).toHaveText('All day')
+    await expect(page.locator('.cal-allday > div').first()).toHaveText('All day')
     await page.locator('.ab[data-k="quad"]').click()
     await expect(page.locator('.q.q1 .qh b')).toHaveText('Important and urgent')
     // 切回中文

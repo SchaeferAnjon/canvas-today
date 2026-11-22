@@ -25,6 +25,11 @@ public struct MemState: Codable {
   public var items: [Item] = []
   public var calls: [String] = []
   public var seq = 0
+  /// 假日历（task-ykkoz）：授权、系统问的时候点「不允许」、日历、日程
+  public var calAuth = "notDetermined"
+  public var calDenyRequest = false
+  public var calendars: [CalInfo] = []
+  public var events: [EventItem] = []
 
   public init() {}
 
@@ -37,10 +42,14 @@ public struct MemState: Codable {
     items = try c.decodeIfPresent([Item].self, forKey: .items) ?? []
     calls = try c.decodeIfPresent([String].self, forKey: .calls) ?? []
     seq = try c.decodeIfPresent(Int.self, forKey: .seq) ?? 0
+    calAuth = try c.decodeIfPresent(String.self, forKey: .calAuth) ?? "notDetermined"
+    calDenyRequest = try c.decodeIfPresent(Bool.self, forKey: .calDenyRequest) ?? false
+    calendars = try c.decodeIfPresent([CalInfo].self, forKey: .calendars) ?? []
+    events = try c.decodeIfPresent([EventItem].self, forKey: .events) ?? []
   }
 }
 
-public final class MemoryStore: ReminderStore {
+public final class MemoryStore: ReminderStore, CalendarStore {
   public var state: MemState
   let path: String
   let now: () -> Int64
@@ -189,6 +198,26 @@ public final class MemoryStore: ReminderStore {
 
   public func commit() throws { save() }
 
+  // ---------- 假日历（只读） ----------
+
+  public func calendarStatus() -> Status {
+    Status(auth: state.calAuth, icloud: nil, mode: mode)
+  }
+
+  public func requestCalendarAccess() -> Status {
+    if state.calAuth == "notDetermined" {
+      state.calAuth = state.calDenyRequest ? "denied" : "full"
+      save()
+    }
+    return calendarStatus()
+  }
+
+  public func calendars() throws -> [CalInfo] { state.calendars }
+
+  public func events(from: String, to: String) throws -> [EventItem] {
+    state.events.filter { $0.overlaps(from: from, to: to) }.sorted { $0.start < $1.start }
+  }
+
   // ---------- 测试用：像人在提醒事项 App 里改 ----------
 
   func find(_ o: [String: JSONValue]) throws -> Int {
@@ -208,6 +237,8 @@ public final class MemoryStore: ReminderStore {
       if let a = o["auth"]?.string { state.auth = a }
       if let b = o["icloud"]?.bool { state.icloud = b }
       if let b = o["denyRequest"]?.bool { state.denyRequest = b }
+      if let a = o["calAuth"]?.string { state.calAuth = a }
+      if let b = o["calDenyRequest"]?.bool { state.calDenyRequest = b }
       save()
       return status().json()
     case "test.external":
@@ -217,6 +248,11 @@ public final class MemoryStore: ReminderStore {
       case "add":
         guard let list = o["list"]?.string, let f = o["fields"]?.object else { throw StoreError("badRequest", "add 要 list 和 fields") }
         rid = try create(list: list, fields: f)
+      case "addEvent":
+        // 像在日历 App 里加了一个日程（只读的那一边，画布今日只看）
+        guard let cal = o["calendar"]?.string, let title = o["title"]?.string, let start = o["start"]?.string, let end = o["end"]?.string else { throw StoreError("badRequest", "addEvent 要 calendar、title、start、end") }
+        rid = nextId("ev")
+        state.events.append(EventItem(id: rid, title: title, calendar: cal, allDay: o["allDay"]?.bool ?? false, start: start, end: end))
       default:
         let n = try find(o)
         rid = state.items[n].rid

@@ -30,7 +30,7 @@ Canvas Today is the task app of [Canvas Notes](https://github.com/SchaeferAnjon/
 
 To-dos you write in a note show up in Canvas Today right away. When you tick one off, change its date or set a reminder, Canvas Today rewrites only those few characters of that line and leaves every other byte of the note alone. The notes it changed are committed to the vault's Git after a short pause, so you can undo.
 
-What version 0.2.0 does:
+What version 0.3.0 does:
 
 - **Lists**: Inbox, Today, Tomorrow, Next 7 days, plus one list for every note in the vault that has to-dos
 - **Details**: date, time, reminder, repeat, priority, subtasks, and which line of which note it lives on
@@ -39,6 +39,10 @@ What version 0.2.0 does:
 - **Quick add**: one sentence such as “tomorrow 3pm submit paper #writing !high” is read into date, time, repeat (every Friday), list and priority, and you see what was understood before it is added
 - **Reminders**: Mac notifications you can tick off or snooze for 10 minutes, an hour or until tomorrow; what rang and what was snoozed is recorded in the vault, so another computer knows too
 - **Apple Reminders**: to-dos with a reminder go into a “Canvas Today” list in iCloud Reminders, so they ring on your iPhone and iPad too; ticking off, rescheduling or renaming in Reminders writes back to that line in your note, and a mirrored to-do no longer also rings from this Mac. You can also import your existing Reminders lists into the vault
+- **Habits**: each habit is a note in the vault’s “习惯” folder; see the last seven days and your streak, check in today with one click (a check-in is one line added at the end of that note), and fill in days you missed
+- **Focus**: a 25-minute pomodoro tied to a task; finished ones are recorded in the vault, and the task’s details show how many pomodoros it got
+- **System calendar (read-only)**: events from the Mac Calendar app show in the calendar; they can’t be dragged or changed, and planning keeps clear of them
+- **AI breaks a task into steps and fits to-dos into free time**: ask AI to split a task into subtasks, or in the calendar to fit today’s and tomorrow’s untimed to-dos into free time. You see the result first, it’s written to your notes only when you accept, and it can be undone. It uses the AI chosen in Canvas Notes settings (a command-line AI installed and signed in on this Mac, such as Claude Code)
 - **Menu bar window**: how many are left today, tick them off, add one
 - **⌘K**: search to-dos, add one, jump to a list
 - **Chinese and English interface**
@@ -84,7 +88,9 @@ This version is signed with an Apple Developer ID but not notarized by Apple (ne
 
 Reminders are Mac notifications: the first time one rings, macOS asks whether to allow them. To keep the Done and Snooze buttons on screen until you click one, set the style to Alerts in System Settings › Notifications › Canvas Today.
 
-To have them ring on your phone too: in Settings › Reminders click Connect Reminders. The first time, macOS asks once whether Canvas Today may access Reminders; click OK. Turn on Reminders in System Settings › your name › iCloud first. Without it everything still works and this Mac rings on its own.
+To have them ring on your phone too: in Settings › Calendar & Reminders click Connect Reminders. The first time, macOS asks once whether Canvas Today may access Reminders; click OK. Turn on Reminders in System Settings › your name › iCloud first. Without it everything still works and this Mac rings on its own.
+
+To see your Calendar events in the calendar: click Connect Calendar in the calendar’s sidebar (or turn on Show Calendar events in Settings › Calendar & Reminders). The first time, macOS asks once whether Canvas Today may access Calendar; click Allow Full Access. Canvas Today only reads events and never changes them.
 
 ### Do I need Canvas Notes?
 
@@ -111,10 +117,26 @@ Markers are emoji, as in the Obsidian Tasks plugin, in any order:
 
 A `- [ ]` indented under another one is its subtask. Lines inside code blocks are not tasks.
 
+Habits are notes in the `习惯` folder (the file name is the habit’s name); a check-in is one line at the end:
+
+```markdown
+---
+重复: 每周一、三、五
+开始: 2026-11-16
+---
+# Running
+
+- 2026-11-16 ✓
+- 2026-11-18 ✓
+```
+
+`重复` (repeat) is written like 🔁 (每天 every day, 工作日 weekdays, 每周一、三、五 Mon/Wed/Fri, 每3天 every 3 days …); without it, it’s every day.
+
 ## Privacy
 
 - No account, no server, no usage statistics. The app opens the folder you pick and only goes online to check GitHub for updates.
-- Tasks live in the Markdown files of your vault. Which reminders rang or were snoozed is recorded under `.canvas-tasks/提醒/<device name>/` in the vault; each computer writes only its own file, and it travels with the vault's Git.
+- Tasks and habits live in the Markdown files of your vault. Which reminders rang or were snoozed is recorded under `.canvas-tasks/提醒/<device name>/`, focus sessions under `.canvas-tasks/专注/<device name>/`; each computer writes only its own files, and they travel with the vault's Git.
+- The system calendar is only read, never written. For AI steps and planning, the command-line AI on this Mac gets that one task and a few lines around it, or today’s and tomorrow’s untimed to-dos and the busy time slots, nothing else.
 - Settings are in `~/Library/Application Support/canvas-today/`.
 
 ## Development

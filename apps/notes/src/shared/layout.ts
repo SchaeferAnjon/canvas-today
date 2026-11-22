@@ -63,11 +63,17 @@ export const mdUrl = (url: string) => url.replace(/[()\s]/g, (c) => '%' + c.char
 
 /** 剪下来的一段：`> 原文` 下一行 `—— [标题](网址)` */
 export function clipMarkdown(text: string, title: string, url: string): string {
-  const quote = text
-    .trim()
-    .split(/\n+/)
-    .map((l) => '> ' + l.trim())
-    .join('\n')
+  // 围栏代码块里的行原样（缩进、空行都留着）；别的照旧去掉空行、去掉两头空白
+  let fence = false
+  const lines: string[] = []
+  for (const l of text.trim().split('\n')) {
+    if (/^\s*(```|~~~)/.test(l)) {
+      fence = !fence
+      lines.push('> ' + l.trim())
+    } else if (fence) lines.push(l.trimEnd() ? '> ' + l.trimEnd() : '>')
+    else if (l.trim()) lines.push('> ' + l.trim())
+  }
+  const quote = lines.join('\n')
   const t = (title.trim() || url).replace(/[\[\]]/g, '')
   return `${quote}\n—— [${t}](${mdUrl(url)})`
 }

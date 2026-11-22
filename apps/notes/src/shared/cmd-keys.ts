@@ -2,6 +2,7 @@
  * ⌘K 里「设快捷键…」的组合键：按下去的键怎么写（⌃⌥⇧⌘ + 键，和菜单里一个写法）、哪些不能给、菜单栏怎么写。
  * 纯函数：界面（KeyboardEvent）和主进程（网页有焦点时 before-input-event 的 Input）都用。
  */
+import { t, tIn } from './i18n'
 
 /** 界面的 KeyboardEvent 和主进程 Electron 的 Input 都认 */
 export interface KeyLike {
@@ -82,37 +83,40 @@ export function isCombo(s: unknown): s is string {
 }
 
 /**
- * 系统和编辑器本身用着的键：不给命令（说出是谁）。软件自己的命令（搜索、关掉、加粗、放大……）不在这里：
+ * 系统和编辑器本身用着的键：不给命令（说出是谁；值是中文原句，说的时候 t() 翻）。软件自己的命令（搜索、关掉、加粗、放大……）不在这里：
  * 它们都在命令表（cmd-table.ts）里能改，撞了说撞了谁、能对调
  */
 export const RESERVED: Record<string, string> = {
-  '⌘Q': '退出',
-  '⌘H': '隐藏',
-  '⌥⌘H': '隐藏其他',
-  '⌘M': '最小化',
-  '⌘Z': '撤销',
-  '⇧⌘Z': '重做',
-  '⌘X': '剪切',
-  '⌘C': '拷贝',
-  '⌘V': '粘贴',
-  '⌥⇧⌘V': '粘贴并匹配样式',
-  '⌘A': '全选',
-  '⌘/': '编辑器的键',
-  '⇧⌘K': '编辑器里删一行',
-  '⌘`': '换窗口',
-  '⌥⌘I': '开发者工具',
-  '⌃⌘F': '全屏',
-  '⇧⌘3': '截屏',
-  '⇧⌘4': '截屏',
-  '⇧⌘5': '截屏',
+  '⌘Q': tIn('zh', '退出'),
+  '⌘H': tIn('zh', '隐藏'),
+  '⌥⌘H': tIn('zh', '隐藏其他'),
+  '⌘M': tIn('zh', '最小化'),
+  '⌘Z': tIn('zh', '撤销'),
+  '⇧⌘Z': tIn('zh', '重做'),
+  '⌘X': tIn('zh', '剪切'),
+  '⌘C': tIn('zh', '拷贝'),
+  '⌘V': tIn('zh', '粘贴'),
+  '⌥⇧⌘V': tIn('zh', '粘贴并匹配样式'),
+  '⌘A': tIn('zh', '全选'),
+  '⌘/': tIn('zh', '编辑器的键'),
+  '⇧⌘K': tIn('zh', '编辑器里删一行'),
+  '⌘`': tIn('zh', '换窗口'),
+  '⌥⌘I': tIn('zh', '开发者工具'),
+  '⌃⌘F': tIn('zh', '全屏'),
+  '⇧⌘3': tIn('zh', '截屏'),
+  '⇧⌘4': tIn('zh', '截屏'),
+  '⇧⌘5': tIn('zh', '截屏'),
 }
 
-/** 这个组合键能不能给命令；不能的说为什么（设快捷键小弹层里那一行） */
-export function keyProblem(combo: string): string | null {
+/**
+ * 这个组合键能不能给命令；不能的说为什么（设快捷键小弹层里那一行）。
+ * bare：只在不打字的地方按的（梦游报告和对照里，task-m552v），单个字母也行
+ */
+export function keyProblem(combo: string, bare = false): string | null {
   const name = combo.replace(/^[⌃⌥⇧⌘]+/, '')
-  if (EDITING.has(name)) return `${combo} 编辑时要用，换一个`
-  if (RESERVED[combo]) return `${combo} 是${RESERVED[combo]}，换一个`
-  if (!/^F\d+$/.test(name) && !/[⌘⌃]/.test(combo)) return '要带上 ⌘ 或 ⌃，不然打字时会按到'
+  if (EDITING.has(name)) return t('{key} 编辑时要用，换一个', { key: combo })
+  if (RESERVED[combo]) return t('{key} 是{what}，换一个', { key: combo, what: t(RESERVED[combo]) })
+  if (!bare && !/^F\d+$/.test(name) && !/[⌘⌃]/.test(combo)) return t('要带上 ⌘ 或 ⌃，不然打字时会按到')
   return null
 }
 

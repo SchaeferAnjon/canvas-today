@@ -8,6 +8,7 @@
  */
 import { addSection, answerLead, type DocColumn, type DocUnit, insertInColumn, moveUnit, parseReadingNote, resolveLink, splitDoc, unitKeys } from '@cn/format'
 import { jsonIn } from './distill'
+import { answerRule } from './answer-lang'
 import type { Write } from './ai-cmds'
 
 const norm = (s: string) => s.replace(/\s+/g, ' ').trim()
@@ -201,7 +202,7 @@ export function ownPrompt(o: OwnRun): string {
   const fence = '放在一个 ````markdown 代码块里（外层用四个反引号，正文里的代码块照常用三个），代码块外面不要写别的。'
   const out =
     o.write === 'answer'
-      ? '只回答，不改文件：用中文照这几条规矩回答，平实、直接。'
+      ? `只回答，不改文件：照这几条规矩回答，${answerRule()}；平实、直接。`
       : o.write === 'inplace' && o.source === 'doc'
         ? `输出改好以后的整篇 Markdown，${fence}frontmatter、双链、没说要动的图片链接原样留着；不编造原文里没有的事。`
         : `写成一篇新的笔记（Markdown），${fence}不编造${what}里没有的事。`

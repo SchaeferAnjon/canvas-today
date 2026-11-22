@@ -8,8 +8,8 @@ import { type FSWatcher, watch } from 'node:fs'
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, join, relative, resolve, sep } from 'node:path'
 import { merge3 } from '@cn/format'
-import { type FileTask, keyOf, type RingBy, scanTasks } from '@cn/tasks'
-import type { NoteView, Snapshot, TaskView } from '../shared/api'
+import { type FileTask, type Habit, isHabitPath, keyOf, parseHabit, type RingBy, scanTasks } from '@cn/tasks'
+import type { HabitView, NoteView, Snapshot, TaskView } from '../shared/api'
 
 const SKIP_DIRS = new Set(['.git', 'node_modules', '.trash', '.obsidian'])
 
@@ -19,6 +19,8 @@ interface FileEntry {
   text: string
   readOnly: boolean
   tasks: FileTask[]
+  /** 习惯/ 下面的一篇（每个习惯一篇，@cn/tasks habit.ts）才有 */
+  habit: Habit | null
 }
 
 export interface Change {
@@ -55,6 +57,8 @@ export class TaskVault {
   onChange: () => void = () => {}
   /** 提醒记录变了（别的设备的、Git 拉下来的） */
   onLogs: () => void = () => {}
+  /** 专注记录变了（别的设备的、Git 拉下来的、自己刚记的） */
+  onFocusLogs: () => void = () => {}
   /** 软件自己改了文件（交给提交的） */
   onWrote: (paths: string[], message: string) => void = () => {}
   /** 谁来响：镜像进系统提醒事项了的（main/mirror.ts 记着）由提醒事项响，本机不排通知 */
@@ -113,14 +117,16 @@ export class TaskVault {
       old.mtimeMs = st.mtimeMs
       return false
     }
-    this.files.set(path, { path, mtimeMs: st.mtimeMs, text, readOnly, tasks: scanTasks(text) })
+    this.files.set(path, { path, mtimeMs: st.mtimeMs, text, readOnly, tasks: scanTasks(text), habit: isHabitPath(path) ? parseHabit(path, text) : null })
     return true
   }
 
   snapshot(): Snapshot {
     const tasks: TaskView[] = []
     const notes: NoteView[] = []
+    const habits: HabitView[] = []
     for (const f of [...this.files.values()].sort((a, b) => a.path.localeCompare(b.path))) {
+      if (f.habit) habits.push({ ...f.habit, readOnly: f.readOnly })
       if (!f.tasks.length) continue
       const dir = f.path.includes('/') ? f.path.slice(0, f.path.lastIndexOf('/')) : ''
       notes.push({ path: f.path, title: f.path.replace(/^.*\//, '').replace(/\.md$/i, ''), folder: dir.split('/').filter(Boolean).join(' › '), mtimeMs: f.mtimeMs })
@@ -153,7 +159,8 @@ export class TaskVault {
         })
       }
     }
-    return { version: this.version, tasks, notes }
+    habits.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'))
+    return { version: this.version, tasks, notes, habits }
   }
 
   /** 盘上这一篇现在的字（不在返回 null） */
@@ -231,7 +238,7 @@ export class TaskVault {
       await rename(tmp, p)
       if (path.toLowerCase().endsWith('.md')) {
         const st = await stat(p)
-        this.files.set(path, { path, mtimeMs: st.mtimeMs, text, readOnly: false, tasks: scanTasks(text) })
+        this.files.set(path, { path, mtimeMs: st.mtimeMs, text, readOnly: false, tasks: scanTasks(text), habit: isHabitPath(path) ? parseHabit(path, text) : null })
       }
     }
     this.version++
@@ -268,6 +275,14 @@ export class TaskVault {
       const rel = filename.split(sep).join('/')
       const parts = rel.split('/')
       // 提醒记录（别的设备写的、Git 拉下来的）：重新排提醒
+      if (rel.startsWith('.canvas-tasks/专注/') && rel.endsWith('.csv')) {
+        clearTimeout(this.timers.get(rel))
+        this.timers.set(
+          rel,
+          setTimeout(() => (this.timers.delete(rel), this.onFocusLogs()), 200),
+        )
+        return
+      }
       if (rel.startsWith('.canvas-tasks/') && rel.endsWith('.jsonl')) {
         clearTimeout(this.timers.get(rel))
         this.timers.set(

@@ -67,7 +67,7 @@
  * 读回来时路径都换回库里的路径（AskSection 里一律是库里的路径）。
  * 「完整对话」的路径就是这一段的身份：同一处接着问，就按它找到这一段整段换掉；用户自己写的别的段落原样留着。
  */
-import { aiCallout, parseAiCalloutHead, splitAiBody } from './ai-callout'
+import { aiCallout, calloutWords, parseAiCalloutHead, splitAiBody } from './ai-callout'
 import { encodePath, formatPdfAnchor, parsePdfAnchor, type Rect } from './pdf-link'
 import { AI_KEY, setProp } from './props'
 
@@ -133,8 +133,11 @@ export interface AskSection {
   rounds: number
   /** 双链目标（不带方括号） */
   links: string[]
-  /** 这一处做的可视化（库里的 HTML 文件） */
-  viz?: { path: string; title: string }
+  /**
+   * 这一处做的可视化（库里的 HTML 文件）。embed：写成单独一段的嵌入 `![可视化 · 标题](x.html)`，文档里画成能拖的图
+   * （2026-11-22 起新做的都是，task-m552v）；没有的是以前写在脚上那一行里的链接 `[可视化 · 标题](x.html)`，原样留着，不自动改
+   */
+  viz?: { path: string; title: string; embed?: boolean }
   /**
    * 不是在 PDF 上问的：网页（url 是网址，label 是域名）或库里的 HTML（url 是库里的路径，label 是文件名）。
    * 这时链接那行写「[域名](网址)」，点了回网页；page 是问的时候 PDF 翻到的那页（没有 PDF 时是 0，标题不写页码）。
@@ -228,6 +231,11 @@ export function linkTo(note: string, link: string): string {
 /** 写进 md 时不能破坏结构的字：方括号会断开图片说明，换行会断开一行 */
 const oneLine = (s: string) => s.replace(/\s*\n+\s*/g, ' ').trim()
 const alt = (s: string) => oneLine(s).replace(/[[\]]/g, '')
+
+/** 嵌进笔记的可视化：单独一段 `![可视化 · 标题](x.html)`（task-m552v） */
+const VIZ_EMBED = /^!\[可视化 · ([^\]]*)\]\(([^)\s]+\.html?)\)\s*$/i
+const vizEmbedLine = (s: { viz?: AskSection['viz'] }, note: string) => (s.viz?.embed ? `![可视化 · ${alt(s.viz.title)}](${linkFrom(note, s.viz.path)})` : null)
+const vizLink = (s: { viz?: AskSection['viz'] }, note: string) => (s.viz && !s.viz.embed ? [`[可视化 · ${alt(s.viz.title)}](${linkFrom(note, s.viz.path)})`] : [])
 const quote = (s: string) =>
   s
     .trim()
@@ -270,18 +278,18 @@ export function renderSection(s: AskSection, note: string): string {
   if (s.doubts.length) out.push('', `> [!question] 我的疑惑\n${s.doubts.map((d) => `> ${oneLine(d)}`).join('\n')}`)
   // AI 讲通的讲法和要点：一个 [!ai] 提示块，和自己写的分得开
   if (s.good.trim() || s.points.length) {
-    const seen = s.web ? (s.web.t !== undefined ? `看了 ${clipTime(s.web.t)} 这一帧` : /^https?:/i.test(s.web.url) ? '看了网页这一段' : '看了框的这一块') : `看了第 ${s.page} 页`
+    // 写进文件的「看了什么」跟库语言（task-zojmg）
+    const w = calloutWords()
+    const seen = s.web ? (s.web.t !== undefined ? w.seenFrame(clipTime(s.web.t)) : /^https?:/i.test(s.web.url) ? w.seenWeb : w.seenBox) : w.seenPage(s.page)
     out.push('', aiCallout({ text: s.good, points: s.points, seen, ...(s.by ? { by: s.by } : {}), ...(s.goodVersion ? { version: s.goodVersion } : {}) }))
   }
   for (const f of s.failed) {
     out.push('', `<details><summary>没讲通 · 第 ${f.version} 版：${oneLine(f.line).replace(/</g, '＜')}</summary>`, '', f.text.trim(), '', '</details>')
   }
-  const foot = [
-    `[完整对话 · ${s.rounds} 轮](${linkFrom(note, s.id)})`,
-    ...(s.viz ? [`[可视化 · ${alt(s.viz.title)}](${linkFrom(note, s.viz.path)})`] : []),
-    ...s.links.map((l) => `[[${oneLine(l)}]]`),
-  ]
+  const foot = [`[完整对话 · ${s.rounds} 轮](${linkFrom(note, s.id)})`, ...vizLink(s, note), ...s.links.map((l) => `[[${oneLine(l)}]]`)]
   out.push('', foot.join(' · '))
+  const embed = vizEmbedLine(s, note)
+  if (embed) out.push('', embed)
   return out.join('\n') + '\n'
 }
 
@@ -338,6 +346,8 @@ export function parseSection(chunk: string, note: string): AskSection | null {
   }
   for (const m of chunk.matchAll(/!\[([^\]]*)\]\(([^)]+)\)/g)) {
     const path = linkTo(note, m[2]!)
+    // 嵌进来的可视化不是配图（下面单认）
+    if (VIZ_EMBED.test(m[0])) continue
     if ((m[1] === '我框的' || m[1] === WHOLE_PAGE) && !s.crop) s.crop = path
     else s.figures.push({ path, caption: m[1]! })
   }
@@ -383,6 +393,8 @@ export function parseSection(chunk: string, note: string): AskSection | null {
     const v = /\[可视化 · ([^\]]*)\]\(([^)]+)\)/.exec(footer)
     if (v) s.viz = { title: v[1]!, path: linkTo(note, v[2]!) }
   }
+  const em = lines.map((l) => VIZ_EMBED.exec(l)).find(Boolean)
+  if (em) s.viz = { title: em[1]!, path: linkTo(note, em[2]!), embed: true }
   return s
 }
 
@@ -510,7 +522,9 @@ function renderDoc(s: AskSection, note: string): string {
   }
   if (s.recap?.trim()) out.push('', `> [!recap] ${oneLine(s.recap)}`)
   if (defs.length) out.push('', defs.join('\n'))
-  const foot = [...(s.viz ? [`[可视化 · ${alt(s.viz.title)}](${linkFrom(note, s.viz.path)})`] : []), ...s.links.map((l) => `[[${oneLine(l)}]]`)]
+  const embed = vizEmbedLine(s, note)
+  if (embed) out.push('', embed)
+  const foot = [...vizLink(s, note), ...s.links.map((l) => `[[${oneLine(l)}]]`)]
   if (foot.length) out.push('', foot.join(' · '))
   return out.join('\n') + '\n'
 }
@@ -625,7 +639,7 @@ function parseDoc(lines: string[], head: RegExpExecArray, note: string): AskSect
   if (recap === null && cur) {
     const own = (cur as AskQa).a.split('\n')
     let k = own.length
-    while (k > 0 && (!own[k - 1]!.trim() || FOOT_DEF.test(own[k - 1]!) || FOOT_LINE.test(own[k - 1]!))) k--
+    while (k > 0 && (!own[k - 1]!.trim() || FOOT_DEF.test(own[k - 1]!) || FOOT_LINE.test(own[k - 1]!) || VIZ_EMBED.test(own[k - 1]!))) k--
     rest = own.slice(k)
     ;(cur as AskQa).a = trimLines(own.slice(0, k))
   }
@@ -639,7 +653,9 @@ function parseDoc(lines: string[], head: RegExpExecArray, note: string): AskSect
       else if (qt) defs.set(d[1]!, { kind: 'quote', text: qt[1]!, src: qt[2]!.trim() })
       continue
     }
-    if (FOOT_LINE.test(l)) {
+    const em = VIZ_EMBED.exec(l)
+    if (em) s.viz = { title: em[1]!, path: linkTo(note, em[2]!), embed: true }
+    else if (FOOT_LINE.test(l)) {
       for (const m of l.matchAll(/\[\[([^\]]+)\]\]/g)) s.links.push(m[1]!)
       const v = /\[可视化 · ([^\]]*)\]\(([^)]+)\)/.exec(l)
       if (v) s.viz = { title: v[1]!, path: linkTo(note, v[2]!) }

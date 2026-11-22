@@ -44,3 +44,31 @@ export async function pickMenu(run: Running, label: string) {
     open.cb?.()
   }, label)
 }
+
+/** 点开着的菜单里某一项的子菜单里的一项（习惯右键「重复 ▸ 工作日」） */
+export async function pickSubMenu(run: Running, parent: string, label: string) {
+  await openedMenu(run)
+  await run.app.evaluate(
+    (_e, [parent, label]) => {
+      const g = globalThis as unknown as { ctMenu: Held }
+      const open = g.ctMenu!
+      const sub = open.menu.items.find((i) => i.label === parent)?.submenu
+      if (!sub) throw new Error(`菜单里没有「${parent}」的子菜单`)
+      const item = sub.items.find((i) => i.label === label)
+      if (!item) throw new Error(`「${parent}」里没有「${label}」：${sub.items.map((i) => i.label).join('、')}`)
+      g.ctMenu = null
+      item.click()
+      open.cb?.()
+    },
+    [parent, label] as const,
+  )
+}
+
+/** 开着的菜单里某一项的子菜单（字、打没打勾） */
+export async function openedSubMenu(run: Running, parent: string): Promise<{ label: string; checked: boolean }[]> {
+  await openedMenu(run)
+  return run.app.evaluate((_e, parent) => {
+    const g = globalThis as unknown as { ctMenu: Held }
+    return (g.ctMenu!.menu.items.find((i) => i.label === parent)?.submenu?.items ?? []).map((i) => ({ label: i.label, checked: i.checked }))
+  }, parent)
+}

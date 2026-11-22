@@ -3,15 +3,16 @@
  * 清单（今天、明天、收件箱、最近七天、一篇笔记）、详情、日历（周、月）、四象限。
  */
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
-import { addDays, diffDays, parseQuick, weekday } from '@cn/tasks'
-import type { AddCtx, Snapshot, TaskView } from '../shared/api'
+import { CalBar, type CalMode, daysFrom, hasEvents, MiniMonth, MonthGrid, monthWeeks, shiftMonth, WeekGrid } from '@cn/calendar'
+import { parseQuick, weekday } from '@cn/tasks'
+import type { AddCtx, AiSlot, Snapshot, TaskView } from '../shared/api'
 import { INBOX_NOTE } from '../shared/brand'
 import { repeatLabel, tr } from '../shared/i18n'
-import { cntToday, dayItems, type Group, groupsOf, type Nav, open, quadOf } from '../shared/views'
+import { calItems, cntToday, type Group, groupsOf, type Nav, open, quadOf } from '../shared/views'
 import { dayLabel, isoPlus, mdLabel, thirdPick, whenLabel } from '../shared/when'
 import { useActions } from './actions'
-import { useData, useLang } from './store'
-import { Check, Ic, useT } from './ui'
+import { refreshAi, useCalEvents, useData, useLang } from './store'
+import { Check, EngineLogo, Ic, useT } from './ui'
 
 /** 一篇笔记在界面上叫什么：收件箱那篇叫「收件箱/待办」（照原型），别的是文件名 */
 export function noteLabel(path: string): string {
@@ -244,7 +245,7 @@ export function Detail({ x, snap, today }: { x: TaskView | null; snap: Snapshot;
   const [title, setTitle] = useState(x?.title ?? '')
   const [editing, setEditing] = useState(false)
   const [step, setStep] = useState('')
-  const { rem } = useData()
+  const { rem, focus } = useData()
   const remList = rem?.list?.title ?? (lang === 'zh' ? '画布今日' : 'Canvas Today')
   // 外面改了标题、换了一条：没在改时跟着换；正在改的字不动（外部改动不丢正在打的字）
   useEffect(() => {
@@ -409,6 +410,7 @@ export function Detail({ x, snap, today }: { x: TaskView | null; snap: Snapshot;
           />
         </div>
       </div>
+      <AiSplit x={x} />
       <div className="dsec">{t('where')}</div>
       <div className="ncard" data-part="挂的笔记">
         <div className="nh">
@@ -425,6 +427,100 @@ export function Detail({ x, snap, today }: { x: TaskView | null; snap: Snapshot;
           </button>
         </div>
       </div>
+      <div className="dsec">{t('focus')}</div>
+      <div className="dfocus" data-part="详情专注">
+        <button className="btn sm" disabled={x.done || x.cancelled} onClick={() => a.focusOn(x)}>
+          <Ic n="watch" s={14} />
+          {t('startFocus')}
+        </button>
+        {x.id && focus?.counts[x.id] ? <span className="t3 sm">{t('pomos', focus.counts[x.id]!)}</span> : null}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * 详情里「拆成小步」（原型 detail() 的 ai 那一块）：点了框里写「Claude Code 正在拆」，拆好了列出几步，「收下」才写进那一行下面
+ * （缩进一格的「- [ ]」，一次改动，提示条能撤销），「不要」收起；按 esc 也收起（想着的那一问停下）。换一条就收起
+ */
+function AiSplit({ x }: { x: TaskView }) {
+  const a = useActions()
+  const t = useT()
+  const { ai } = useData()
+  const [st, setSt] = useState<{ key: string; job: string; phase: 'think' | 'done' | 'error'; steps?: string[]; msg?: string } | null>(null)
+  const cur = st && st.key === x.key ? st : null
+  const label = ai?.label ?? 'Claude Code'
+  const close = () => {
+    if (cur?.phase === 'think') void window.ct.aiCancel(cur.job)
+    setSt(null)
+  }
+  useEffect(() => {
+    if (!cur) return
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close()
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  })
+  const run = async () => {
+    void refreshAi()
+    const job = `split-${x.key}-${Date.now()}`
+    setSt({ key: x.key, job, phase: 'think' })
+    const r = await window.ct.aiSplit(x.key, job)
+    setSt((s) => (s?.job !== job ? s : r.ok ? { ...s, phase: 'done', steps: r.steps } : r.aborted ? null : { ...s, phase: 'error', msg: r.message }))
+  }
+  if (!cur)
+    return (
+      <button className="btn sm aisplit" disabled={x.done || x.cancelled} onClick={() => void run()}>
+        <EngineLogo id={ai?.engine} s={14} />
+        {t('aiSplitBtn')}
+      </button>
+    )
+  return (
+    <div className="ai" data-part="AI 帮忙">
+      <div className="ah">
+        <EngineLogo id={ai?.engine} s={14} />
+        {cur.phase === 'think' && (
+          <>
+            <b>{t('aiThinkingSplit', label)}</b>
+            <span className="thinking" />
+          </>
+        )}
+        {cur.phase === 'done' && (
+          <>
+            <b>{t('aiSplitDone', cur.steps!.length)}</b>
+            <span>{t('aiSplitWhere', noteLabel(x.path))}</span>
+          </>
+        )}
+        {cur.phase === 'error' && <b className="aerr">{t('aiFailed', cur.msg ?? '')}</b>}
+      </div>
+      {cur.phase === 'done' &&
+        cur.steps!.map((s, i) => (
+          <div className="it" key={i}>
+            <i />
+            {s}
+          </div>
+        ))}
+      {cur.phase !== 'think' && (
+        <div className="row2">
+          {cur.phase === 'done' ? (
+            <button
+              className="btn pri sm"
+              onClick={() => {
+                a.aiSplitAccept(x, cur.steps!)
+                setSt(null)
+              }}
+            >
+              {t('aiAccept')}
+            </button>
+          ) : (
+            <button className="btn sm" onClick={() => void run()}>
+              {t('aiRetry')}
+            </button>
+          )}
+          <button className="btn ghost sm" onClick={close}>
+            {t('aiReject')}
+          </button>
+        </div>
+      )}
     </div>
   )
 }
@@ -465,216 +561,221 @@ export function QuadView({ snap, today, sel, flash }: { snap: Snapshot; today: s
   )
 }
 
-// ---------- 日历（原型 calView，加了月看法） ----------
+// ---------- 日历（原型 calView，加了月看法；画的是共用的 @cn/calendar） ----------
 
-export const HP = 40
-export const H0 = 0
-export const H1 = 24
-const minutesOf = (s: string) => Number(s.slice(0, 2)) * 60 + Number(s.slice(3, 5))
-
-export function CalendarView({ snap, today, sel, mode, anchor, nowMin, onMode, onAnchor }: { snap: Snapshot; today: string; sel: string | null; mode: 'week' | 'month'; anchor: string; nowMin: number; onMode: (m: 'week' | 'month') => void; onAnchor: (d: string) => void }) {
+export function CalendarView({ snap, today, sel, mode, anchor, nowMin, onMode, onAnchor }: { snap: Snapshot; today: string; sel: string | null; mode: CalMode; anchor: string; nowMin: number; onMode: (m: CalMode) => void; onAnchor: (d: string) => void }) {
   const lang = useLang()
   const t = useT()
-  const days = [...Array(7)].map((_, i) => isoPlus(anchor, i))
-  const grid = useRef<HTMLDivElement>(null)
-  // 打开日历先滚到 8:00（和原型一样从早上 8 点看起，往上往下都还有），8:00 那条线正好压在「全天」的底线上
-  const [top, setTop] = useState(8 * HP)
-  useEffect(() => {
-    if (mode === 'week' && grid.current) grid.current.scrollTop = 8 * HP
-  }, [mode])
+  const { cal } = useData()
+  const items = useMemo(() => calItems(snap.tasks, (r) => repeatLabel(lang, r)), [snap, lang])
+  const days = daysFrom(anchor)
+  // 这一屏看得到的几天（月看法前后补的邻月几天也算），读系统日历的日程
+  const cells = mode === 'week' ? days : monthWeeks(anchor, 0).flat()
+  const events = useCalEvents(cells[0]!, cells[cells.length - 1]!)
+  const on = !!cal?.active
   const sub =
     mode === 'week'
-      ? `${mdLabel(lang, days[0]!)} – ${mdLabel(lang, days[6]!)} · ${t('calSub')}`
-      : `${tr(lang, 'monthTitle', Number(anchor.slice(0, 4)), Number(anchor.slice(5, 7)))} · ${t('calSubMonth')}`
-  const step = (n: number) => {
-    if (mode === 'week') onAnchor(isoPlus(anchor, 7 * n))
-    else {
-      const y = Number(anchor.slice(0, 4))
-      const m = Number(anchor.slice(5, 7)) - 1 + n
-      const ny = y + Math.floor(m / 12)
-      const nm = ((m % 12) + 12) % 12
-      onAnchor(`${ny}-${String(nm + 1).padStart(2, '0')}-01`)
-    }
-  }
+      ? `${mdLabel(lang, days[0]!)} – ${mdLabel(lang, days[6]!)} · ${on ? t('calSubOn') : cal?.available ? t('calSubOff') : t('calSub')}`
+      : `${tr(lang, 'monthTitle', Number(anchor.slice(0, 4)), Number(anchor.slice(5, 7)))} · ${on ? t('calSubOnMonth') : cal?.available ? t('calSubOff') : t('calSubMonth')}`
+  const step = (n: number) => onAnchor(mode === 'week' ? isoPlus(anchor, 7 * n) : shiftMonth(anchor, n))
+  const sched = useAiSchedule()
+  const ghosts = (sched.st?.phase === 'done' ? sched.st.slots : []).map((g) => ({ ...g, note: t('aiGhostNote', g.time, sched.label) }))
   return (
     <>
       <div className="vhead">
         <h1>{t('calendar')}</h1>
         <span className="t2">{sub}</span>
       </div>
-      <div className="calbar">
-        <button className="btn sm" aria-label={t('prevAria')} onClick={() => step(-1)}>
-          <Ic n="chevron-left" s={14} />
-        </button>
-        <button className="btn sm" onClick={() => onAnchor(today)}>
-          {t('today')}
-        </button>
-        <button className="btn sm" aria-label={t('nextAria')} onClick={() => step(1)}>
-          <Ic n="chevron-right" s={14} />
-        </button>
-        <span className="sp" />
-        <span className="seg" role="tablist">
-          <button className={mode === 'month' ? 'on' : ''} role="tab" aria-selected={mode === 'month'} onClick={() => onMode('month')}>
-            {t('month')}
+      <CalBar lang={lang} mode={mode} onPrev={() => step(-1)} onToday={() => onAnchor(today)} onNext={() => step(1)} onMode={onMode}>
+        {mode === 'week' && (
+          <button
+            className="cal-btn"
+            data-ai="sched"
+            disabled={sched.st?.phase === 'think'}
+            onClick={() => {
+              // 排的是今天、明天：这一屏没有今天就先回到今天
+              if (!days.includes(today) || !days.includes(isoPlus(today, 1))) onAnchor(today)
+              sched.run()
+            }}
+          >
+            <EngineLogo id={sched.engine} s={14} />
+            {t('aiSchedBtn')}
           </button>
-          <button className={mode === 'week' ? 'on' : ''} role="tab" aria-selected={mode === 'week'} onClick={() => onMode('week')}>
-            {t('weekView')}
-          </button>
-        </span>
-      </div>
-      {mode === 'week' ? (
-        <div className="cgrid" ref={grid} data-part="周视图" onScroll={(e) => setTop((e.target as HTMLDivElement).scrollTop)}>
-          <div className="cstick">
-            <div className="chead">
-              <div />
-              {days.map((d) => (
-                <div key={d} className={d === today ? 'today' : ''}>
-                  <b>{Number(d.slice(8, 10))}</b>
-                  {tr(lang, 'wd')[weekday(d)]}
-                </div>
-              ))}
-            </div>
-            <div className="callday">
-              <div>{t('allDay')}</div>
-              {days.map((d) => (
-                <div key={d} data-drop={`allday:${d}`}>
-                  {dayItems(snap.tasks, d).allDay.map((x) => (
-                    <div key={x.key} className={`ad${x.done ? ' done' : ''}${sel === x.key ? ' on' : ''}`} data-drag={x.key} title={x.title}>
-                      {x.title}
-                    </div>
-                  ))}
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="cbody">
-            <div className="hrs">
-              {[...Array(H1 - H0)].map((_, i) => {
-                // 钟点字平时骑在线上（往上 7）；贴着头的那一个放到线下面，不被头盖住
-                const y = i * HP - top
-                return (
-                  <div key={i} className={y > -3 && y < 9 ? 'under' : ''}>
-                    {i ? `${H0 + i}:00` : ''}
-                  </div>
-                )
-              })}
-            </div>
-            {days.map((d) => (
-              <div key={d} className={`ccol${d === today ? ' today' : ''}`} data-drop={`day:${d}`} style={{ height: (H1 - H0) * HP }}>
-                {d === today && <div className="nowline" style={{ top: ((nowMin - H0 * 60) / 60) * HP }} />}
-                {dayItems(snap.tasks, d).timed.map((x) => {
-                  const m = minutesOf(x.time!)
-                  return (
-                    <div key={x.key} className={`blk${x.done ? ' done' : ''}${sel === x.key ? ' on' : ''}`} data-drag={x.key} style={{ top: ((m - H0 * 60) / 60) * HP, height: (Math.min(60, H1 * 60 - m) / 60) * HP - 2 }}>
-                      <div className="bt">{x.title}</div>
-                      <div className="bm">{x.time + (x.repeat ? ' · ' + repeatLabel(lang, x.repeat) : '')}</div>
-                    </div>
-                  )
-                })}
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : (
-        <MonthGrid snap={snap} today={today} sel={sel} anchor={anchor} />
-      )}
+        )}
+      </CalBar>
+      {mode === 'week' && sched.st && <AiSchedBar sched={sched} calOn={on} />}
+      {mode === 'week' ? <WeekGrid lang={lang} days={days} today={today} nowMin={nowMin} items={items} events={events} ghosts={ghosts} sel={sel} /> : <MonthGrid lang={lang} month={anchor} today={today} items={items} events={events} sel={sel} />}
     </>
   )
 }
 
-function MonthGrid({ snap, today, sel, anchor }: { snap: Snapshot; today: string; sel: string | null; anchor: string }) {
-  const lang = useLang()
-  const first = `${anchor.slice(0, 7)}-01`
-  const start = addDays(first, -weekday(first))
-  const weeks = Math.ceil((weekday(first) + daysIn(first)) / 7)
-  const cells = [...Array(weeks * 7)].map((_, i) => addDays(start, i))
+type SchedState = { job: string; phase: 'think' } | { job: string; phase: 'done'; slots: AiSlot[]; candidates: number } | { job: string; phase: 'error'; msg: string }
+
+/** 日历「帮我排进空着的时间」那一问：想着、排好了（虚线框）、出错；esc 收起 */
+function useAiSchedule() {
+  const { ai } = useData()
+  const a = useActions()
+  const [st, setSt] = useState<SchedState | null>(null)
+  const close = () => {
+    if (st?.phase === 'think') void window.ct.aiCancel(st.job)
+    setSt(null)
+  }
+  useEffect(() => {
+    if (!st) return
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close()
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  })
+  const run = async () => {
+    void refreshAi()
+    const job = `sched-${Date.now()}`
+    setSt({ job, phase: 'think' })
+    const r = await window.ct.aiSchedule(job)
+    setSt((s) => (s?.job !== job ? s : r.ok ? { job, phase: 'done', slots: r.slots, candidates: r.candidates } : r.aborted ? null : { job, phase: 'error', msg: r.message }))
+  }
+  return {
+    st,
+    engine: ai?.engine,
+    label: ai?.label ?? 'Claude Code',
+    run: () => void run(),
+    close,
+    accept: () => {
+      if (st?.phase !== 'done') return
+      a.aiSchedAccept(st.slots)
+      setSt(null)
+    },
+  }
+}
+
+/** 原型 calView 的 aibar：日历上面一条虚线框，想着 / 想把N条排进空着的时间（收下、不要）/ 没有要排的 / 出错（再试一次） */
+function AiSchedBar({ sched, calOn }: { sched: ReturnType<typeof useAiSchedule>; calOn: boolean }) {
+  const t = useT()
+  const st = sched.st!
   return (
-    <div className="mgrid" data-part="月视图">
-      <div className="mweek head">
-        {[0, 1, 2, 3, 4, 5, 6].map((i) => (
-          <div key={i}>{tr(lang, 'wd')[i]}</div>
-        ))}
-      </div>
-      <div className="mrows" style={{ gridTemplateRows: `repeat(${weeks}, minmax(0, 1fr))` }}>
-        {[...Array(weeks)].map((_, w) => (
-          <div className="mweek" key={w}>
-            {cells.slice(w * 7, w * 7 + 7).map((d) => {
-              const items = snap.tasks.filter((x) => x.date === d && !x.cancelled && (x.parent === null || x.date)).sort((a, b) => Number(a.done) - Number(b.done) || (a.time ?? '99').localeCompare(b.time ?? '99'))
-              const show = items.length > 3 ? items.slice(0, 2) : items
-              return (
-                <div key={d} className={`mcell${d.slice(0, 7) !== anchor.slice(0, 7) ? ' out' : ''}${d === today ? ' today' : ''}`} data-drop={`mday:${d}`}>
-                  <div className="dn">
-                    <b>{Number(d.slice(8, 10))}</b>
-                  </div>
-                  {show.map((x) => (
-                    <div key={x.key} className={`ad mad${x.done ? ' done' : ''}${sel === x.key ? ' on' : ''}`} data-drag={x.key} title={x.title}>
-                      <span className="nm">{x.title}</span>
-                      {x.time && <span className={`tm${!x.done && d < today ? ' red' : ''}`}>{x.time}</span>}
-                    </div>
-                  ))}
-                  {items.length > show.length && <div className="more">{tr(lang, 'more', items.length - show.length)}</div>}
-                </div>
-              )
-            })}
-          </div>
-        ))}
-      </div>
+    <div className="aibar" data-part="AI 帮忙">
+      <EngineLogo id={sched.engine} s={14} />
+      {st.phase === 'think' && (
+        <>
+          <b>{t('aiSchedThinking', sched.label)}</b>
+          <span className="thinking" />
+        </>
+      )}
+      {st.phase === 'done' && st.slots.length > 0 && (
+        <>
+          <span>
+            <b>{t('aiSchedDone', st.slots.length)}</b> {t('aiSchedDoneSub', calOn)}
+          </span>
+          <span className="sp" />
+          <button className="btn pri sm" onClick={sched.accept}>
+            {t('aiAccept')}
+          </button>
+          <button className="btn ghost sm" onClick={sched.close}>
+            {t('aiReject')}
+          </button>
+        </>
+      )}
+      {st.phase === 'done' && !st.slots.length && (
+        <>
+          <span>{st.candidates ? t('aiSchedFull') : t('aiSchedNone')}</span>
+          <span className="sp" />
+          <button className="btn ghost sm" onClick={sched.close}>
+            {t('close')}
+          </button>
+        </>
+      )}
+      {st.phase === 'error' && (
+        <>
+          <b className="aerr">{t('aiFailed', st.msg)}</b>
+          <span className="sp" />
+          <button className="btn sm" onClick={sched.run}>
+            {t('aiRetry')}
+          </button>
+          <button className="btn ghost sm" onClick={sched.close}>
+            {t('aiReject')}
+          </button>
+        </>
+      )}
     </div>
   )
 }
 
-function daysIn(first: string) {
-  const y = Number(first.slice(0, 4))
-  const m = Number(first.slice(5, 7))
-  return new Date(Date.UTC(y, m, 0)).getUTCDate()
+/** 左栏的小月历：有没做完的待办、有日程的日子下面一个点 */
+export function LeftMonth({ snap, today, month, onMonth, onPick, week }: { snap: Snapshot; today: string; month: string; onMonth: (m: string) => void; onPick: (d: string) => void; week: boolean }) {
+  const lang = useLang()
+  const first = `${month}-01`
+  const end = shiftMonth(first, 1)
+  const events = useCalEvents(first, isoPlus(end, -1))
+  const marks = useMemo(() => {
+    const m = new Set(snap.tasks.filter((x) => open(x) && x.date).map((x) => x.date!))
+    for (let d = first; d < end; d = isoPlus(d, 1)) if (hasEvents(events, d)) m.add(d)
+    return m
+  }, [snap, events, first, end])
+  return <MiniMonth lang={lang} month={month} today={today} marks={marks} week={week} onMonth={onMonth} onPick={onPick} />
 }
 
-/** 左栏的小月历（原型 miniMonth）：今天实心、最近七天淡底、有待办的日子下面一个点；点一天跳到那一周 */
-export function MiniMonth({ snap, today, month, onMonth, onPick, week = true }: { snap: Snapshot; today: string; month: string; onMonth: (m: string) => void; onPick: (d: string) => void; week?: boolean }) {
-  const lang = useLang()
+/**
+ * 日历左栏小月历下面（原型 calPanel）：没连时一张「连接系统日历和提醒事项」卡（提醒事项连过了只写日历），
+ * 连上了列系统日历（带锁，只读）和提醒事项里镜像的那个列表；没有小助手的版本什么都不放
+ */
+export function CalPanel() {
   const t = useT()
-  const first = `${month}-01`
-  const lead = weekday(first)
-  const n = daysIn(first)
-  const has = new Set(snap.tasks.filter((x) => open(x) && x.date).map((x) => x.date!))
-  const go = (k: number) => {
-    const y = Number(month.slice(0, 4))
-    const m = Number(month.slice(5, 7)) - 1 + k
-    onMonth(`${y + Math.floor(m / 12)}-${String((((m % 12) + 12) % 12) + 1).padStart(2, '0')}`)
-  }
-  return (
-    <div className="mm" data-part="小月历">
-      <div className="mh">
-        {tr(lang, 'monthTitle', Number(month.slice(0, 4)), Number(month.slice(5, 7)))}
-        <span className="sp" />
-        <button className="ib" aria-label={t('prevAria')} onClick={() => go(-1)}>
-          <Ic n="chevron-left" s={14} />
-        </button>
-        <button className="ib" aria-label={t('nextAria')} onClick={() => go(1)}>
-          <Ic n="chevron-right" s={14} />
-        </button>
-      </div>
-      <div className="g">
-        {[0, 1, 2, 3, 4, 5, 6].map((i) => (
-          <span key={'w' + i} className="w">
-            {tr(lang, 'wdShort')[i]}
-          </span>
-        ))}
-        {[...Array(lead)].map((_, i) => (
-          <span key={'o' + i} className="o">
-            {Number(addDays(first, i - lead).slice(8, 10))}
-          </span>
-        ))}
-        {[...Array(n)].map((_, i) => {
-          const d = `${month}-${String(i + 1).padStart(2, '0')}`
-          const df = diffDays(d, today)
-          return (
-            <button key={d} className={`${d === today ? 'td' : week && df > 0 && df < 7 ? 'wk' : ''}${has.has(d) ? ' has' : ''}`} onClick={() => onPick(d)}>
-              {i + 1}
+  const { cal, rem } = useData()
+  if (!cal?.available) return null
+  if (!cal.active) {
+    const both = !!rem?.available && !rem.connected
+    const denied = cal.auth === 'denied' || cal.auth === 'restricted'
+    const label = both ? t('calConnect') : t('calConnectOnly')
+    return (
+      <div className="conn" data-part="连接系统日历">
+        <b>{label}</b>
+        <p>{both ? t('calConnectText') : t('calConnectTextOnly')}</p>
+        {denied ? (
+          <p>
+            {t('calDeniedCard')}{' '}
+            <button className="link" onClick={() => void window.ct.calOpenPrivacy()}>
+              {t('remOpenPrivacy')}
             </button>
-          )
-        })}
+          </p>
+        ) : (
+          <ol>
+            <li>{t('calStep1')}</li>
+            {both && <li>{t('calStep2')}</li>}
+          </ol>
+        )}
+        <button className="btn pri sm" disabled={cal.asking || rem?.asking} onClick={() => void window.ct.calConnect(both)}>
+          {cal.asking ? t('calAsking') : label}
+        </button>
       </div>
+    )
+  }
+  const sources = [...new Set(cal.calendars.map((c) => c.source))]
+  return (
+    <div data-part="系统日历">
+      <div className="sec">
+        {t('sysCal')}
+        <span className="sp" />
+        {sources.length === 1 && <span className="t3 srcname">{sources[0]}</span>}
+      </div>
+      {cal.calendars.map((c) => (
+        <div className="calrow" key={c.id} style={{ '--c': c.color } as React.CSSProperties}>
+          <i />
+          <span className="nm">{c.title}</span>
+          <span className="sp" />
+          <Ic n="lock" s={12} />
+        </div>
+      ))}
+      {rem?.active && rem.list && (
+        <>
+          <div className="sec">{t('sysRem')}</div>
+          <div className="calrow" style={{ '--c': 'var(--acc)' } as React.CSSProperties}>
+            <i />
+            <span className="nm">{rem.list.title}</span>
+            <span className="sp" />
+            <span className="t3 sm">{t('calTwoWay')}</span>
+          </div>
+        </>
+      )}
+      <div className="hint calhint">{rem?.active ? t('calHint') : t('calHintNoRem')}</div>
     </div>
   )
 }

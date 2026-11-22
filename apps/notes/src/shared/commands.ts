@@ -14,11 +14,16 @@ import { emptySlash, normalizeSlash, type SlashConfig } from './ai-cmds'
 export const COMMANDS_FILE = '.canvas-notes/命令.json'
 export const COMMANDS_VERSION = 1
 
-export type BuiltinGroup = 'pin' | 'recent' | 'go' | 'new' | 'ai' | 'web' | 'lib' | 'app'
+export type BuiltinGroup = 'pin' | 'desks' | 'recent' | 'go' | 'new' | 'ai' | 'web' | 'lib' | 'app' | 'more'
 
-/** 八组，从近到远（「最近打开」是最近开过的几篇，不放命令） */
+/**
+ * 从近到远（「最近打开」是最近开过的几篇，不放命令）。
+ * 书桌（task-xy89o）：存好的几张书桌加「存成书桌…」；更多命令：不常用的（多半是有快捷键的），没打字时收成一行「更多命令 ›」，
+ * 画在自己建的组后面
+ */
 export const GROUPS: readonly { id: BuiltinGroup; name: string }[] = [
   { id: 'pin', name: '钉住的' },
+  { id: 'desks', name: '书桌' },
   { id: 'recent', name: '最近打开' },
   { id: 'go', name: '去哪' },
   { id: 'new', name: '新建和导入' },
@@ -26,17 +31,25 @@ export const GROUPS: readonly { id: BuiltinGroup; name: string }[] = [
   { id: 'web', name: '网页' },
   { id: 'lib', name: '库和同步' },
   { id: 'app', name: '设置和外观' },
+  { id: 'more', name: '更多命令' },
 ]
 
 /** 没改过时每组有哪几条（命令的 id）；只在某些时候才有的（出卡、检查更新、重启更新）也写着，没有时不画 */
 export const DEFAULT_ITEMS: Readonly<Record<Exclude<BuiltinGroup, 'recent'>, readonly string[]>> = {
   pin: ['new-note', 'ask-ai', 'goto'],
+  desks: ['save-desk'],
   go: ['home', 'inbox', 'folders', 'recent', 'open-web', 'dream-report', 'archive'],
-  new: ['new-board', 'new-course', 'capture', 'import'],
+  new: ['new-board', 'new-course', 'new-folder', 'capture', 'import'],
   ai: ['tidy-inbox', 'sum-board', 'article', 'cards-pdf', 'cards-course', 'dream-now'],
-  web: ['clip-page', 'translate', 'bookmarks'],
+  web: ['clip-page', 'pair-web', 'translate', 'bookmarks', 'web-new-tab'],
   lib: ['commit', 'sync', 'history', 'dup'],
-  app: ['restart-update', 'settings', 'theme', 'edit-home', 'update'],
+  app: ['restart-update', 'settings', 'theme', 'keys-settings', 'ui-lang', 'cards-settings', 'edit-home', 'update'],
+  // 只在某些时候才有的照样写着：读 PDF 时的笔记、能改名的标签、中间开着笔记、右栏网页开着、双语翻译插件开着
+  more: [
+    'back', 'forward', 'toggle-left', 'toggle-right', 'fold-center', 'left-files', 'left-recent', 'left-desks', 'find-file', 'outline', 'notes', 'close', 'rename',
+    'toggle-view', 'ai-new-chat',
+    'web-address', 'web-reload', 'web-top-fold', 'web-bookmarks-bar', 'translate-lang', 'translate-style', 'translate-reveal',
+  ],
 }
 
 const LAYOUT_IDS = Object.keys(DEFAULT_ITEMS) as Exclude<BuiltinGroup, 'recent'>[]
@@ -148,6 +161,26 @@ function normalizeGroups(v: unknown): GroupEntry[] | null {
   return [...LAYOUT_IDS.map((id) => byId.get(id) ?? { id, items: [] }), ...own]
 }
 
+/**
+ * 存着的文件里没有的八组以外的那几组（旧版存的没有「书桌」「更多命令」，task-xy89o）：默认放那一组的从原来那组挪过去，
+ * 钉住的、放进自己建的组的、自己挪过的（homes 里记着）不动。不然旧版存下来的样子（「存成书桌…」在新建和导入、后退前进在去哪）一直改不过来
+ */
+function withNewGroups(L: GroupEntry[] | null, raw: unknown, homes: Record<string, string>): GroupEntry[] | null {
+  if (!L) return null
+  const had = new Set((Array.isArray(raw) ? raw : []).map((g) => record(g).id))
+  for (const gid of LAYOUT_IDS) {
+    if (had.has(gid)) continue
+    const to = L.find((g) => g.id === gid)!
+    for (const id of DEFAULT_ITEMS[gid]) {
+      const from = L.find((g) => g.items.includes(id))
+      if (from === to || (from && !isBuiltinGroup(from.id)) || from?.id === 'pin' || homes[id]) continue
+      if (from) from.items = from.items.filter((x) => x !== id)
+      to.items.push(id)
+    }
+  }
+  return L
+}
+
 /** 读 命令.json：坏的、手改错的只留对的那几样，整个读不出当没改过 */
 export function normalizeCommands(raw: unknown): CmdConfig {
   const o = record(raw)
@@ -172,7 +205,7 @@ export function normalizeCommands(raw: unknown): CmdConfig {
   const order: Record<string, string[]> = {}
   for (const [k, v] of Object.entries(record(wm.order))) if (/^[a-z]{1,20}$/.test(k)) order[k] = strings(v, 60)
   return {
-    groups: normalizeGroups(o.groups),
+    groups: withNewGroups(normalizeGroups(o.groups), o.groups, homes),
     hidden: strings(o.hidden, 200),
     alias,
     keys,

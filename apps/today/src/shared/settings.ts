@@ -21,6 +21,11 @@ export interface RemSettings {
 
 export const DEFAULT_REM: RemSettings = { connected: false, mirror: true, list: null, listId: null }
 
+/** 系统日历（只读，task-ykkoz）：开着时日历里画系统日历的日程（每台设备各记各的） */
+export interface CalSettings {
+  show: boolean
+}
+
 export interface TodaySettings {
   lang: Lang
   /** 外观跟画布笔记的设置走（主题、界面风格、窗口背景） */
@@ -40,6 +45,7 @@ export interface TodaySettings {
   /** 上次查到「已是最新」的时间，重开软件后设置里也显示 */
   updateCheckedAt?: number
   reminders: RemSettings
+  calendar: CalSettings
 }
 
 const notesLook = NOTES_DEFAULT.appearance
@@ -53,6 +59,7 @@ export const DEFAULT_TODAY: TodaySettings = {
   right: true,
   autoUpdate: true,
   reminders: DEFAULT_REM,
+  calendar: { show: false },
 }
 
 function normalizeRem(raw: unknown): RemSettings {
@@ -94,6 +101,7 @@ export function normalizeToday(raw: unknown, sysLang: Lang = 'zh'): TodaySetting
     autoUpdate: typeof r.autoUpdate === 'boolean' ? r.autoUpdate : DEFAULT_TODAY.autoUpdate,
     ...(typeof r.updateCheckedAt === 'number' && Number.isFinite(r.updateCheckedAt) && r.updateCheckedAt > 0 ? { updateCheckedAt: r.updateCheckedAt } : {}),
     reminders: normalizeRem(r.reminders),
+    calendar: { show: (r.calendar as { show?: unknown } | undefined)?.show === true },
   }
 }
 

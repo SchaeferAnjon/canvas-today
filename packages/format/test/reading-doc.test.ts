@@ -178,6 +178,31 @@ describe('笔记一段（新格式）', () => {
     expect(parseReadingNote(wmd, NOTE)[0]!.web).toEqual({ url: 'https://example.com/a (b)', label: 'example.com' })
   })
 
+  it('新做的可视化嵌进这一段末尾：单独一段 ![可视化 · 标题](x.html)，双链在它后面；读回来再写一字不差；以前脚上那行链接原样留着（task-m552v）', () => {
+    const s = sec({ viz: { path: '课程/ecpc/LIF 水桶.html', title: 'LIF 水桶 · 拖着看水位', embed: true }, links: ['第4讲 脉冲网络'] })
+    const md = renderSection(s, NOTE)
+    const tail = md.trimEnd().split('\n')
+    expect(tail.slice(-3)).toEqual(['![可视化 · LIF 水桶 · 拖着看水位](LIF%20水桶.html)', '', '[[第4讲 脉冲网络]]'])
+    const back = parseReadingNote(md, NOTE)[0]!
+    expect(back.viz).toEqual({ path: '课程/ecpc/LIF 水桶.html', title: 'LIF 水桶 · 拖着看水位', embed: true })
+    expect(back.links).toEqual(['第4讲 脉冲网络'])
+    expect(back.figures).toEqual(s.figures)
+    expect(back.qas![back.qas!.length - 1]!.a).toBe(s.qas![s.qas!.length - 1]!.a)
+    expect(renderSection(back, NOTE)).toBe(md)
+    // 没有双链、没有小结：嵌入就是最后一段，从最后一个回答末尾剥下来
+    const bare = sec({ viz: { path: '课程/ecpc/LIF 水桶.html', title: 'LIF 水桶 · 拖着看水位', embed: true }, recap: '' })
+    const bmd = renderSection(bare, NOTE)
+    expect(bmd.trimEnd().split('\n').pop()).toBe('![可视化 · LIF 水桶 · 拖着看水位](LIF%20水桶.html)')
+    const bb = parseReadingNote(bmd, NOTE)[0]!
+    expect(bb.viz?.embed).toBe(true)
+    expect(renderSection(bb, NOTE)).toBe(bmd)
+    // 以前的链接：读回来没有 embed，再写还是脚上那一行链接
+    const old = renderSection(sec({ viz: { path: '课程/ecpc/LIF 水桶.html', title: 'LIF 水桶 · 拖着看水位' } }), NOTE)
+    const ob = parseReadingNote(old, NOTE)[0]!
+    expect(ob.viz).toEqual({ path: '课程/ecpc/LIF 水桶.html', title: 'LIF 水桶 · 拖着看水位' })
+    expect(renderSection(ob, NOTE)).toBe(old)
+  })
+
   it('回答里的 ## 标题、代码块里像结构的行不把这一段切开', () => {
     const a = demoteHeadings('# 大标题\n\n## 小标题\n\n```md\n## 代码里的不动\n> [!question] 代码里的\n```\n\n正文')
     expect(a).toBe('### 大标题\n\n#### 小标题\n\n```md\n## 代码里的不动\n> [!question] 代码里的\n```\n\n正文')

@@ -188,6 +188,9 @@ importers:
         specifier: ^6.8.11
         version: 6.8.11(supports-color@7.2.0)
     devDependencies:
+      '@cn/calendar':
+        specifier: workspace:*
+        version: link:../../packages/calendar
       '@cn/design':
         specifier: workspace:*
         version: link:../../packages/design
@@ -230,6 +233,28 @@ importers:
       vite:
         specifier: ^8.3.8
         version: 8.3.8(@types/node@26.6.6)(jiti@2.7.0)
+
+  packages/calendar:
+    dependencies:
+      '@cn/design':
+        specifier: workspace:*
+        version: link:../design
+      '@cn/tasks':
+        specifier: workspace:*
+        version: link:../tasks
+    devDependencies:
+      '@types/react':
+        specifier: ^19.3.0
+        version: 19.3.0
+      '@types/react-dom':
+        specifier: ^19
+        version: 19.3.0(@types/react@19.3.0)
+      react:
+        specifier: ^19.3.1
+        version: 19.3.1
+      react-dom:
+        specifier: ^19.3.1
+        version: 19.3.1(react@19.3.1)
 
   packages/design:
     devDependencies:

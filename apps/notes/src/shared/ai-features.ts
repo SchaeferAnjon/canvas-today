@@ -47,6 +47,13 @@ const EFFORT_EXTRA: EffortOption[] = [
 export function effortOption(id: string): EffortOption {
   return CLAUDE_EFFORTS.find((e) => e.id === id) ?? EFFORT_EXTRA.find((e) => e.id === id) ?? { id, label: id.charAt(0).toUpperCase() + id.slice(1) }
 }
+/** 「Claude Code · Opus 5.5 · High」去掉最后那一档：写进文档的 AI 块头上不带档（同 AI 讲解，DESIGN.v3 2.4） */
+export function withoutEffort(label: string): string {
+  const names = new Set([...CLAUDE_EFFORTS, ...EFFORT_EXTRA].map((e) => e.label))
+  const parts = label.split(' · ')
+  return parts.length > 1 && names.has(parts[parts.length - 1]!) ? parts.slice(0, -1).join(' · ') : label
+}
+
 /** 拿不到 Codex 模型列表时给它的几档（哪个模型都认） */
 const CODEX_EFFORTS = ['low', 'medium', 'high'].map(effortOption)
 

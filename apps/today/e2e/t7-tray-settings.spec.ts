@@ -33,7 +33,7 @@ test('菜单栏小窗：今天几条、勾掉、快速加（默认今天）、�
   }
 })
 
-test('设置：不跟画布笔记时换 A 风格、深湖；跟画布笔记时读画布笔记的设置；菜单栏开关、语言记在设置文件里', async () => {
+test('设置（照画布笔记分页）：不跟画布笔记时换 A 风格、深湖；跟画布笔记时读画布笔记的设置；菜单栏开关、语言记在设置文件里；改了能撤回', async () => {
   const run = await launch({ settings: { followNotes: true } })
   const { page } = run
   try {
@@ -42,76 +42,116 @@ test('设置：不跟画布笔记时换 A 风格、深湖；跟画布笔记时�
     await page.locator('.ab[data-k="settings"]').click()
     const s = page.getByRole('dialog', { name: '设置' })
     await expect(s).toBeVisible()
+    const nav = s.getByRole('navigation', { name: '设置分页' })
+    // 左边四页，开在「一般」
+    await expect(nav.getByRole('button')).toHaveText(['一般', '外观', '日历和提醒事项', '库'])
+    await expect(nav.getByRole('button', { name: '一般' })).toHaveAttribute('aria-current', 'page')
+    await expect(s.getByRole('heading', { name: '一般' })).toBeVisible()
+    await nav.getByRole('button', { name: '外观' }).click()
+    await expect(s.getByRole('heading', { name: '外观' })).toBeVisible()
     await s.getByRole('switch', { name: '和画布笔记一样' }).click()
+    await expect(s.getByTestId('settings-toast')).toHaveText(/已存 · 「和画布笔记一样」关了\s*撤回/)
     await s.getByRole('radio', { name: 'A 照 VS Code' }).click()
     await expect(page.locator('.win')).toHaveClass(/fa/)
     await expect(page.locator('.crumb')).toContainText('测试库')
+    // 提示条上「撤回」：回到 B
+    await s.getByTestId('settings-toast').getByRole('button', { name: '撤回' }).click()
+    await expect(page.locator('.win')).toHaveClass(/fb/)
+    await s.getByRole('radio', { name: 'A 照 VS Code' }).click()
+    await expect(page.locator('.win')).toHaveClass(/fa/)
     await s.getByRole('radio', { name: '深湖' }).click()
     await expect(page.locator('html')).toHaveAttribute('data-skin', 'petrol')
     await expect(page.locator('html')).toHaveAttribute('data-tone', 'dark')
+    await s.getByLabel('窗口背景').selectOption({ label: '冰洞照片' })
+    await nav.getByRole('button', { name: '一般' }).click()
     await s.getByRole('switch', { name: '开着时常驻菜单栏' }).click()
     await s.getByRole('radio', { name: 'English' }).click()
     await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible()
+    await expect(page.getByRole('navigation', { name: 'Settings pages' }).getByRole('button')).toHaveText(['General', 'Appearance', 'Calendar & Reminders', 'Vault'])
     const saved = JSON.parse(readFileSync(join(run.userData, 'settings.json'), 'utf8'))
-    expect(saved).toMatchObject({ lang: 'en', followNotes: false, tray: false, appearance: { frame: 'a', skin: 'petrol' } })
+    expect(saved).toMatchObject({ lang: 'en', followNotes: false, tray: false, appearance: { frame: 'a', skin: 'petrol', winBg: 'cave' } })
     await page.keyboard.press('Escape')
     await expect(page.getByRole('dialog', { name: 'Settings' })).toHaveCount(0)
+    // 底栏「日历、提醒事项已连接」那种入口开在「日历和提醒事项」：这里从库那一页看换库的按钮
+    await page.keyboard.press('Meta+,')
+    await page.getByRole('navigation', { name: 'Settings pages' }).getByRole('button', { name: 'Vault' }).click()
+    await expect(page.locator('[data-row="vault"]')).toContainText('测试库')
+    await expect(page.locator('[data-row="vault"]').getByRole('button', { name: 'Choose another vault…' })).toBeVisible()
   } finally {
     await run.close()
   }
 })
 
 /**
- * 设置弹窗在原型那么大的窗口（1420 × 800）里：默认（和画布笔记一样）连着提醒事项、正在下载新版本时也不用滚；
- * 不跟画布笔记时外观四行和十个主题一屏看全、主题名不截断。2026-11-22 加了「提醒事项」一节（task-b9y8i）以后，
- * 不跟画布笔记时整个弹窗比 800 高的窗口长，要往下滚到「提醒事项」以下（改成像画布笔记那样分页的侧栏另说）
+ * 设置在原型那么大的窗口（1420 × 800）里：弹窗 960 × 680（同画布笔记），四页中英文都不用滚就看全
+ * （最长的样子：提醒事项连着、三行都在；正在下载新版本那一行多一条进度条；不跟画布笔记时外观四行加十个主题），主题名不截断
  */
-test('设置弹窗在 1420 × 800 里：默认外观连着提醒事项也不用滚；不跟画布笔记时外观和十个主题一屏看全，中英文都是', async () => {
+test('设置弹窗在 1420 × 800 里：四页中英文都不用滚，主题名不截断', async () => {
   for (const lang of ['zh', 'en'] as const) {
-    for (const follow of [true, false]) {
-      const run = await launch({ settings: { ...LOOK('sky', 'a', lang), followNotes: follow }, reminders: {} })
-      const { page } = run
-      try {
-        await run.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setContentSize(1420, 800))
-        await expect.poll(() => page.evaluate(() => innerHeight)).toBeLessThanOrEqual(800)
-        await page.locator('.ab[data-k="settings"]').click()
-        const s = page.locator('.setw')
-        // 连上提醒事项（这一节最长的样子：开关、放进哪个列表、导入提醒事项三行）
-        await s.locator('[data-row="rem"]').getByRole('button').first().click()
-        await expect(s.locator('[data-row="remImport"]')).toBeVisible()
-        // 正在下载新版本时那一行多一条进度条
-        await run.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.webContents.send('ct:update', { phase: 'downloading', current: '0.1.0', version: '0.1.1', percent: 40, error: '', checkedAt: 0, inApps: true }))
-        await expect(s.locator('.ubar')).toBeAttached()
-        const { scroll, client } = await s.evaluate((e) => ({ scroll: e.scrollHeight, client: e.clientHeight }))
-        if (follow) expect(scroll, `${lang}：内容 ${scroll}，弹窗 ${client}`).toBeLessThanOrEqual(client)
-        else {
-          await expect(s.locator('.skins button')).toHaveCount(10)
-          // 外观四行和十个主题在弹窗里一屏看得全（不用滚就看得到最后一个主题）
-          const { box, last } = await s.evaluate((e) => ({ box: e.getBoundingClientRect().bottom, last: [...e.querySelectorAll('.skins button')].pop()!.getBoundingClientRect().bottom }))
-          expect(last, `${lang}：最后一个主题的下沿 ${last}，弹窗下沿 ${box}`).toBeLessThanOrEqual(box)
-          // 主题名一个都不截断
-          const cut = await s.locator('.skins button span').evaluateAll((bs) => bs.filter((b) => b.scrollWidth > b.clientWidth).map((b) => b.textContent))
-          expect(cut).toEqual([])
-        }
-      } finally {
-        await run.close()
+    const run = await launch({ settings: { ...LOOK('sky', 'a', lang), followNotes: false }, reminders: {} })
+    const { page } = run
+    try {
+      await run.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setContentSize(1420, 800))
+      await expect.poll(() => page.evaluate(() => innerHeight)).toBeLessThanOrEqual(800)
+      await page.locator('.ab[data-k="settings"]').click()
+      const s = page.locator('.set')
+      const box = (await s.boundingBox())!
+      expect([Math.round(box.width), Math.round(box.height)]).toEqual([960, 680])
+      const nav = s.getByRole('navigation')
+      // 正在下载新版本时那一行多一条进度条
+      await run.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.webContents.send('ct:update', { phase: 'downloading', current: '0.1.0', version: '0.1.1', percent: 40, error: '', checkedAt: 0, inApps: true }))
+      await expect(s.locator('.ubar')).toBeAttached()
+      // 连上提醒事项（这一页最长的样子：开关、放进哪个列表、导入提醒事项三行）
+      await nav.getByRole('button').nth(2).click()
+      await s.locator('[data-row="rem"]').getByRole('button').first().click()
+      await expect(s.locator('[data-row="remImport"]')).toBeVisible()
+      await expect(s.locator('[data-row="remList"]')).toBeVisible()
+      for (let i = 0; i < 4; i++) {
+        await nav.getByRole('button').nth(i).click()
+        const body = s.locator('.set-body')
+        await expect(body.locator('.sa-head')).toBeVisible()
+        const { scroll, client } = await body.evaluate((e) => ({ scroll: e.scrollHeight, client: e.clientHeight }))
+        expect(scroll, `${lang} 第${i + 1}页：内容 ${scroll}，能看见的 ${client}`).toBeLessThanOrEqual(client)
       }
+      await nav.getByRole('button').nth(1).click()
+      await expect(s.locator('.skins button')).toHaveCount(10)
+      // 主题名一个都不截断
+      const cut = await s.locator('.skins button span').evaluateAll((bs) => bs.filter((b) => b.scrollWidth > b.clientWidth).map((b) => b.textContent))
+      expect(cut).toEqual([])
+      // 分段、下拉里的字也不截断（A / B 两格、语言两格）
+      const segCut = await s.locator('.sa-seg button').evaluateAll((bs) => bs.filter((b) => b.scrollWidth > b.clientWidth).map((b) => b.textContent))
+      expect(segCut).toEqual([])
+    } finally {
+      await run.close()
     }
   }
 })
 
-test('第一批没有的格子（专注、习惯、数据库、AI）：变淡、悬停说是什么，点了旁边说一句为什么，不开栏', async () => {
+test('还没有的格子（数据库）：变淡、悬停说是什么，点了旁边说一句，不开栏；专注、习惯开整页；AI 一格说用的是哪一家、用在哪两处', async () => {
   const run = await launch()
   const { page } = run
   try {
-    const focus = page.locator('.ab[data-k="focus"]')
-    await expect(focus).toHaveClass(/dis/)
-    await expect(focus).toHaveAttribute('aria-label', '专注（下一批做：番茄钟和专注记录）')
-    await focus.click()
-    await expect(page.locator('.ab-say')).toHaveText('下一批做：番茄钟和专注记录')
+    const db = page.locator('.ab[data-k="db"]')
+    await expect(db).toHaveClass(/dis/)
+    await expect(db).toHaveAttribute('aria-label', '数据库（以后：等画布笔记的数据库做好）')
+    await db.click()
+    await expect(page.locator('.ab-say')).toHaveText('以后：等画布笔记的数据库做好')
     await expect(page.locator('.vhead h1')).toHaveText('今天')
-    await page.locator('.ab[data-k="ai"]').click()
-    await expect(page.locator('.ab-say')).toHaveText('以后：拆成小步、排进空着的时间')
+    // 第二批做了的：不再变淡
+    for (const [k, h1] of [
+      ['focus', '专注'],
+      ['habit', '习惯'],
+    ] as const) {
+      const cell = page.locator(`.ab[data-k="${k}"]`)
+      await expect(cell).not.toHaveClass(/dis/)
+      await cell.click()
+      await expect(page.locator('.vhead h1')).toHaveText(h1)
+    }
+    const ai = page.locator('.ab[data-k="ai"]')
+    await expect(ai).not.toHaveClass(/dis/)
+    await expect(ai).toHaveAttribute('aria-label', 'AI · Claude Code')
+    await ai.click()
+    await expect(page.locator('.ab-say')).toHaveText('Claude Code · Haiku：详情里「拆成小步」，日历里「帮我排进空着的时间」')
     await expect(page.locator('.ab-say')).toHaveCount(0, { timeout: 4000 })
   } finally {
     await run.close()

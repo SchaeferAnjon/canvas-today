@@ -26,3 +26,30 @@ export const MORE: Record<string, string> = {
 }
 
 export const VAULT: Record<string, string> = { ...PROTO, ...MORE }
+
+/**
+ * 习惯（v2 原型 habitView 那三个，打卡照原型的最近六天：背单词周四漏了、跑步周一三五、早睡周一周五漏了）。
+ * 名字就是文件名；原型里第三个叫「23:30 前睡」（文件 习惯/早睡.md），文件名不能带冒号，这里叫「早睡」
+ */
+export const HABITS: Record<string, string> = {
+  '习惯/背 30 个单词.md': '---\n重复: 每天\n开始: 2026-11-01\n---\n# 背 30 个单词\n\n- 2026-11-16 ✓\n- 2026-11-17 ✓\n- 2026-11-18 ✓\n- 2026-11-20 ✓\n- 2026-11-21 ✓\n',
+  '习惯/跑步 3 公里.md': '---\n重复: 每周一、三、五\n开始: 2026-11-16\n---\n# 跑步 3 公里\n\n- 2026-11-16 ✓\n- 2026-11-18 ✓\n- 2026-11-20 ✓\n',
+  '习惯/早睡.md': '---\n重复: 每天\n开始: 2026-11-01\n---\n# 早睡\n\n- 2026-11-15 ✓\n- 2026-11-17 ✓\n- 2026-11-18 ✓\n- 2026-11-19 ✓\n- 2026-11-21 ✓\n',
+}
+
+/** 假日历（小助手 --memory 的种子）：和原型 EV、CALS 一样的几个日程（11 月 22 日是周日） */
+export const CAL_SEED = {
+  calendars: [
+    { id: 'C-work', title: '工作', color: '#4F7CAC', source: 'iCloud' },
+    { id: 'C-home', title: '家里', color: '#B0805A', source: 'iCloud' },
+    { id: 'C-class', title: '课程表', color: '#7C6FAE', source: 'iCloud' },
+  ],
+  events: [
+    { id: 'ev-1', title: '和爸妈视频', calendar: 'C-home', allDay: false, start: '2026-11-22T16:00', end: '2026-11-22T17:00' },
+    { id: 'ev-2', title: '组会', calendar: 'C-work', allDay: false, start: '2026-11-23T09:30', end: '2026-11-23T10:30' },
+    { id: 'ev-3', title: 'ecp 课', calendar: 'C-class', allDay: false, start: '2026-11-24T14:00', end: '2026-11-24T15:30' },
+    { id: 'ev-4', title: '和小林吃饭', calendar: 'C-home', allDay: false, start: '2026-11-25T19:00', end: '2026-11-25T20:00' },
+    { id: 'ev-5', title: '牙医', calendar: 'C-home', allDay: false, start: '2026-11-27T10:00', end: '2026-11-27T11:00' },
+    { id: 'ev-6', title: '交房租', calendar: 'C-home', allDay: true, start: '2026-11-23', end: '2026-11-23' },
+  ],
+}

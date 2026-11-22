@@ -3,10 +3,11 @@
  * 外观（主题、A/B、窗口背景）也在这里套到 <html> 上。
  */
 import { useEffect, useState, useSyncExternalStore } from 'react'
+import type { CalEvent } from '@cn/calendar'
 import aurora from '@notes-assets/covers/aurora.jpg'
 import cave from '@notes-assets/covers/ice-cave.jpg'
 import { activeSkin, skinOf } from '../../../notes/src/shared/appearance'
-import type { AppState, GitInfo, RemState, Snapshot, UpdateState } from '../shared/api'
+import type { AiInfo, AppState, CalState, FocusInfo, GitInfo, RemState, Snapshot, UpdateState } from '../shared/api'
 import type { Lang } from '../shared/i18n'
 import type { TodayAppearance, TodaySettings } from '../shared/settings'
 import { isoOf } from '../shared/when'
@@ -21,11 +22,19 @@ export interface Data {
   update: UpdateState | null
   /** 提醒事项（镜像、导入）：主进程推过来 */
   rem: RemState | null
+  /** 番茄钟：主进程推过来（计时在主进程） */
+  focus: FocusInfo | null
+  /** 系统日历（只读）：主进程推过来 */
+  cal: CalState | null
+  /** 日历 App 里改了几次（日历看法看它变了就重读日程） */
+  calVersion: number
+  /** AI 用哪一家（画布笔记设置里「小活」那一家；问之前再读一次） */
+  ai: AiInfo | null
 }
 
 const media = () => window.matchMedia('(prefers-color-scheme: dark)')
 
-let data: Data = { state: null, snap: { version: 0, tasks: [], notes: [] }, git: null, offset: 0, dark: media().matches, update: null, rem: null }
+let data: Data = { state: null, snap: { version: 0, tasks: [], notes: [], habits: [] }, git: null, offset: 0, dark: media().matches, update: null, rem: null, focus: null, cal: null, calVersion: 0, ai: null }
 const subs = new Set<() => void>()
 const set = (p: Partial<Data>) => {
   data = { ...data, ...p }
@@ -93,6 +102,12 @@ export async function boot() {
   void window.ct.updateStatus().then((update) => set({ update }))
   window.ct.onRem((rem) => set({ rem }))
   void window.ct.remState().then((rem) => set({ rem }))
+  window.ct.onFocus((focus) => set({ focus }))
+  void window.ct.focusInfo().then((focus) => set({ focus }))
+  window.ct.onCal((cal) => set({ cal }))
+  void window.ct.calState().then((cal) => set({ cal }))
+  window.ct.onCalChanged(() => set({ calVersion: data.calVersion + 1 }))
+  void refreshAi()
   const m = media()
   m.addEventListener('change', () => set({ dark: m.matches }))
 }
@@ -109,4 +124,28 @@ export async function reloadState() {
 export async function saveSettings(p: Partial<TodaySettings>) {
   const r = await window.ct.setSettings(p)
   if (data.state) set({ state: { ...data.state, settings: r.settings, look: r.look } })
+}
+
+/** 这几天（from…to，本地日子，都含）系统日历的日程：开着才读，日历 App 里改了、开关换了就重读 */
+export function useCalEvents(from: string, to: string): CalEvent[] {
+  const { cal, calVersion } = useData()
+  const [evs, setEvs] = useState<{ key: string; list: CalEvent[] }>({ key: '', list: [] })
+  const active = !!cal?.active
+  const key = `${from}|${to}|${calVersion}|${active}`
+  useEffect(() => {
+    if (!active) return setEvs({ key, list: [] })
+    let live = true
+    void window.ct.calEvents(from, to).then((list) => live && setEvs({ key, list }))
+    return () => {
+      live = false
+    }
+  }, [key, active, from, to])
+  return active ? evs.list : []
+}
+
+/** 再读一次 AI 用哪一家（画布笔记那边设置可能换过） */
+export async function refreshAi(): Promise<AiInfo> {
+  const ai = await window.ct.aiInfo()
+  set({ ai })
+  return ai
 }

@@ -1,4 +1,5 @@
 import { type ArchiveDays, DEFAULT_ARCHIVE_DAYS, isArchiveDays } from './sidebar'
+import { type Lang, tIn, uiLang } from './i18n'
 import { DEFAULT_DREAM, type DreamPatch, type DreamSettings, normalizeDream } from './dream-settings'
 import {
   DEFAULT_EDITOR,
@@ -226,8 +227,8 @@ export function setFollowSystem(a: Appearance, on: boolean, systemDark: boolean)
 }
 
 /** 自动提交间隔的说法 */
-export function autoCommitLabel(min: number): string {
-  if (min === 0) return '不自动提交'
-  if (min < 60) return `每${min}分钟`
-  return min % 60 === 0 ? `每${min / 60}小时` : `每${min}分钟`
+export function autoCommitLabel(min: number, lang: Lang = uiLang()): string {
+  if (min === 0) return tIn(lang, '不自动提交')
+  if (min < 60) return tIn(lang, '每{n}分钟', { n: min })
+  return min % 60 === 0 ? tIn(lang, '每{n}小时', { n: min / 60 }) : tIn(lang, '每{n}分钟', { n: min })
 }

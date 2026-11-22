@@ -6,7 +6,7 @@ import RemindersCore
 /// 真的系统提醒事项（EventKit）。只有这一个文件碰 EventKit；规矩和假的那份（MemoryStore）一样，Server 不分是哪一份。
 /// 授权：小助手是画布今日从自己包里开起来的子进程，系统把它记在画布今日名下（问的是「“Canvas Today”想访问你的提醒事项」，
 /// 用途说明读 Canvas Today.app 的 Info.plist），所以单独在终端里跑它，问的是终端。
-final class EKStore: ReminderStore {
+final class EKStore: ReminderStore, CalendarStore {
   private(set) var store = EKEventStore()
   /// 外面改了提醒事项（别的 App、iCloud 同步下来的）
   var onChange: (() -> Void)?
@@ -234,5 +234,61 @@ final class EKStore: ReminderStore {
   func commit() throws {
     try store.commit()
     quiet()
+  }
+
+  // ---------- 系统日历（只读，task-ykkoz） ----------
+
+  /// 日历的授权（EKAuthorizationStatus 原始值，同 auth()）
+  private func calAuth() -> String {
+    switch EKEventStore.authorizationStatus(for: .event).rawValue {
+    case 0: return "notDetermined"
+    case 1: return "restricted"
+    case 2: return "denied"
+    case 3: return "full"
+    case 4: return "writeOnly"
+    default: return "denied"
+    }
+  }
+
+  func calendarStatus() -> Status { Status(auth: calAuth(), icloud: nil, mode: mode) }
+
+  func requestCalendarAccess() -> Status {
+    guard calAuth() == "notDetermined" else { return calendarStatus() }
+    let sem = DispatchSemaphore(value: 0)
+    if #available(macOS 14.0, *) {
+      store.requestFullAccessToEvents { _, _ in sem.signal() }
+    } else {
+      store.requestAccess(to: .event) { _, _ in sem.signal() }
+    }
+    sem.wait()
+    // 刚给了权限：换一个新的 store 才看得到日历
+    store = EKEventStore()
+    observe()
+    return calendarStatus()
+  }
+
+  func calendars() throws -> [CalInfo] {
+    store.calendars(for: .event).map { CalInfo(id: $0.calendarIdentifier, title: $0.title, color: hex($0.cgColor), source: $0.source?.title ?? "") }
+  }
+
+  func events(from: String, to: String) throws -> [EventItem] {
+    var cal = Calendar(identifier: .gregorian)
+    cal.timeZone = tz
+    guard let a = Dates.date(local: from + "T00:00", tz: tz), let last = Dates.date(local: to + "T00:00", tz: tz), let b = cal.date(byAdding: .day, value: 1, to: last) else {
+      throw StoreError("badRequest", "日子写法不对")
+    }
+    let cals = store.calendars(for: .event)
+    if cals.isEmpty { return [] }
+    return store.events(matching: store.predicateForEvents(withStart: a, end: b, calendars: cals)).map { e in
+      let start = Dates.local(e.startDate, tz: tz)
+      let id = "\(e.calendarItemIdentifier)@\(start)"
+      if e.isAllDay {
+        // 全天的：结束时刻往前一秒是最后一天（EventKit 有的给当天 23:59:59，有的给第二天零点）
+        let first = String(start.prefix(10))
+        let end = String(Dates.local(e.endDate.addingTimeInterval(-1), tz: tz).prefix(10))
+        return EventItem(id: id, title: e.title ?? "", calendar: e.calendar?.calendarIdentifier ?? "", allDay: true, start: first, end: max(first, end))
+      }
+      return EventItem(id: id, title: e.title ?? "", calendar: e.calendar?.calendarIdentifier ?? "", allDay: false, start: start, end: Dates.local(e.endDate, tz: tz))
+    }
   }
 }

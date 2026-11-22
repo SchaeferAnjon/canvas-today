@@ -8,10 +8,14 @@
  *       - 秩-零化渡定理 <!-- box=0.6,0.8,0.2,0.06 unsure guesses="秩-零化度定理|秩-零化渡定理" -->
  *
  * 行尾的 HTML 注释是 AI 认照片时记的：这个节点在照片上的哪一块（x y w h，都是 0 到 1）、拿不准、猜的几种写法。
+ * 收起的节点在同一个注释里多一个 fold（`- 定义 <!-- box=… fold -->`；没注释的行加 `<!-- fold -->`，task-wuv05）：
+ * 换台 Mac、以后 iPad 上打开也收着（偏好「要跨设备的状态跟着库走」）；展开时去掉，这一行回到原样。
+ * 布局记在属性里一行 `导图布局: 左右` / `向下`，紧跟在「白板样式: 导图」后面；向右是默认，不写。
  * 别的软件看不见注释，内容不丢。
- * 规矩：读进来再写回去一个字节都不变；改一个节点只重写它自己那一行（挪层级时连它的子节点一起）。
+ * 规矩：读进来再写回去一个字节都不变；改一个节点只重写它自己那一行；换了层级的整枝只改缩进，收起展开只在注释里加减 fold。
  */
 import { fmValue } from './board'
+import { prop, setProp } from './props'
 
 export type Box = [number, number, number, number]
 
@@ -20,11 +24,17 @@ export interface MapNode {
   box?: Box
   unsure?: boolean
   guesses?: string[]
+  /** 收起来了：孩子不画，旁边写藏了几个（写在行尾注释里，关了再开还收着） */
+  fold?: boolean
   children: MapNode[]
-  /** 读进来时这一项的原文（含续行，不含后面的空行）；内容和层级都没变就原样写回 */
+  /** 读进来时这一项的原文（含续行，不含后面的空行）；内容没变就原样写回（换了层级只改缩进） */
   raw?: string
-  /** raw 对应的内容签名 */
+  /** raw 对应的内容签名（字、框、拿不准、猜的写法；不含层级和收起） */
   sig?: string
+  /** 读进来时在第几层 */
+  rawDepth?: number
+  /** 读进来时收没收着：只改了这一样时在原来那行的注释里加减一个 fold */
+  rawFold?: boolean
   /** 这一项后面跟着的空行（每行带换行） */
   tail?: string
 }
@@ -46,21 +56,50 @@ export const MAP_STYLE = '导图'
 
 export const isMindmap = (text: string) => fmValue(text, MAP_STYLE_KEY) === MAP_STYLE
 
+// ---------- 布局：属性 `导图布局`（排法在 apps/notes/src/shared/mindmap-layout.ts 的分派表里，加新的布局两边各加一项） ----------
+
+export type MapLayoutKind = 'right' | 'both' | 'down'
+export const MAP_LAYOUT_KEY = '导图布局'
+/** 写进文件的说法（不翻：是文件格式） */
+export const MAP_LAYOUT_VALUE: Readonly<Record<MapLayoutKind, string>> = { right: '向右', both: '左右', down: '向下' }
+export const MAP_LAYOUTS = Object.keys(MAP_LAYOUT_VALUE) as MapLayoutKind[]
+
+/** 这块导图怎么摆：没写、写了不认识的（以后的鱼骨、时间线在老版本里打开）都当向右 */
+export function mapLayoutOf(text: string): MapLayoutKind {
+  const v = fmValue(text, MAP_LAYOUT_KEY)?.replace(/^["']|["']$/g, '')
+  return MAP_LAYOUTS.find((k) => MAP_LAYOUT_VALUE[k] === v) ?? 'right'
+}
+
+/** 换布局只动那一行：新加的紧跟在「白板样式: 导图」后面；向右是默认，去掉那一行 */
+export function withMapLayout(text: string, kind: MapLayoutKind): string {
+  const value = kind === 'right' ? undefined : MAP_LAYOUT_VALUE[kind]
+  if (value === undefined || prop(text, MAP_LAYOUT_KEY) !== undefined) return setProp(text, MAP_LAYOUT_KEY, value)
+  const fm = FM.exec(text)?.[0] ?? ''
+  const style = new RegExp(`^${MAP_STYLE_KEY}:[^\\n]*$`, 'm').exec(fm)
+  if (!style) return setProp(text, MAP_LAYOUT_KEY, value)
+  const at = style.index + style[0].length
+  return `${text.slice(0, at)}\n${MAP_LAYOUT_KEY}: ${value}${text.slice(at)}`
+}
+
 const FM = /^---\n[\s\S]*?\n---(?:\n|$)/
 const ITEM = /^([ \t]*)[-*+][ \t]+(.*)$/
-const NOTE = /[ \t]*<!--[ \t]*(.*?)[ \t]*-->[ \t]*$/
+/** 行尾的注释：最后那一个（前面自己写的注释照旧是字） */
+const NOTE = /[ \t]*<!--[ \t]*((?:(?!<!--).)*?)[ \t]*-->[ \t]*$/
 const ATTR = /([A-Za-z][\w-]*)(?:=(?:"([^"]*)"|(\S+)))?/g
 
 const width = (ws: string) => [...ws].reduce((n, c) => n + (c === '\t' ? 4 : 1), 0)
 
-/** 行尾注释里的 box / unsure / guesses；有别的东西就不当我们的注释 */
-function parseNote(s: string): Pick<MapNode, 'box' | 'unsure' | 'guesses'> | null {
-  const out: Pick<MapNode, 'box' | 'unsure' | 'guesses'> = {}
+type Note = Pick<MapNode, 'box' | 'unsure' | 'guesses' | 'fold'>
+
+/** 行尾注释里的 box / unsure / guesses / fold；有别的东西就不当我们的注释 */
+function parseNote(s: string): Note | null {
+  const out: Note = {}
   let left = s
   for (const m of s.matchAll(ATTR)) {
     const [all, key, q, bare] = m
     const v = q ?? bare
     if (key === 'unsure' && v === undefined) out.unsure = true
+    else if (key === 'fold' && v === undefined) out.fold = true
     else if (key === 'box' && v !== undefined) {
       const n = v.split(',').map(Number)
       if (n.length !== 4 || n.some((x) => !Number.isFinite(x))) return null
@@ -77,19 +116,79 @@ function noteOf(n: MapNode): string {
   if (n.box) parts.push(`box=${n.box.map((x) => +x.toFixed(3)).join(',')}`)
   if (n.unsure) parts.push('unsure')
   if (n.guesses?.length) parts.push(`guesses="${n.guesses.map((g) => g.replace(/["|]/g, ' ')).join('|')}"`)
+  // 没孩子的收着没意思：整行重写时就不写了
+  if (n.fold && n.children.length) parts.push('fold')
   return parts.length ? ` <!-- ${parts.join(' ')} -->` : ''
 }
 
-const sigOf = (n: MapNode, depth: number) => JSON.stringify([depth, n.text, n.box ?? null, !!n.unsure, n.guesses ?? []])
+const sigOf = (n: MapNode) => JSON.stringify([n.text, n.box ?? null, !!n.unsure, n.guesses ?? []])
 
 /** 节点的字：去掉换行，免得一个节点写成好几行 */
 export const cleanText = (s: string) => s.replace(/\s*\n\s*/g, ' ').trim()
 
-function itemContent(rest: string): Pick<MapNode, 'text' | 'box' | 'unsure' | 'guesses'> {
+function itemContent(rest: string): Pick<MapNode, 'text' | 'box' | 'unsure' | 'guesses' | 'fold'> {
   const m = NOTE.exec(rest)
   const note = m ? parseNote(m[1]!) : null
   if (m && note) return { text: rest.slice(0, m.index).trim(), ...note }
   return { text: rest.trim() }
+}
+
+const FOLD_NOTE = ' <!-- fold -->'
+
+/** 原文第一行的注释里加上、去掉 fold（只动这一处，行里别的字节不动） */
+function foldLine(line: string, fold: boolean): string {
+  const m = NOTE.exec(line)
+  const note = m ? parseNote(m[1]!) : null
+  if (fold) {
+    if (!m || !note) return line + FOLD_NOTE
+    return note.fold ? line : line.replace(/([ \t]*-->[ \t]*)$/, ' fold$1')
+  }
+  if (!m || !note?.fold) return line
+  if (line.endsWith(FOLD_NOTE)) return line.slice(0, -FOLD_NOTE.length)
+  const content = m[1]!
+  const left = dropFold(content)
+  if (left === '') return line.slice(0, m.index)
+  const at = line.lastIndexOf(content, line.lastIndexOf('-->'))
+  return line.slice(0, at) + left + line.slice(at + content.length)
+}
+
+/** 注释里去掉 fold 这一个词和它旁边的一段空白 */
+function dropFold(content: string): string {
+  for (const t of content.matchAll(ATTR)) {
+    if (t[0] !== 'fold') continue
+    let a = t.index
+    let b = a + t[0].length
+    if (a > 0) while (a > 0 && /[ \t]/.test(content[a - 1]!)) a--
+    else while (b < content.length && /[ \t]/.test(content[b]!)) b++
+    return content.slice(0, a) + content.slice(b)
+  }
+  return content
+}
+
+/** 原文换一层缩进：第一行的缩进换成 indent，续行保持比它多出来的那一截（至少缩进两格，读回来还是续行） */
+function reindent(raw: string, indent: string): string {
+  const lines = raw.split('\n')
+  const base = /^[ \t]*/.exec(lines[0]!)![0]
+  return lines
+    .map((l, i) => {
+      if (i === 0) return indent + l.slice(base.length)
+      if (l.trim() === '') return l
+      const body = l.startsWith(base) ? l.slice(base.length) : l.replace(/^[ \t]+/, '')
+      return indent + (/^[ \t]/.test(body) ? body : '  ' + body)
+    })
+    .join('\n')
+}
+
+/** 一项写回去：内容没变用原文（收起变了在注释里加减 fold，层级变了只改缩进），变了整行重写 */
+function lineOf(n: MapNode, depth: number, unit: string): string {
+  if (n.raw === undefined || n.sig !== sigOf(n)) return `${unit.repeat(depth)}- ${cleanText(n.text)}${noteOf(n)}`
+  let raw = n.raw
+  if (!!n.fold !== !!n.rawFold) {
+    const nl = raw.indexOf('\n')
+    raw = nl === -1 ? foldLine(raw, !!n.fold) : foldLine(raw.slice(0, nl), !!n.fold) + raw.slice(nl)
+  }
+  if (n.rawDepth !== undefined && n.rawDepth !== depth) raw = reindent(raw, unit.repeat(depth))
+  return raw
 }
 
 /** 白板的排版块（卡片、列）从哪开始：导图只在它前面找 */
@@ -133,7 +232,9 @@ export function parseMindmap(text: string): MapDoc {
     if (!cur) return
     cur.node.raw = cur.rawLines.join('\n')
     cur.node.tail = cur.blanks.map((b) => b + '\n').join('')
-    cur.node.sig = sigOf(cur.node, cur.depth)
+    cur.node.sig = sigOf(cur.node)
+    cur.node.rawDepth = cur.depth
+    cur.node.rawFold = !!cur.node.fold
     cur = null
   }
   for (let i = first; i <= last; i++) {
@@ -169,8 +270,7 @@ export function serializeMindmap(doc: MapDoc): string {
   const parts: string[] = []
   const walk = (list: MapNode[], depth: number) => {
     for (const n of list) {
-      const same = n.raw !== undefined && n.sig === sigOf(n, depth)
-      parts.push(same ? n.raw! : `${doc.unit.repeat(depth)}- ${cleanText(n.text)}${noteOf(n)}`)
+      parts.push(lineOf(n, depth, doc.unit))
       if (n.tail) parts.push(n.tail.slice(0, -1))
       walk(n.children, depth + 1)
     }
@@ -271,6 +371,70 @@ export function moveTo(roots: MapNode[], from: MapPath, toParent: MapPath, index
   return { roots: insertAt(removed, fixed, at, node), path: [...fixed, at] }
 }
 
+// ---------- 第一批（task-wuv05，设计页 15-思维导图）：加父主题、同级里挪、只删一个、拖到两个同级中间、收起 ----------
+
+/** 同一层里往上（-1）、往下（1）挪一个；到头了、最外层的中心不挪 */
+export function moveAmong(roots: MapNode[], path: MapPath, delta: -1 | 1): { roots: MapNode[]; path: MapPath } | null {
+  if (path.length < 2) return null
+  const parent = path.slice(0, -1)
+  const i = path[path.length - 1]!
+  const n = nodeAt(roots, parent)?.children.length ?? 0
+  if (i + delta < 0 || i + delta >= n) return null
+  return moveTo(roots, path, parent, i + delta)
+}
+
+/** 拖到 target 前面（after 是后面）：同一层换位置，或者换到 target 的上级下面；不能拖到自己下面 */
+export function moveBeside(roots: MapNode[], from: MapPath, target: MapPath, after: boolean): { roots: MapNode[]; path: MapPath } | null {
+  if (target.length < 2 || (target.length >= from.length && from.every((x, i) => target[i] === x))) return null
+  const parent = target.slice(0, -1)
+  let index = target[target.length - 1]! + (after ? 1 : 0)
+  // 同一列里从前面挪到后面：自己先拿走了，后面的都往前挪了一个
+  if (from.length === target.length && from.slice(0, -1).every((x, i) => x === parent[i]) && from[from.length - 1]! < index) index--
+  return moveTo(roots, from, parent, index)
+}
+
+/** 加父主题：在这一个外面套一个新的，它（连同下面的）往里一层；中心外面不套 */
+export function addParent(roots: MapNode[], path: MapPath, text: string): { roots: MapNode[]; path: MapPath } | null {
+  if (path.length < 2) return null
+  const node = nodeAt(roots, path)
+  if (!node) return null
+  return { roots: updateAt(roots, path, () => ({ text: cleanText(text), children: [node] })), path }
+}
+
+/** 只删这一个：它下面的往上提一层，排在它原来的位置 */
+export function removeOne(roots: MapNode[], path: MapPath): MapNode[] {
+  const node = nodeAt(roots, path)
+  if (!node) return roots
+  const parent = path.slice(0, -1)
+  const i = path[path.length - 1]!
+  const put = (list: MapNode[]) => [...list.slice(0, i), ...node.children, ...list.slice(i + 1)]
+  if (!parent.length) return put(roots)
+  return updateAt(roots, parent, (p) => ({ ...p, children: put(p.children) }))
+}
+
+/** 收起、展开一个（没有孩子的不收） */
+export function setFold(roots: MapNode[], path: MapPath, fold: boolean): MapNode[] {
+  return updateAt(roots, path, (n) => (fold && !n.children.length ? n : { ...n, fold }))
+}
+
+const mapFold = (list: MapNode[], f: (n: MapNode, depth: number) => boolean, depth = 0): MapNode[] =>
+  list.map((n) => ({ ...n, fold: f(n, depth), children: mapFold(n.children, f, depth + 1) }))
+
+/** 收起到第一层：第一层往下有孩子的都收起（中心不收） */
+export const foldAll = (roots: MapNode[]): MapNode[] => mapFold(roots, (n, d) => (d >= 1 && n.children.length > 0 ? true : !!n.fold))
+
+/** 全部展开 */
+export const unfoldAll = (roots: MapNode[]): MapNode[] => mapFold(roots, () => false)
+
+/** 还有没收起来的（第一层往下、有孩子的）：⇧⌘/ 按一下收起，都收着时再按是全部展开 */
+export function anyUnfolded(roots: MapNode[]): boolean {
+  const walk = (list: MapNode[], depth: number): boolean => list.some((n) => (depth >= 1 && n.children.length > 0 && !n.fold) || walk(n.children, depth + 1))
+  return walk(roots, 0)
+}
+
+/** 一枝里一共几个（不算它自己）：收起来时旁边写的数 */
+export const hiddenCount = (n: MapNode): number => n.children.reduce((s, k) => s + 1 + hiddenCount(k), 0)
+
 /** 一层一层（中心 → 第一层 → 第二层）的顺序，长出来的动画按它 */
 export function breadthFirst(roots: MapNode[]): MapPath[] {
   const out: MapPath[] = []
@@ -301,5 +465,5 @@ export function mindmapList(roots: MapNode[], unit = '  '): string {
 }
 
 function strip(list: MapNode[]): MapNode[] {
-  return list.map(({ raw: _r, sig: _s, tail: _t, ...n }) => ({ ...n, children: strip(n.children) }))
+  return list.map(({ raw: _r, sig: _s, tail: _t, rawDepth: _d, rawFold: _f, ...n }) => ({ ...n, children: strip(n.children) }))
 }

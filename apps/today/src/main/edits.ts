@@ -137,6 +137,73 @@ export async function applyEdit(v: TaskVault, req: EditReq, today: ISODate): Pro
   }
 }
 
+/** 给这一条加一个 🆔（专注记录、canvas-today:// 链接认它）；已经有了原样。交回加好以后的那一行，找不到返回 null */
+export async function ensureTaskId(v: TaskVault, t: { path: string; line: number; raw: string; title: string }): Promise<{ line: number; raw: string; id: string } | null> {
+  const r = await v.change([t.path], `画布今日：给「${t.title}」加上 🆔（专注记录认它）`, (now) => {
+    const text = now.get(t.path)
+    if (text == null) return null
+    const n = locate(text, t.line, t.raw)
+    if (n === null) return null
+    const cur = parseTaskLine(lineAt(text, n) ?? '')
+    if (!cur) return null
+    if (cur.id) return { out: new Map(), result: { line: n, raw: lineAt(text, n)!, id: cur.id } }
+    const id = newId()
+    const after = editLine(text, n, (l) => setId(l, id))
+    return { out: new Map([[t.path, after]]), result: { line: n, raw: lineAt(after, n)!, id } }
+  })
+  return r?.result ?? null
+}
+
+/** AI 拆的几步一次加进这一条下面（缩进一格的「- [ ]」，一次改动、一个撤销） */
+export async function addSubtasks(v: TaskVault, t: { path: string; line: number; raw: string; title: string }, titles: string[]): Promise<EditResult> {
+  const clean = titles.map((x) => x.trim()).filter(Boolean)
+  if (!clean.length) return { ok: false, reason: 'failed', message: '没有要加的' }
+  try {
+    const r = await v.change([t.path], `画布今日：「${t.title}」拆成${clean.length}步`, (now) => {
+      const text = now.get(t.path)
+      if (text == null) return null
+      const n = locate(text, t.line, t.raw)
+      if (n === null) return null
+      let after = text
+      for (const title of clean) after = addSubtask(after, n, title).text
+      return { out: new Map([[t.path, after]]), result: { line: n, raw: lineAt(after, n) ?? t.raw } }
+    })
+    if (!r) return { ok: false, reason: 'gone' }
+    return { ok: true, undo: r.undo ?? '', path: t.path, line: r.result.line, raw: r.result.raw }
+  } catch (err) {
+    if (err instanceof ReadOnlyError) return { ok: false, reason: 'readonly', message: err.message }
+    return { ok: false, reason: 'failed', message: String((err as Error).message ?? err) }
+  }
+}
+
+/** AI 排好的钟点一次写进那几行（📅 日子后面加钟点；几篇一起改，一个撤销）；交回写上了几条 */
+export async function setTimes(v: TaskVault, items: { path: string; line: number; raw: string; title: string; time: string }[], today: ISODate): Promise<{ ok: true; undo: string; n: number } | { ok: false; reason: 'gone' | 'readonly' | 'failed'; message?: string }> {
+  const paths = [...new Set(items.map((x) => x.path))]
+  try {
+    let n = 0
+    const r = await v.change(paths, `画布今日：AI 把${items.length}条排进空着的时间`, (now) => {
+      const out = new Map<string, string | null>()
+      for (const p of paths) {
+        let text = now.get(p)
+        if (text == null) continue
+        for (const x of items.filter((y) => y.path === p)) {
+          const k = locate(text, x.line, x.raw)
+          if (k === null) continue
+          text = editLine(text, k, (l) => setTime(l, x.time, today))
+          n++
+        }
+        out.set(p, text)
+      }
+      return n ? { out, result: n } : null
+    })
+    if (!r) return { ok: false, reason: 'gone' }
+    return { ok: true, undo: r.undo ?? '', n: r.result }
+  } catch (err) {
+    if (err instanceof ReadOnlyError) return { ok: false, reason: 'readonly', message: err.message }
+    return { ok: false, reason: 'failed', message: String((err as Error).message ?? err) }
+  }
+}
+
 /** 一篇笔记叫这个名字（标题或最后一层文件夹）：#清单 用 */
 function noteByName(s: Snapshot, name: string): string | null {
   const n = name.toLowerCase()

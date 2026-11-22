@@ -14,7 +14,7 @@ import { noteLabel } from './views'
 
 type Row = { key: string; icon: Parameters<typeof Ic>[0]['n']; name: string; desc?: string; group: 'add' | 'tasks' | 'go'; run: () => void }
 
-export function Palette({ today, onClose, onGo, onSettings, onImport }: { today: string; onClose: () => void; onGo: (a: 'lists' | 'calendar' | 'quad', n?: Nav) => void; onSettings: () => void; onImport?: () => void }) {
+export function Palette({ today, onClose, onGo, onSettings, onImport }: { today: string; onClose: () => void; onGo: (a: 'lists' | 'calendar' | 'quad' | 'focus' | 'habit', n?: Nav) => void; onSettings: () => void; onImport?: () => void }) {
   const t = useT()
   const lang = useLang()
   const a = useActions()
@@ -57,6 +57,8 @@ export function Palette({ today, onClose, onGo, onSettings, onImport }: { today:
       { key: 'g-week', icon: 'layers', name: t('week'), group: 'go', run: () => onGo('lists', 'week') },
       { key: 'g-cal', icon: 'calendar', name: t('calendar'), group: 'go', run: () => onGo('calendar') },
       { key: 'g-quad', icon: 'target', name: t('quad'), group: 'go', run: () => onGo('quad') },
+      { key: 'g-focus', icon: 'watch', name: t('focus'), group: 'go', run: () => onGo('focus') },
+      { key: 'g-habit', icon: 'history', name: t('habit'), group: 'go', run: () => onGo('habit') },
       { key: 'g-set', icon: 'settings-gear', name: t('settings'), group: 'go', run: onSettings },
       ...(onImport ? [{ key: 'g-imp', icon: 'cloud-download' as const, name: t('palImport'), group: 'go' as const, run: onImport }] : []),
       {

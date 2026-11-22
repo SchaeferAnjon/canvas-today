@@ -125,6 +125,7 @@ describe('清单怎么分组（照原型 listView）', () => {
         { path: 'b.md', title: 'b', folder: '', mtimeMs: 2 },
         { path: 'c.md', title: 'c', folder: '', mtimeMs: 3 },
       ],
+      habits: [],
     }
     expect(notesWithTodo(s).map((x) => x.path)).toEqual(['b.md', 'a.md'])
     expect(notesWithTodo(s, 'c.md').map((x) => x.path)).toEqual(['c.md', 'b.md', 'a.md'])

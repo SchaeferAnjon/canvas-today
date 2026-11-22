@@ -2,7 +2,8 @@
  * 到点提醒（Mac）：本机通知，到点弹，能勾掉、推迟 10 分钟 / 1 小时 / 明天；点通知打开画布今日、选中那一条。
  * 响过、推迟、勾掉写进库里 .canvas-tasks/提醒/<设备名>/YYYY-MM.jsonl（每台设备只写自己那份，跟着 Git 走）；
  * 排的时候把所有设备的记录合起来看（@cn/tasks 的 planReminders）。索引里标了 ringBy: 'reminders' 的（镜像进了系统提醒事项，main/mirror.ts）跳过。
- * 测试模式里通知换成记录器：globalThis.ctNotifs 是弹过的，globalThis.ctNotifAct(第几条, 'done' | '10m' | '1h' | 'tomorrow' | 'click') 像人一样点。
+ * 通知上的按钮：勾掉、10 分钟后、1 小时后、明天、打开笔记（到这一行，交给画布笔记）；点通知本身打开画布今日、选中这一条。
+ * 测试模式里通知换成记录器：globalThis.ctNotifs 是弹过的，globalThis.ctNotifAct(第几条, 'done' | '10m' | '1h' | 'tomorrow' | 'open' | 'click') 像人一样点。
  */
 import { Notification } from 'electron'
 import { appendFile, mkdir, readdir, readFile } from 'node:fs/promises'
@@ -14,9 +15,9 @@ import { isoOf, localStamp, whenLabel } from '../shared/when'
 import { E2E } from './test-mode'
 import type { TaskVault } from './vault'
 
-export type NotifAction = 'done' | Snooze | 'click'
+export type NotifAction = 'done' | Snooze | 'open' | 'click'
 
-interface Payload {
+export interface Payload {
   title: string
   body: string
   actions: string[]
@@ -30,7 +31,8 @@ interface Notifier {
   show(p: Payload, on: (a: NotifAction) => void): void
 }
 
-const ACTIONS: NotifAction[] = ['done', '10m', '1h', 'tomorrow']
+/** 通知上的按钮（0.1.0 的四个，加上原型的「打开笔记」放最后） */
+const ACTIONS: NotifAction[] = ['done', '10m', '1h', 'tomorrow', 'open']
 
 class RealNotifier implements Notifier {
   /** 留着引用，不然通知对象被回收，按钮点了没反应 */
@@ -63,6 +65,12 @@ class TestNotifier implements Notifier {
   }
 }
 
+let shared: Notifier | null = null
+/** 整个软件一个弹通知的（到点提醒、专注满了都用它；测试模式里记在 globalThis.ctNotifs，编号接着排） */
+export function notifier(): Notifier {
+  return (shared ??= E2E ? new TestNotifier() : new RealNotifier())
+}
+
 /** 带时区的时刻「2026-11-23T14:00:03+01:00」 */
 function stamp(ms: number): string {
   const off = -new Date(ms).getTimezoneOffset()
@@ -80,6 +88,8 @@ export interface RemindDeps {
   tick: (t: TaskView) => Promise<void>
   /** 打开画布今日、选中这一条 */
   open: (t: TaskView) => void
+  /** 在画布笔记里打开这一篇、到这一行 */
+  openNote: (t: TaskView) => void
   say: (text: string) => void
   wrote: (paths: string[], message: string) => void
 }
@@ -90,7 +100,7 @@ export class Reminders {
   private tick: NodeJS.Timeout | null = null
   /** 这次打开以后已经弹过的（记录还没写完时别再弹一次） */
   private shown = new Set<string>()
-  private notifier: Notifier = E2E ? new TestNotifier() : new RealNotifier()
+  private notifier = notifier()
   private replanTimer: NodeJS.Timeout | null = null
 
   constructor(
@@ -170,7 +180,7 @@ export class Reminders {
     return {
       title: t.title,
       body: tr(lang, 'notifBody', whenLabel(lang, t, today), this.deps.noteTitle(t.path)),
-      actions: [tr(lang, 'nDone'), tr(lang, 'n10m'), tr(lang, 'n1h'), tr(lang, 'nTomorrow')],
+      actions: [tr(lang, 'nDone'), tr(lang, 'n10m'), tr(lang, 'n1h'), tr(lang, 'nTomorrow'), tr(lang, 'nOpen')],
       key: t.rkey,
       due,
       at,
@@ -194,6 +204,7 @@ export class Reminders {
     // 点之前这一条可能已经改过：照 rkey 找现在的那一条
     const cur = this.deps.tasks().find((x) => x.rkey === t.rkey) ?? t
     if (a === 'click') return this.deps.open(cur)
+    if (a === 'open') return this.deps.openNote(cur)
     if (a === 'done') {
       await this.deps.tick(cur)
       await this.log({ t: stamp(this.deps.now()), id: t.rkey, due, ev: 'done', title: t.title, path: t.path })

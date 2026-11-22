@@ -8,7 +8,7 @@
  * 一块材料。src 是来源（「AI的回答 · 第28页」「《随手记》」「粘贴的图」「第28页 · 我框的」）；
  * 图是软件设置目录 pasted/ 里的名字（和粘贴的图同一个地方），发给引擎时作为图片一起附上；page：PDF 上框的那页
  */
-export type Material = { kind: 'quote'; text: string; src: string } | { kind: 'image'; name: string; src: string; page?: number }
+export type Material = { kind: 'quote'; text: string; src: string; /** 网页上引的（task-6cxtc）：那一页的网址，问完写进笔记时块头带回到那一段的链接 */ url?: string } | { kind: 'image'; name: string; src: string; page?: number; url?: string }
 
 /** 字里的编号：①…⑳，一次最多 20 块 */
 export const MARKS = '①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳'
@@ -83,9 +83,10 @@ export function checkMaterials(x: unknown): Material[] | undefined {
   return x.map((m): Material => {
     const o = (m && typeof m === 'object' ? m : {}) as Record<string, unknown>
     if (typeof o.src !== 'string' || o.src.length > 300) throw new Error('引用的材料不对')
-    if (o.kind === 'quote' && typeof o.text === 'string' && o.text.length <= 20_000) return { kind: 'quote', text: o.text, src: o.src }
+    const url = typeof o.url === 'string' && o.url.length <= 4000 && /^https?:\/\//i.test(o.url) ? { url: o.url } : {}
+    if (o.kind === 'quote' && typeof o.text === 'string' && o.text.length <= 20_000) return { kind: 'quote', text: o.text, src: o.src, ...url }
     if (o.kind === 'image' && typeof o.name === 'string' && PASTED_NAME.test(o.name))
-      return { kind: 'image', name: o.name, src: o.src, ...(typeof o.page === 'number' && Number.isFinite(o.page) ? { page: o.page } : {}) }
+      return { kind: 'image', name: o.name, src: o.src, ...(typeof o.page === 'number' && Number.isFinite(o.page) ? { page: o.page } : {}), ...url }
     throw new Error('引用的材料不对')
   })
 }

@@ -3,6 +3,7 @@
  * 主进程（main/agent/engine-watch.ts）记、查；设置 › AI 每家那一行、引擎菜单、AI 对话出错时用这里的话说。不碰 Electron，能单独测。
  */
 import type { EngineId } from './agent'
+import { list, t } from './i18n'
 
 /**
  * 我们照它的 --help 和真跑核过的版本（engines.ts 里那些参数就是照这几个版本写的）。装着的是别的版本时后台自查一次；
@@ -64,6 +65,7 @@ export function compareVersions(a: string, b: string): number {
 
 export const isNewer = (latest: string | undefined, current: string | undefined) => !!latest && !!current && compareVersions(latest, current) > 0
 
+/** 影响哪：中文原句，说的时候 t() */
 const SCOPE_TEXT: Record<EngineProblem['scope'], string> = { chat: 'AI 对话可能出错', quick: '/ 命令、梦游、小活可能出错', all: '用到它的都可能出错' }
 
 /** 几处问题合起来影响哪：AI 对话和别的都有就是都影响 */
@@ -74,19 +76,19 @@ function scopeOf(ps: EngineProblem[]): EngineProblem['scope'] {
 
 /** 一种问题怎么说：一个、几个 */
 function kindText(kind: ProblemKind, whats: string[]): string {
-  const list = whats.join('、')
+  const ws = list(whats)
   const n = whats.length
   switch (kind) {
     case 'flag':
-      return n === 1 ? `有一个参数不认了：${list}` : `有${n}个参数不认了：${list}`
+      return n === 1 ? t('有一个参数不认了：{list}', { list: ws }) : t('有{n}个参数不认了：{list}', { n, list: ws })
     case 'value':
-      return `参数的值不认了：${list}`
+      return t('参数的值不认了：{list}', { list: ws })
     case 'method':
-      return `接口变了：${list} 没有了`
+      return t('接口变了：{list} 没有了', { list: ws })
     case 'format':
-      return `输出格式变了：${list}`
+      return t('输出格式变了：{list}', { list: ws })
     case 'feature':
-      return `全能模式关着时关不掉：${list}`
+      return t('全能模式关着时关不掉：{list}', { list: ws })
   }
 }
 
@@ -102,14 +104,15 @@ export function problemText(problems: EngineProblem[]): string {
     return ws.length ? [kindText(k, ws)] : []
   })
   if (!parts.length) return ''
-  return bad.length ? `${parts.join('；')}，${SCOPE_TEXT[scopeOf(bad)]}` : parts.join('；')
+  const all = parts.join(t('；', { ctx: '分句' }))
+  return bad.length ? t('{problems}，{scope}', { problems: all, scope: t(SCOPE_TEXT[scopeOf(bad)]) }) : all
 }
 
 /** 设置 › AI 那一行、引擎菜单里写的：「2.1.330 · 能用」「2.2.0 · 有一个参数不认了：--xxx，AI 对话可能出错」 */
 export function healthText(h: EngineHealth): string {
-  if (h.state === 'unknown') return `${h.version} · 没查成${h.note ? `：${h.note}` : ''}`
-  if (h.state === 'ok') return `${h.version} · 能用`
-  if (h.state === 'warn') return `${h.version} · 能用（${problemText(h.problems)}）`
+  if (h.state === 'unknown') return h.note ? t('{v} · 没查成：{note}', { v: h.version, note: h.note }) : t('{v} · 没查成', { v: h.version })
+  if (h.state === 'ok') return t('{v} · 能用', { v: h.version })
+  if (h.state === 'warn') return t('{v} · 能用（{problems}）', { v: h.version, problems: problemText(h.problems) })
   return `${h.version} · ${problemText(h.problems)}`
 }
 
@@ -124,9 +127,9 @@ const two = (n: number) => String(n).padStart(2, '0')
 /** 「今天 09:14」「11-20 09:14」 */
 export function whenText(at: number, now = Date.now()): string {
   const d = new Date(at)
-  const t = new Date(now)
+  const now2 = new Date(now)
   const hm = `${two(d.getHours())}:${two(d.getMinutes())}`
-  return d.toDateString() === t.toDateString() ? `今天 ${hm}` : `${two(d.getMonth() + 1)}-${two(d.getDate())} ${hm}`
+  return d.toDateString() === now2.toDateString() ? t('今天 {hm}', { hm }) : `${two(d.getMonth() + 1)}-${two(d.getDate())} ${hm}`
 }
 
 /**
@@ -134,7 +137,8 @@ export function whenText(at: number, now = Date.now()): string {
  * 这次没拉成再说一句为什么；一次都没拉到是「自带的几个」
  */
 export function pulledText(o: { at?: number; err?: string; since: number; now?: number }): string {
-  if (!o.at) return o.err ? `没拉到（${o.err}），用的是自带的几个` : '自带的几个，还没拉'
-  if (o.at >= o.since && !o.err) return '刚拉的'
-  return `上次拉的 ${whenText(o.at, o.now)}${o.err ? `，这次没拉到（${o.err}）` : ''}`
+  if (!o.at) return o.err ? t('没拉到（{err}），用的是自带的几个', { err: o.err }) : t('自带的几个，还没拉')
+  if (o.at >= o.since && !o.err) return t('刚拉的')
+  const when = whenText(o.at, o.now)
+  return o.err ? t('上次拉的 {when}，这次没拉到（{err}）', { when, err: o.err }) : t('上次拉的 {when}', { when })
 }

@@ -4,23 +4,25 @@
  * 改库里那一行都交给主进程（window.ct.edit），提示条带撤销；拖动、右键（系统菜单）、⌘K、设置都在这里接。
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { codiconSvg } from '@cn/design/codicon-svg'
+import { type CalMode, parseDrop, useDragDrop } from '@cn/calendar'
 import type { Prio } from '@cn/tasks'
 import type { AddCtx, EditOp, EditResult, Notice, TaskView } from '../shared/api'
 import { INBOX_NOTE } from '../shared/brand'
-import { tr } from '../shared/i18n'
+import { repeatLabel, tr } from '../shared/i18n'
 import { cntInbox, cntNote, cntToday, cntTomorrow, cntWeek, findAgain, type Nav, notesWithTodo } from '../shared/views'
 import { barKind } from '../shared/update'
 import { dayLabel, isoPlus, mdLabel, whenLabel } from '../shared/when'
 import { type Actions, ActionsCtx } from './actions'
 import { DeleteAsk, ImportDialog } from './ImportDialog'
 import { Palette } from './Palette'
-import { SettingsDialog } from './Settings'
+import { SettingsDialog, type SettingsPage } from './Settings'
 import { getData, nowMs, reloadState, saveSettings, useData, useLang, useToday } from './store'
-import { ClaudeLogo, Ic, type ToastData, Toast, useT } from './ui'
-import { CalendarView, H0, HP, ListView, MiniMonth, noteLabel, QuadView, Detail } from './views'
+import { EngineLogo, Ic, type ToastData, Toast, useT } from './ui'
+import { FocusView, mmss, useFocusLeft } from './focus'
+import { HabitsView } from './habits'
+import { CalendarView, CalPanel, Detail, LeftMonth, ListView, noteLabel, QuadView } from './views'
 
-type Act = 'lists' | 'calendar' | 'quad'
+type Act = 'lists' | 'calendar' | 'quad' | 'focus' | 'habit'
 type SelRef = Pick<TaskView, 'key' | 'id' | 'path' | 'line' | 'raw' | 'title'>
 const pickSel = (t: TaskView): SelRef => ({ key: t.key, id: t.id, path: t.path, line: t.line, raw: t.raw, title: t.title })
 
@@ -47,7 +49,7 @@ function ChooseVault() {
 }
 
 function Desk() {
-  const { state, snap, git, rem } = useData()
+  const { state, snap, git, rem, cal, ai } = useData()
   const lang = useLang()
   const t = useT()
   const today = useToday()
@@ -60,8 +62,9 @@ function Desk() {
   const [toast, setToast] = useState<ToastData | null>(null)
   const [flash, setFlash] = useState<string | null>(null)
   const [pal, setPal] = useState(false)
-  const [setOpen, setSetOpen] = useState(false)
-  const [calMode, setCalMode] = useState<'week' | 'month'>('week')
+  /** 设置开着时开在哪一页（底栏「日历、提醒事项已连接」开在「日历和提醒事项」） */
+  const [setOpen, setSetOpen] = useState<SettingsPage | null>(null)
+  const [calMode, setCalMode] = useState<CalMode>('week')
   const [anchor, setAnchor] = useState(today)
   const [mini, setMini] = useState(today.slice(0, 7))
   const [say, setSay] = useState<{ text: string; x: number; y: number } | null>(null)
@@ -196,10 +199,59 @@ function Desk() {
         const p = await window.ct.taskMenu(x.key, lang)
         if (!p) return
         if (p.kind === 'date') actions.setDate(x, p.date)
+        else if (p.kind === 'focus') actions.focusOn(x)
         else if (p.kind === 'open') actions.openNote(x.path, x.line)
         else if (p.kind === 'delete') actions.del(x)
       },
       preview: (x) => void window.ct.previewNotif(x.key),
+      habitCheck: (h, date, on) =>
+        void window.ct.habit({ op: 'check', path: h.path, date, on }).then((r) => {
+          if (!r.ok) return show(r.reason === 'readonly' ? t('habitReadonly') : t('failed', r.message ?? ''))
+          const d = date === today ? t('today') : mdLabel(lang, date)
+          if (on) show(date === today ? t('habitChecked', h.name) : t('habitCheckedDay', h.name, d), t('habitCheckedSub', h.path, date), r.undo || undefined)
+          else show(t('habitUnchecked', h.name, d), t('habitUncheckedSub', h.path, date), r.undo || undefined)
+        }),
+      focusGo: (key) => void window.ct.focus(key === undefined ? { op: 'start' } : { op: 'start', key }),
+      focusPause: () => void window.ct.focus({ op: 'pause' }),
+      focusStop: () => void window.ct.focus({ op: 'stop' }),
+      focusTask: (key) => void window.ct.focus({ op: 'task', key }),
+      aiSplitAccept: (x, steps) =>
+        void window.ct.aiSplitAccept(x.key, steps).then((r) => {
+          if (!r.ok) return fail(r)
+          show(t('aiSplitAdded', steps.length), t('aiSplitAddedSub', note(x.path)), r.undo || undefined)
+        }),
+      aiSchedAccept: (slots) =>
+        void window.ct.aiScheduleAccept(slots).then((r) => {
+          if (!r.ok) return show(r.reason === 'gone' ? t('gone') : t('failed', r.message ?? ''))
+          show(t('aiSchedAdded', r.n), t('aiSchedAddedSub'), r.undo || undefined)
+        }),
+      focusOn: (x) => {
+        void window.ct.focus({ op: 'start', key: x.key })
+        go('focus')
+      },
+      habitNew: async (name, rule) => {
+        const r = await window.ct.habit({ op: 'new', name, rule })
+        if (!r.ok) {
+          show(r.reason === 'exists' ? t('habitExists', name) : t('failed', r.message ?? ''))
+          return false
+        }
+        show(t('habitAdded', name), t('habitAddedSub', r.path), r.undo || undefined)
+        return true
+      },
+      habitMenu: async (h) => {
+        const p = await window.ct.habitMenu(h.path, lang)
+        if (!p) return
+        if (p.kind === 'open') actions.openNote(h.path)
+        else if (p.kind === 'rule') {
+          const r = await window.ct.habit({ op: 'rule', path: h.path, rule: p.rule })
+          if (r.ok) show(t('habitRuleSet', h.name, repeatLabel(lang, p.rule)), t('habitRuleSetSub', h.path), r.undo || undefined)
+          else show(t('failed', r.message ?? ''))
+        } else if (p.kind === 'delete') {
+          const r = await window.ct.habit({ op: 'delete', path: h.path })
+          if (r.ok) show(t('habitDeleted', h.name), t('habitDeletedSub', h.path), r.undo || undefined)
+          else show(t('failed', r.message ?? ''))
+        }
+      },
       undo: (id) =>
         void window.ct.undo(id).then((r) => {
           if (lastUndo.current === id) lastUndo.current = null
@@ -221,7 +273,7 @@ function Desk() {
     [actions, show, t],
   )
   useEffect(() => void window.ct.ready(), [])
-  useEffect(() => window.ct.onMenu((w) => (w === 'settings' ? setSetOpen(true) : setPal(true))), [])
+  useEffect(() => window.ct.onMenu((w) => (w === 'settings' ? setSetOpen('general') : setPal(true))), [])
 
   // ---------- 键盘 ----------
   useEffect(() => {
@@ -232,7 +284,7 @@ function Desk() {
         setPal(true)
       } else if (e.metaKey && e.key === ',') {
         e.preventDefault()
-        setSetOpen(true)
+        setSetOpen('general')
       } else if (e.metaKey && e.key === '\\') {
         e.preventDefault()
         void saveSettings(e.altKey ? { right: !getData().state!.settings.right } : { left: !getData().state!.settings.left })
@@ -243,113 +295,45 @@ function Desk() {
         // 弹窗里点过的按钮换掉了（连上提醒事项后「连接」换成开关），焦点掉到页面上：esc 照样关最上面那个弹窗
         if (delAsk) setDelAsk(null)
         else if (imp) setImp(false)
-        else setSetOpen(false)
+        else setSetOpen(null)
       } else if (e.key === 'Escape' && !inField && !pal && !setOpen) setSay(null)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [actions, pal, setOpen, imp, delAsk])
 
-  // ---------- 拖动（照原型：按住挪过 5 才算拖，指到 data-drop 上亮一下，日历的格子里出钟点预览） ----------
-  const dragRef = useRef<{ key: string; x: number; y: number; moved: boolean; g?: HTMLDivElement; tg?: string | null; time?: string } | null>(null)
-  useEffect(() => {
-    const clear = () => {
-      document.querySelectorAll('.over').forEach((x) => x.classList.remove('over'))
-      document.querySelectorAll('.slotprev').forEach((x) => x.remove())
-    }
-    const down = (e: PointerEvent) => {
-      if (e.button !== 0) return
-      const el = e.target as HTMLElement
-      const r = el.closest<HTMLElement>('[data-drag]')
-      if (!r || el.closest('.cb, input, select, button.btn')) return
-      dragRef.current = { key: r.dataset.drag!, x: e.clientX, y: e.clientY, moved: false }
-    }
-    const move = (e: PointerEvent) => {
-      const d = dragRef.current
-      if (!d) return
-      if (!d.moved && Math.hypot(e.clientX - d.x, e.clientY - d.y) < 5) return
-      const task = getData().snap.tasks.find((x) => x.key === d.key)
-      if (!task) return
-      if (!d.moved) {
-        d.moved = true
-        const g = document.createElement('div')
-        g.className = 'dragghost'
-        g.innerHTML = codiconSvg('gripper', { size: 14 })
-        g.append(task.title)
-        document.body.appendChild(g)
-        d.g = g
-        document.querySelector(`[data-drag="${CSS.escape(d.key)}"]`)?.classList.add('lift')
-      }
-      d.g!.style.left = e.clientX + 'px'
-      d.g!.style.top = e.clientY + 'px'
-      clear()
-      const tg = document.elementFromPoint(e.clientX, e.clientY)?.closest<HTMLElement>('[data-drop]')
-      d.tg = tg?.dataset.drop ?? null
-      d.time = undefined
-      if (!tg) return
-      if (d.tg!.startsWith('day:')) {
-        const b = tg.getBoundingClientRect()
-        let m = H0 * 60 + (Math.round(((e.clientY - b.top) / HP) * 2) / 2) * 60
-        m = Math.max(0, Math.min(24 * 60 - 30, m))
-        d.time = `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
-        const p = document.createElement('div')
-        p.className = 'slotprev'
-        p.style.top = ((m - H0 * 60) / 60) * HP + 'px'
-        p.style.height = HP - 2 + 'px'
-        p.textContent = d.time
-        tg.appendChild(p)
-      } else tg.classList.add('over')
-    }
-    const up = (e: PointerEvent) => {
-      const d = dragRef.current
-      dragRef.current = null
-      if (!d) return
-      clear()
-      document.querySelectorAll('.lift').forEach((x) => x.classList.remove('lift'))
-      const x = getData().snap.tasks.find((y) => y.key === d.key)
-      if (!d.moved) {
-        if ((e.target as HTMLElement).closest('.cb, button, input, select')) return
-        if (x) setSelRef(pickSel(x))
-        return
-      }
-      d.g?.remove()
-      if (!x || !d.tg) return
-      const i = d.tg.indexOf(':')
-      const k = i < 0 ? d.tg : d.tg.slice(0, i)
-      const v = i < 0 ? '' : d.tg.slice(i + 1)
+  // ---------- 拖动（@cn/calendar 的 useDragDrop：按住挪过 5 才算拖，指到 data-drop 上亮一下，日历的格子里出钟点预览） ----------
+  useDragDrop({
+    title: (key) => getData().snap.tasks.find((x) => x.key === key)?.title ?? null,
+    click: (key) => {
+      const x = getData().snap.tasks.find((y) => y.key === key)
+      if (x) setSelRef(pickSel(x))
+    },
+    drop: (key, target, time) => {
+      const x = getData().snap.tasks.find((y) => y.key === key)
+      if (!x) return
+      const { kind: k, value: v } = parseDrop(target)
       if (k === 'date' || k === 'mday') x.date !== v && actions.setDate(x, v)
       else if (k === 'nodate') x.date && actions.setDate(x, null)
       else if (k === 'allday') (x.date !== v || x.time) && actions.setDate(x, v, null, 'allday')
-      else if (k === 'day') (x.date !== v || x.time !== d.time) && actions.setDate(x, v, d.time)
+      else if (k === 'day') (x.date !== v || x.time !== time) && actions.setDate(x, v, time)
       else if (k === 'prio') x.prio !== Number(v) && actions.setPrio(x, Number(v) as Prio, true)
       else if (k === 'list') x.path !== v && actions.move(x, v)
-    }
-    const ctx = (e: MouseEvent) => {
-      const r = (e.target as HTMLElement).closest<HTMLElement>('[data-drag]')
-      if (!r) return
-      e.preventDefault()
-      const x = getData().snap.tasks.find((y) => y.key === r.dataset.drag)
-      if (x) {
-        setSelRef(pickSel(x))
-        actions.menu(x)
-      }
-    }
-    document.addEventListener('pointerdown', down)
-    document.addEventListener('pointermove', move)
-    document.addEventListener('pointerup', up)
-    document.addEventListener('contextmenu', ctx)
-    return () => {
-      document.removeEventListener('pointerdown', down)
-      document.removeEventListener('pointermove', move)
-      document.removeEventListener('pointerup', up)
-      document.removeEventListener('contextmenu', ctx)
-    }
-  }, [actions])
+    },
+    menu: (key) => {
+      const x = getData().snap.tasks.find((y) => y.key === key)
+      if (!x) return
+      setSelRef(pickSel(x))
+      actions.menu(x)
+    },
+    // 系统日历的日程拖不动：说一句（原型）
+    readonly: () => show(t('calReadonly'), t('calReadonlySub')),
+  })
 
   // ---------- 左图标栏、左栏 ----------
   const nToday = cntToday(snap.tasks, today)
   const tapAct = (a: Act) => {
-    if (a === act && s.left && a !== 'quad') return void saveSettings({ left: false })
+    if (a === act && s.left && (a === 'lists' || a === 'calendar')) return void saveSettings({ left: false })
     if (!s.left) void saveSettings({ left: true })
     if (a !== act) go(a)
   }
@@ -361,7 +345,7 @@ function Desk() {
   }
   const ab = (o: { k: string; icon?: Parameters<typeof Ic>[0]['n']; label: string; on?: boolean; dis?: boolean; badge?: number; logo?: boolean; onClick: (e: React.MouseEvent) => void }) => (
     <button key={o.k} className={`ab${o.on ? ' on' : ''}${o.dis ? ' dis' : ''}`} data-k={o.k} aria-label={o.label} aria-pressed={o.on ? true : undefined} onClick={o.onClick}>
-      {o.logo ? <ClaudeLogo s={fa ? 20 : 18} /> : <Ic n={o.icon!} s={fa ? 24 : 20} />}
+      {o.logo ? <EngineLogo id={ai?.engine} s={fa ? 20 : 18} /> : <Ic n={o.icon!} s={fa ? 24 : 20} />}
       {o.badge ? <span className="bd">{o.badge}</span> : null}
       <span className="tip">{o.label}</span>
     </button>
@@ -425,17 +409,20 @@ function Desk() {
     left = {
       title: t('calendar'),
       body: (
-        <MiniMonth
-          snap={snap}
-          today={today}
-          month={mini}
-          week={calMode === 'week'}
-          onMonth={setMini}
-          onPick={(d) => {
-            setAnchor(d)
-            setCalMode('week')
-          }}
-        />
+        <>
+          <LeftMonth
+            snap={snap}
+            today={today}
+            month={mini}
+            week={calMode === 'week'}
+            onMonth={setMini}
+            onPick={(d) => {
+              setAnchor(d)
+              setCalMode('week')
+            }}
+          />
+          <CalPanel />
+        </>
       ),
     }
 
@@ -467,10 +454,18 @@ function Desk() {
       />
     )
     tab = { icon: 'calendar', label: t('calendar') }
-  } else {
+  } else if (act === 'quad') {
     center = <QuadView snap={snap} today={today} sel={sel?.key ?? null} flash={flash} />
     tab = { icon: 'target', label: t('quad') }
+  } else if (act === 'focus') {
+    center = <FocusView snap={snap} today={today} sel={sel} />
+    tab = { icon: 'watch', label: t('focus') }
+  } else {
+    center = <HabitsView snap={snap} today={today} />
+    tab = { icon: 'history', label: t('habit') }
   }
+  /** 右栏「详情」只在清单、日历、四象限（原型：专注、习惯是整页） */
+  const withDetail = act === 'lists' || act === 'calendar' || act === 'quad'
 
   const back = () =>
     setHist((h) => {
@@ -521,11 +516,11 @@ function Desk() {
             {ab({ k: 'lists', icon: 'checklist', label: t('lists'), on: act === 'lists', badge: nToday, onClick: () => tapAct('lists') })}
             {ab({ k: 'calendar', icon: 'calendar', label: t('calendar'), on: act === 'calendar', onClick: () => tapAct('calendar') })}
             {ab({ k: 'quad', icon: 'target', label: t('quad'), on: act === 'quad', onClick: () => tapAct('quad') })}
-            {ab({ k: 'focus', icon: 'watch', label: t('focusLater'), dis: true, onClick: (e) => later(e, t('focusSay')) })}
-            {ab({ k: 'habit', icon: 'history', label: t('habitLater'), dis: true, onClick: (e) => later(e, t('habitSay')) })}
+            {ab({ k: 'focus', icon: 'watch', label: t('focus'), on: act === 'focus', onClick: () => tapAct('focus') })}
+            {ab({ k: 'habit', icon: 'history', label: t('habit'), on: act === 'habit', onClick: () => tapAct('habit') })}
             <span className="grow" />
             {ab({ k: 'db', icon: 'database', label: t('dbLater'), dis: true, onClick: (e) => later(e, t('dbSay')) })}
-            {ab({ k: 'settings', icon: 'settings-gear', label: t('settings'), onClick: () => setSetOpen(true) })}
+            {ab({ k: 'settings', icon: 'settings-gear', label: t('settings'), onClick: () => setSetOpen('general') })}
           </nav>
           {left && s.left && (
             <aside className="left" data-part={`左栏 ${left.title}`}>
@@ -558,7 +553,7 @@ function Desk() {
               {center}
             </div>
           </main>
-          {s.right && (
+          {s.right && withDetail && (
             <aside className="right" data-part="右栏">
               <div className="tabs">
                 <button className="tab on" aria-selected>
@@ -579,7 +574,7 @@ function Desk() {
           )}
           <nav className="abar r" aria-label={t('detail')}>
             {ab({ k: 'detail', icon: 'list-flat', label: t('detail'), on: s.right, onClick: () => void saveSettings({ right: !s.right }) })}
-            {ab({ k: 'ai', logo: true, label: t('aiLater'), dis: true, onClick: (e) => later(e, t('aiSay')) })}
+            {ab({ k: 'ai', logo: true, label: t('aiBar', ai?.label ?? 'Claude Code'), onClick: (e) => later(e, t('aiBarSay', ai?.full ?? 'Claude Code')) })}
           </nav>
         </div>
         <div className="status" data-part="底栏">
@@ -592,18 +587,26 @@ function Desk() {
             {git && git.changed > 0 ? t('uncommitted', git.changed) : t('committed')}
           </span>
           <span className="sp" />
-          {rem?.active && (
-            <button title={t('remRingsTip', rem.list?.title ?? '')} onClick={() => setSetOpen(true)}>
-              <Ic n="bell" s={12} />
-              {t('remStatus')}
+          <FocusBar onOpen={() => go('focus')} />
+          {cal?.active ? (
+            <button data-testid="cal-status" onClick={() => setSetOpen('calrem')}>
+              <Ic n="calendar" s={12} />
+              {rem?.active ? t('calRemStatus') : t('calStatus')}
             </button>
+          ) : (
+            rem?.active && (
+              <button title={t('remRingsTip', rem.list?.title ?? '')} onClick={() => setSetOpen('calrem')}>
+                <Ic n="bell" s={12} />
+                {t('remStatus')}
+              </button>
+            )
           )}
           <span className="bi">{t('todayN', nToday)}</span>
           <button aria-label={t('langAria')} onClick={() => void saveSettings({ lang: lang === 'zh' ? 'en' : 'zh' })}>
             <Ic n="globe" s={12} />
             {t('langName')}
           </button>
-          <UpdateBar onSettings={() => setSetOpen(true)} />
+          <UpdateBar onSettings={() => setSetOpen('general')} />
         </div>
       </div>
       {say && (
@@ -616,11 +619,11 @@ function Desk() {
           today={today}
           onClose={() => setPal(false)}
           onGo={(a, n) => (setPal(false), go(a, n))}
-          onSettings={() => (setPal(false), setSetOpen(true))}
+          onSettings={() => (setPal(false), setSetOpen('general'))}
           onImport={rem?.connected && rem.auth === 'full' ? () => (setPal(false), setImp(true)) : undefined}
         />
       )}
-      {setOpen && <SettingsDialog onClose={() => setSetOpen(false)} onImport={() => (setSetOpen(false), setImp(true))} />}
+      {setOpen && <SettingsDialog page={setOpen} onClose={() => setSetOpen(null)} onImport={() => (setSetOpen(null), setImp(true))} />}
       {imp && (
         <ImportDialog
           onClose={() => setImp(false)}
@@ -683,6 +686,20 @@ function ICloudBanner({ show }: { show: boolean }) {
         </button>
       </div>
     </div>
+  )
+}
+
+/** 底栏：专注计时中写剩几分钟（原型 statusItems），点了回到「专注」 */
+function FocusBar({ onOpen }: { onOpen: () => void }) {
+  const { focus } = useData()
+  const t = useT()
+  const left = useFocusLeft(focus)
+  if (!focus?.running) return null
+  return (
+    <button className="fbar" title={t('focusStatusTip')} onClick={onOpen}>
+      <Ic n="watch" s={12} />
+      <span data-testid="focus-bar">{mmss(left)}</span>
+    </button>
   )
 }
 
