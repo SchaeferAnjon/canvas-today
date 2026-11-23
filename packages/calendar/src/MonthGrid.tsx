@@ -54,6 +54,7 @@ export function MonthGrid({ lang, month, today, items, events = [], sel = null, 
                   ))}
                   {showIt.map((x) => (
                     <div key={x.key} className={`cal-chip mad${x.done ? ' done' : ''}${sel === x.key ? ' on' : ''}`} data-drag={x.key} title={x.title}>
+                      {x.dot && <i className="cal-dot" style={{ background: x.dot }} />}
                       <span className="nm">{x.title}</span>
                       {x.time && <span className={`tm${!x.done && d < today ? ' late' : ''}`}>{x.time}</span>}
                     </div>

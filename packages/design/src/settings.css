@@ -1,6 +1,6 @@
 /*
  * 设置的框架（画布笔记设置方向 A「分组侧栏」，task-f7rib；2026-11-22 抽成共用的，画布今日也用，task-ykkoz）。组件在 settings.tsx。
- * 窗口 960 × 680、左边 200 宽侧栏（「设置」、可选的搜索框、分段的分页），右边每页一个头（图标、名字、一句这页管什么），
+ * 窗口 960 × 740（2026-11-23 18 页放得下，原来 680）、左边 200 宽侧栏（「设置」、可选的搜索框、分段的分页），右边每页一个头（图标、名字、一句这页管什么），
  * 下面按组一张 1px --line、圆角 12 的细线表：一行最矮 52，左边名字 13/500 + 说明 12 --t3，右边一列 220，
  * 下拉、分段 220 宽，开关、按钮贴这一列的右边（偏好「设置里下拉要对齐」）；方角开关；底下提示条带「撤回」。
  * 前一半是弹窗和开关的底子（原来画布笔记 settings.css 的头几条），后一半是方向 A（原来 settings/settings-a.css），先后照旧。
@@ -91,12 +91,11 @@
 /* ---------- 窗口和侧栏 ---------- */
 .set {
   width: min(960px, calc(100vw - 40px));
-  height: min(680px, calc(100vh - 60px));
+  height: min(740px, calc(100vh - 60px));
   grid-template-columns: 200px minmax(0, 1fr);
   position: relative;
 }
 .set-nav {
-  /* 15 页在 680 高里不用滚：段头上边 9、底下 10（原型是 10、12，差 5px 侧栏出滚动条） */
   padding: 16px 10px 10px;
   gap: 0;
   min-height: 0;
@@ -141,18 +140,19 @@
   padding: 0;
   display: grid;
 }
+/* 画布笔记 18 页（2026-11-23 加了自动化、选中小条、软件家族；弹窗跟着从 680 加到 740）放得下、「高级」不被挤出去：段头上下 6 / 3、页和页之间不留缝（原来 9 / 4、1） */
 .sa-navlist {
   overflow: auto;
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 0;
 }
 .sa-sec {
   font-size: 12px;
   color: var(--t3);
-  padding: 9px 10px 4px;
+  padding: 6px 10px 3px;
   flex: none;
 }
 .sa-sec:first-child {
@@ -244,6 +244,18 @@
   right: 12px;
   top: 12px;
   z-index: 3;
+  /* 关上的 ×：28 方、--t2，悬停 --fill（画布笔记的 .iconbtn 本来就是这样；画布今日没有 .iconbtn，以前 × 偏右上、颜色太深） */
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: none;
+  color: var(--t2);
+}
+.set-x:hover {
+  background: var(--fill);
+  color: var(--t1);
 }
 .sa-head {
   display: flex;
@@ -271,9 +283,11 @@
   font-size: 12px;
   color: var(--t3);
 }
-/* 照现在的几页（外观、首页、梦游、插件）：页头下面接它们自己的标题，第一个标题离页头 22 */
+/* 照现在的几页（外观、首页、梦游、插件）：页头下面接它们自己的标题，第一个标题离页头 22；
+   跟在一张细线表后面的也离 22（画布今日外观页：上面一组「和画布笔记一样」，下面接主题卡） */
 .sa-head + .sa-keep > h4:first-child,
-.sa-head + .sa-keep > :first-child > h4:first-child {
+.sa-head + .sa-keep > :first-child > h4:first-child,
+.sa-card + .sa-keep > h4:first-child {
   margin-top: 22px;
 }
 .sa-grph {
@@ -639,7 +653,7 @@
 .set-body {
   scrollbar-gutter: stable;
 }
-/* 侧栏 15 页放得下，不露滚动条 */
+/* 侧栏 16 页放得下，不露滚动条 */
 .sa-navlist {
   scrollbar-width: none;
 }
@@ -668,4 +682,609 @@
 /* 只有字的一行：说明不压到右边那一列 */
 .sa-row.info .sa-txt {
   max-width: calc(100% - 244px);
+}
+
+/* ---------- 外观页的几块（画布笔记、画布今日一个样子）：页里的小标题、主题卡和小窗口、界面风格两张大图、窗口背景缩略图 ---------- */
+/* 画布笔记设置各页自己的样子（外观页的主题卡和小窗口、首页、窗口背景、各种列表行……）。弹窗、侧栏、一行、开关这些框架在 packages/design/src/settings.css */
+.set-body h4 {
+  margin: 22px 0 10px;
+  font: 600 14px/1.35 var(--sans);
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding-right: 32px;
+}
+.set-body h4:first-of-type {
+  margin-top: 4px;
+}
+.set-body h4 span {
+  font-weight: 400;
+  font-size: 12px;
+  color: var(--t3);
+}
+
+/* 主题卡：上面一个小窗口（那套主题自己的颜色和结构），下面名字 + 白天 / 夜里 + 一句话；浅色、深色、导入的各一组 */
+.skins-h {
+  margin: 12px 0 8px;
+  font-size: 12px;
+  color: var(--t3);
+}
+.skins-h:first-child {
+  margin-top: 0;
+}
+.skins {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+.sk {
+  position: relative;
+  border-radius: 10px;
+  box-shadow: 0 0 0 1px var(--line);
+}
+.sk:hover {
+  box-shadow: 0 0 0 1px var(--line2);
+}
+.sk.on {
+  box-shadow: 0 0 0 2px var(--acc);
+}
+.sk-pick {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-radius: 10px;
+  padding: 5px;
+  background: none;
+  text-align: left;
+  color: var(--t1);
+}
+.sk .nm {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 3px 3px;
+  font-weight: 500;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.sk .nm .t {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sk .nm .slot {
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 400;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: var(--acc-soft);
+  color: var(--acc-t);
+}
+.sk .sk-x {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: var(--pop);
+  box-shadow: var(--shadow);
+  opacity: 0;
+  /* 画布笔记的 .iconbtn（app.css）给的样子，画布今日没有那份：垃圾桶在方块正中、次要字色，悬停变正文色 */
+  display: grid;
+  place-items: center;
+  border: 0;
+  color: var(--t2);
+}
+.sk .sk-x:hover {
+  color: var(--t1);
+}
+.sk:hover .sk-x,
+.sk-x:focus-visible {
+  opacity: 1;
+}
+
+/* 小窗口：标题栏 8、图标栏 10、侧栏 30%、标签条 10（当前标签照主题的标记）、文档里一张卡和一颗强调色按钮、底栏 7 */
+.mini {
+  height: 72px;
+  border-radius: 7px;
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: 8px minmax(0, 1fr) 7px;
+  background: var(--win);
+  box-shadow: inset 0 0 0 1px var(--line);
+  color: var(--t1);
+}
+.mini > i {
+  display: block;
+}
+.mini .m-title {
+  background: var(--title);
+  border-bottom: 1px solid var(--seam);
+}
+.mini .m-status {
+  background: var(--status);
+  border-top: 1px solid var(--seam);
+}
+.mini .m-body {
+  display: grid;
+  grid-template-columns: 11px 30% minmax(0, 1fr);
+  min-height: 0;
+}
+.mini .m-bar {
+  background: var(--bar);
+  border-right: 1px solid var(--seam);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding-top: 5px;
+}
+.mini .m-bar i {
+  width: 5px;
+  height: 5px;
+  border-radius: 1px;
+  background: var(--t3);
+  opacity: 0.6;
+}
+.mini .m-bar i.on {
+  background: var(--t1);
+  opacity: 1;
+}
+.mini .m-side {
+  background: var(--side);
+  border-right: 1px solid var(--seam);
+  padding: 6px 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.mini .m-side i {
+  height: 5px;
+  border-radius: 2px;
+  background: var(--fill2);
+}
+.mini .m-side i.on {
+  background: var(--acc-soft);
+  box-shadow: inset 2px 0 0 var(--acc);
+}
+.mini .m-main {
+  display: grid;
+  grid-template-rows: 11px minmax(0, 1fr);
+  min-width: 0;
+}
+.mini .m-tabs {
+  display: flex;
+  background: var(--tabbar);
+  border-bottom: 1px solid var(--seam);
+}
+.mini .m-tabs i {
+  position: relative;
+  width: 30px;
+  border-right: 1px solid var(--seam);
+}
+.mini .m-tabs i.on {
+  background: var(--tab-on);
+}
+.mini[data-tabmark='top'] .m-tabs i.on {
+  box-shadow: inset 0 2px 0 var(--acc);
+}
+.mini[data-tabmark='bottom'] .m-tabs i.on {
+  box-shadow: inset 0 -2px 0 var(--acc);
+}
+.mini[data-tabmark='fill'] .m-tabs i.on {
+  background: linear-gradient(var(--acc-soft), var(--acc-soft)), var(--tab-on);
+}
+.mini .m-doc {
+  position: relative;
+  padding: 7px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.mini .m-doc em {
+  height: 5px;
+  width: 55%;
+  border-radius: 2px;
+  background: var(--md-heading, var(--t1));
+}
+.mini .m-doc s {
+  height: 3px;
+  width: 80%;
+  border-radius: 2px;
+  background: var(--t2);
+  opacity: 0.55;
+}
+.mini .m-doc s.short {
+  width: 50%;
+}
+.mini .m-doc b {
+  height: 16px;
+  width: 60%;
+  margin-top: 2px;
+  border-radius: 3px;
+  background: var(--card);
+  box-shadow: var(--shadow);
+}
+.mini .m-doc u {
+  position: absolute;
+  right: 7px;
+  bottom: 6px;
+  width: 18px;
+  height: 7px;
+  border-radius: 2px;
+  background: var(--acc-bg);
+}
+
+/* 界面风格 A 的小图（Settings.tsx FrameMiniA）：和 B 的小图一样高，左右各一条图标栏，标签下一行面包屑 */
+.mini.fr-mini-a {
+  height: 64px;
+}
+.mini.fr-mini-a .m-body {
+  grid-template-columns: 11px 26% minmax(0, 1fr) 11px;
+}
+.mini.fr-mini-a .m-rbar {
+  border-right: 0;
+  border-left: 1px solid var(--seam);
+}
+.mini.fr-mini-a .m-main {
+  grid-template-rows: 11px 7px minmax(0, 1fr);
+}
+.mini .m-crumb {
+  display: flex;
+  align-items: center;
+  padding: 0 6px;
+}
+.mini .m-crumb i {
+  width: 40%;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--t3);
+  opacity: 0.6;
+}
+.mini.fr-mini-a .m-doc {
+  padding-top: 4px;
+}
+
+/* 首页样式 A / B 两张卡 */
+.hstyles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.hs {
+  border: 0;
+  border-radius: 12px;
+  padding: 6px;
+  background: none;
+  text-align: left;
+  color: var(--t1);
+  box-shadow: 0 0 0 1px var(--line);
+}
+.hs.on {
+  box-shadow: 0 0 0 2px var(--acc);
+}
+.hs .nm {
+  display: block;
+  padding: 8px 4px 2px;
+  font-weight: 500;
+}
+.hs .ds {
+  display: block;
+  font-size: 12px;
+  color: var(--t3);
+  padding: 0 4px 4px;
+}
+
+/* 窗口背景四格、封面格子 */
+.bgs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+.bgs button {
+  border: 0;
+  background: none;
+  padding: 0;
+  text-align: left;
+  font-size: 12px;
+  color: var(--t2);
+}
+.bgs button i {
+  display: grid;
+  place-items: center;
+  height: 58px;
+  border-radius: 8px;
+  background: center / cover var(--fill);
+  box-shadow: inset 0 0 0 1px var(--line);
+  margin-bottom: 6px;
+  color: var(--t3);
+}
+.bgs button.on i {
+  box-shadow: 0 0 0 2px var(--acc);
+}
+
+/* ---------- 外观页的几行（画布笔记、画布今日一份，task-wxr2a；原在画布笔记 settings.css，画布笔记别的页也用 .pair） ---------- */
+.set-body .note {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--t3);
+  margin: 10px 0 12px;
+}
+.set-body .sp {
+  flex: 1;
+}
+.imp-theme {
+  margin-top: 12px;
+}
+/* 「导入VS Code主题…」：画布笔记的 .btn（ui.css + notes.css）是 30 高的圆头按钮，画布今日的 .btn 是 28 高的方角，这里定成一样 */
+.imp-theme .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  border-radius: var(--r-full);
+  color: var(--text);
+  font-weight: var(--fw-medium);
+}
+
+/* 一行：开关 / 下拉 / 输入框放在一块浅底里 */
+.pair {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--fill);
+  font-size: 13px;
+  flex-wrap: wrap;
+}
+/* 行首的名字（名字和邮箱、间隔、远程地址、密钥、翻成……）至少占五个字宽：同一页上下几行，后面的框从同一个位置开始（第 8 轮） */
+.pair > span:first-child {
+  min-width: 5em;
+}
+.pair.plain {
+  background: none;
+  padding: 0;
+}
+.pair.plain .note {
+  margin: 0;
+}
+.pair label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pair select {
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid var(--line2);
+  background: var(--card);
+  color: var(--t1);
+  padding: 0 8px;
+  font: 13px var(--sans);
+}
+
+/* ---------- 设置：界面风格的两张小图 ---------- */
+.fr-pv {
+  display: grid;
+  grid-template-columns: 8px 22px 1fr 22px 8px;
+  height: 64px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--side);
+  box-shadow: 0 0 0 1px var(--line);
+}
+.fr-pv i {
+  display: block;
+}
+.fr-pv.a .sd {
+  background: var(--side);
+  border-left: 1px solid var(--line);
+  border-right: 1px solid var(--line);
+}
+.fr-pv.a .md {
+  background: var(--win);
+}
+.fr-pv.b {
+  background: var(--pv) center / cover;
+  gap: 3px;
+  padding: 8px 0 6px;
+}
+.fr-pv.b .sd,
+.fr-pv.b .md {
+  border-radius: 4px;
+  background: var(--card);
+  opacity: 0.9;
+}
+
+/* ---------- 软件家族（family.tsx，原型 25-软件家族 方向 A） ---------- */
+.fm .sa-grph small {
+  font: 12px var(--sans);
+  color: var(--t3);
+}
+.fm-card {
+  margin-bottom: 12px;
+}
+/* 软件头一行：32 图标、名字和一句话、右边「● 已装 0.3.0 · 打开」或「下载」 */
+.fm-app {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 14px;
+  min-height: 60px;
+}
+.fm-app img,
+.fm-row img {
+  display: block;
+}
+.fm-nm {
+  font-weight: 500;
+}
+.fm-txt {
+  min-width: 0;
+}
+.fm .sa-ds {
+  font-size: 12px;
+  color: var(--t3);
+  line-height: 1.5;
+  margin-top: 1px;
+}
+.fm .sa-lb {
+  font-weight: 500;
+}
+.fm .sa-cc {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  min-width: 0;
+  gap: 8px;
+}
+.fm-st {
+  font-size: 12px;
+  color: var(--t3);
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}
+.fm .dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: 1px;
+  background: var(--green);
+  flex: none;
+}
+/* 「装了以后能开」「先更新画布笔记」：只有字，靠右 */
+.fm-val {
+  font-size: 12px;
+  color: var(--t3);
+  white-space: nowrap;
+}
+.fm .sa-lnk {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+}
+/* 联动一行：左边 112 × 64 小图，中间一两句，右边开关 */
+.fm-link {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr) auto;
+  gap: 14px 16px;
+  align-items: center;
+  padding: 10px 14px;
+  border-top: 1px solid var(--line);
+}
+.fm-card.sa-flash,
+.fm-link.sa-flash {
+  border-radius: 11px;
+}
+.fm-pic {
+  width: 112px;
+  height: 64px;
+  border-radius: 8px;
+  background: var(--fill);
+  display: block;
+  overflow: hidden;
+}
+.fm-pic svg {
+  display: block;
+}
+/* 鼠标放在那一行上，小图里一个强调色的小点沿箭头走 */
+.fm-pic .fm-flow {
+  animation: fm-flow 1.6s ease-in-out infinite;
+  animation-play-state: paused;
+  opacity: 0;
+}
+.fm-link:hover .fm-pic .fm-flow {
+  animation-play-state: running;
+}
+@keyframes fm-flow {
+  0% {
+    transform: translateX(0);
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  85% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(var(--d, 18px));
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fm-pic .fm-flow {
+    animation: none;
+    opacity: 1;
+  }
+}
+/* 家族里还有：一行一个，44 高，20 图标、名字、一句话（太长省略） */
+.fm-row {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 0 14px;
+  min-height: 44px;
+  border-top: 1px solid var(--line);
+}
+.fm-row:first-child {
+  border-top: 0;
+}
+.fm-t {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  min-width: 0;
+}
+.fm-t b {
+  font-weight: 500;
+  white-space: nowrap;
+}
+.fm-t span {
+  font-size: 12px;
+  color: var(--t3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.set .fm-row .sa-btn {
+  height: 24px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+.set .fm .sa-btn .ci {
+  color: var(--t2);
+}
+/* 点了「下载」：转着的小圈、「等你装好」、「装好了，再看一下」 */
+.fm-wait {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.fm-spin {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1.5px solid var(--line2);
+  border-top-color: var(--t2);
+  animation: fm-spin 1s linear infinite;
+  flex: none;
+}
+@keyframes fm-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.fm-note {
+  margin-top: 12px;
 }

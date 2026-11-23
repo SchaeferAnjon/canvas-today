@@ -9,9 +9,68 @@ import { SETTINGS } from './en/settings'
 import { PALETTE } from './en/palette'
 import { SHELL } from './en/shell'
 import { FILE_TEXT } from './en/file-text'
+import { APP } from './en/app'
+import { BOARD } from './en/board'
+import { DOC } from './en/doc'
+import { EDITOR } from './en/editor'
+import { FOLDER } from './en/folder'
+import { MENUS } from './en/menus'
+import { VAULT } from './en/vault'
+import { AI } from './en/ai'
+import { COMMANDS } from './en/commands'
+import { SIDE } from './en/side'
+import { READING } from './en/reading'
+import { AGENT } from './en/agent'
+import { BASE_VIEWS } from './en/base-views'
+import { BASE_LAYOUTS } from './en/base-layouts'
+import { RECORD } from './en/record'
+import { AI_COL } from './en/ai-col'
+import { DB_COLS } from './en/db-cols'
 import { MINDMAP } from './en/mindmap'
+import { AUTO } from './en/auto'
+import { FIND } from './en/find'
+import { MINDMAP2 } from './en/mindmap2'
+import { BASE_SUMS } from './en/base-sums'
+import { SELBAR } from './en/selbar'
+import { BOARD_SELECT } from './en/board-select'
 
 /** 每张分表（测试按文件查重、查占位） */
-export const EN_PARTS: Readonly<Record<string, Table>> = { common: COMMON, settings: SETTINGS, palette: PALETTE, shell: SHELL, 'file-text': FILE_TEXT, mindmap: MINDMAP }
+export const EN_PARTS: Readonly<Record<string, Table>> = {
+  common: COMMON,
+  settings: SETTINGS,
+  palette: PALETTE,
+  shell: SHELL,
+  'file-text': FILE_TEXT,
+  // 第二批：外壳和目录树、白板、文档和数据库、编辑器零碎、文件夹首页、右键菜单
+  app: APP,
+  board: BOARD,
+  doc: DOC,
+  editor: EDITOR,
+  folder: FOLDER,
+  menus: MENUS,
+  vault: VAULT,
+  // 第三批：AI 对话、AI 命令、旁支、读 PDF 和出卡、主进程里给人看的报错
+  ai: AI,
+  commands: COMMANDS,
+  side: SIDE,
+  reading: READING,
+  agent: AGENT,
+  // 数据库第三批（task-i921u）：视图标签条和筛选、看板日历画廊、右栏一条、关联汇总公式列、AI 列
+  'base-views': BASE_VIEWS,
+  'base-layouts': BASE_LAYOUTS,
+  record: RECORD,
+  'db-cols': DB_COLS,
+  'ai-col': AI_COL,
+  // 数据库表底合计（task-i921u「通用合计」）
+  'base-sums': BASE_SUMS,
+  // 思维导图第一批（task-wuv05）
+  mindmap: MINDMAP, mindmap2: MINDMAP2, find: FIND,
+  // 数据库自动化、按钮列、设置 › 自动化和周记（task-i921u）
+  auto: AUTO,
+  // 选中小条能自定义（task-26nz7）
+  selbar: SELBAR,
+  // 白板框选、文档选多块的操作条（task-5ryf9）
+  'board-select': BOARD_SELECT,
+}
 
 export const EN: Table = Object.assign({}, ...Object.values(EN_PARTS)) as Table

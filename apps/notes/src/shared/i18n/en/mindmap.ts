@@ -7,7 +7,6 @@ export const MINDMAP: Table = {
   左右: 'Both sides',
   向下: 'Down',
   '布局：{name}': 'Layout: {name}',
-  换布局: 'Change layout',
   这块导图怎么摆: 'Lay out this map',
   向右展开: 'Grow right',
   '逻辑图：中心在左，一层层往右': 'Logic chart: center on the left, levels to the right',
@@ -17,7 +16,6 @@ export const MINDMAP: Table = {
   '组织结构：中心在上，一层层往下': 'Org chart: center on top, levels below',
   收起到第一层: 'Collapse to first level',
   全部展开: 'Expand all',
-  '记在这篇的属性里：{prop}（向右是默认，不写）': 'Saved in this note’s properties: {prop} (Right is the default and isn’t written)',
   '记在这篇的属性里：{prop}': 'Saved in this note’s properties: {prop}',
 
   // ---------- 导图上：新主题、右键菜单、折叠圆点、加号 ----------
@@ -26,13 +24,9 @@ export const MINDMAP: Table = {
   在后面加同级: 'Add topic after',
   在前面加同级: 'Add topic before',
   加父主题: 'Add parent topic',
-  往上挪: 'Move up',
-  往下挪: 'Move down',
-  展开: 'Expand',
   收起这一枝: 'Collapse this branch',
   只看这一枝: 'Show this branch only',
   回到整张: 'Back to whole map',
-  改字: 'Edit text',
   删掉这一枝: 'Delete this branch',
   '只删这一个（下面的往上提）': 'Delete only this topic (children move up)',
   '展开（藏着{n}个）': (p) => `Expand (${count(p.n, 'hidden topic')})`,
@@ -49,7 +43,6 @@ export const MINDMAP: Table = {
 
   // ---------- 只看这一枝：顶上的胶囊 ----------
   '只看{name}这一枝': 'Only the {name} branch',
-  '「{name}」': '“{name}”',
 
   // ---------- 命令表「导图里」（设置 › 快捷键、⌘K） ----------
   导图里: 'In mind maps',

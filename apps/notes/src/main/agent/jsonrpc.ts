@@ -3,6 +3,7 @@
  * 思路参照 Claudian 的 src/core/rpc/JSONRPCTransport.ts（MIT，见 THIRD_PARTY_NOTICES.md）。
  */
 import { type ChildProcess, spawn } from 'node:child_process'
+import { t } from '../../shared/i18n'
 
 type Pending = { resolve(v: unknown): void; reject(e: Error): void; timer?: NodeJS.Timeout }
 
@@ -31,11 +32,11 @@ export class RpcProcess {
     this.child.stderr!.on('data', (d: string) => (this.stderr = (this.stderr + d).slice(-4000)))
     this.exited = new Promise((resolve) => {
       this.child.on('error', (e) => {
-        this.fail(new Error(`${command} 启动不了：${e.message}`))
+        this.fail(new Error(t('{name} 启动不了：{error}', { name: command, error: e.message })))
         resolve(null)
       })
       this.child.on('exit', (code) => {
-        this.fail(new Error(`${command} 退出了（${code}）${this.stderr ? `：${this.stderr.trim().split('\n').slice(-3).join(' ')}` : ''}`))
+        this.fail(new Error(this.stderr ? t('{name} 退出了（{code}）：{why}', { name: command, code, why: this.stderr.trim().split('\n').slice(-3).join(' ') }) : t('{name} 退出了（{code}）', { name: command, code })))
         resolve(code)
       })
     })
@@ -74,7 +75,7 @@ export class RpcProcess {
         if (!p) continue
         this.pending.delete(msg.id)
         clearTimeout(p.timer)
-        if (msg.error) p.reject(new Error(msg.error.message ?? `出错了（${msg.error.code}）`))
+        if (msg.error) p.reject(new Error(msg.error.message ?? t('出错了（{code}）', { code: msg.error.code })))
         else p.resolve(msg.result)
       }
     }
@@ -82,7 +83,7 @@ export class RpcProcess {
 
   private async answer(id: number | string, method: string, params: Record<string, unknown>) {
     try {
-      if (!this.requestHandler) throw new Error(`不支持 ${method}`)
+      if (!this.requestHandler) throw new Error(`不支持 ${method}`) // 不翻：回给 AI 进程的协议错误
       this.write({ id, result: await this.requestHandler(method, params) })
     } catch (e) {
       this.write({ id, error: { code: -32603, message: String((e as Error).message ?? e) } })
@@ -96,14 +97,14 @@ export class RpcProcess {
 
   /** timeoutMs 为 0 时不限时（一轮对话可能要很久） */
   request<T = Record<string, unknown>>(method: string, params: unknown, timeoutMs = 60_000): Promise<T> {
-    if (this.closed) return Promise.reject(new Error('AI 进程已经退出了'))
+    if (this.closed) return Promise.reject(new Error(t('AI 进程已经退出了')))
     const id = ++this.seq
     return new Promise<T>((resolve, reject) => {
       const p: Pending = { resolve: resolve as (v: unknown) => void, reject }
       if (timeoutMs) {
         p.timer = setTimeout(() => {
           this.pending.delete(id)
-          reject(new Error(`${method} 等了 ${Math.round(timeoutMs / 1000)} 秒没回应`))
+          reject(new Error(t('{name} 等了 {s} 秒没回应', { name: method, s: Math.round(timeoutMs / 1000) })))
         }, timeoutMs)
       }
       this.pending.set(id, p)

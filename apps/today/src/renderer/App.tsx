@@ -4,8 +4,8 @@
  * 改库里那一行都交给主进程（window.ct.edit），提示条带撤销；拖动、右键（系统菜单）、⌘K、设置都在这里接。
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { type CalMode, parseDrop, useDragDrop } from '@cn/calendar'
-import type { Prio } from '@cn/tasks'
+import { type CalMode, openWhenHost, parseDrop, useDragDrop, whenHostOpen } from '@cn/calendar'
+import type { Prio, When, WhenFields } from '@cn/tasks'
 import type { AddCtx, EditOp, EditResult, Notice, TaskView } from '../shared/api'
 import { INBOX_NOTE } from '../shared/brand'
 import { repeatLabel, tr } from '../shared/i18n'
@@ -182,8 +182,8 @@ function Desk() {
         void edit(x, { op: 'move', to }, () => [t('movedNote', x.title, note(to)), t('movedNoteSub', to)]).then((r) => {
           if (r && r.ok) setSelRef({ key: `${r.path}#${r.line}`, id: x.id, path: r.path, line: r.line, raw: r.raw, title: x.title })
         }),
-      add: async (text: string, ctx: AddCtx) => {
-        const r = await window.ct.add(text, ctx)
+      add: async (text: string, ctx: AddCtx, when?: When | null) => {
+        const r = await window.ct.add(text, ctx, when)
         if (!r.ok) {
           if (r.reason !== 'empty') show(t('failed', r.message ?? ''))
           return false
@@ -194,7 +194,7 @@ function Desk() {
         return true
       },
       openNote: (path, line) =>
-        void window.ct.openNote(path, line).then((r) => (r.ok ? show(line === undefined ? t('openedNoteOnly', note(path)) : t('openedNote', note(path), line + 1)) : show(t('noNotesApp')))),
+        void window.ct.openNote(path, line).then((r) => (!r.ok ? show(t('noNotesApp')) : r.by === 'default' ? show(t('openedNoteDefault', note(path))) : show(line === undefined ? t('openedNoteOnly', note(path)) : t('openedNote', note(path), line + 1)))),
       menu: async (x) => {
         const p = await window.ct.taskMenu(x.key, lang)
         if (!p) return
@@ -253,10 +253,51 @@ function Desk() {
         }
       },
       undo: (id) =>
-        void window.ct.undo(id).then((r) => {
+        void (async () => {
+          // 选择器一回改了几次（task-pd289）：「几个编号」用逗号连着，倒着一个个撤
+          let ok = true
+          for (const one of id.split(',').reverse()) {
+            const r = await window.ct.undo(one)
+            if (!r.ok) {
+              ok = false
+              break
+            }
+          }
           if (lastUndo.current === id) lastUndo.current = null
-          show(r.ok ? t('undone') : t('undoChanged'))
-        }),
+          show(ok ? t('undone') : t('undoChanged'))
+        })(),
+      pickWhen: (x, el, keys = false) => {
+        let cur = x
+        let last: WhenFields = { date: x.date, time: x.time, remind: x.remind, repeat: x.repeat }
+        const undos: string[] = []
+        let queue: Promise<unknown> = Promise.resolve()
+        openWhenHost({
+          lang,
+          today,
+          weekStart: 0,
+          align: 'end',
+          keysHint: keys,
+          // 详情里那一颗：贴着整块详情（放在它旁边，不盖住它；设计复审）
+          at: () => (el.isConnected ? (el.closest<HTMLElement>('[data-part="详情"]') ?? el).getBoundingClientRect() : null),
+          value: last,
+          onChange: (next) => {
+            last = next
+            queue = queue.then(async () => {
+              const r = await window.ct.edit({ path: cur.path, line: cur.line, raw: cur.raw, edit: { op: 'when', when: next } })
+              if (!r.ok) return fail(r)
+              cur = { ...cur, line: r.line, raw: r.raw }
+              if (r.undo) undos.push(r.undo)
+            })
+            return next
+          },
+          onClose: () =>
+            void queue.then(() => {
+              if (!undos.length) return
+              if (!last.date) return show(t('dateRemoved', x.title), t('dateRemovedSub'), undos.join(','))
+              show(t('moved', x.title, whenLabel(lang, last, today)), t('movedSub', note(x.path), last.date), undos.join(','))
+            }),
+        })
+      },
     }),
     [edit, flashKey, go, lang, s.right, sel, show, t, today],
   )
@@ -279,6 +320,16 @@ function Desk() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const inField = (e.target as HTMLElement)?.closest?.('input, textarea, select')
+      // ⌥⌘T（task-pd289）：选着一条时弹定日子和时间的选择器（加一条的输入框里自己接，这里不再管）
+      if (e.metaKey && e.altKey && !e.ctrlKey && !e.shiftKey && e.code === 'KeyT') {
+        if (e.defaultPrevented || inField || whenHostOpen()) return
+        e.preventDefault()
+        if (!sel) return show(t('pickOne'))
+        const row = document.querySelector<HTMLElement>(`.row[data-drag="${CSS.escape(sel.key)}"]`)
+        const at = row?.querySelector<HTMLElement>('.acc.when') ?? row ?? document.querySelector<HTMLElement>('[data-part="详情"]')
+        if (at) actions.pickWhen(sel, at, true)
+        return
+      }
       if (e.metaKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k') {
         e.preventDefault()
         setPal(true)
@@ -300,7 +351,7 @@ function Desk() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [actions, pal, setOpen, imp, delAsk])
+  }, [actions, pal, setOpen, imp, delAsk, sel, show, t])
 
   // ---------- 拖动（@cn/calendar 的 useDragDrop：按住挪过 5 才算拖，指到 data-drop 上亮一下，日历的格子里出钟点预览） ----------
   useDragDrop({
@@ -623,7 +674,7 @@ function Desk() {
           onImport={rem?.connected && rem.auth === 'full' ? () => (setPal(false), setImp(true)) : undefined}
         />
       )}
-      {setOpen && <SettingsDialog page={setOpen} onClose={() => setSetOpen(null)} onImport={() => (setSetOpen(null), setImp(true))} />}
+      {setOpen && <SettingsDialog page={setOpen} appNotice={toast?.msg ?? null} onClose={() => setSetOpen(null)} onImport={() => (setSetOpen(null), setImp(true))} />}
       {imp && (
         <ImportDialog
           onClose={() => setImp(false)}
@@ -635,7 +686,7 @@ function Desk() {
         />
       )}
       {/* 提示条在弹窗上面（设置里连提醒事项、导入以后的话也看得到） */}
-      <Toast toast={toast} onUndo={(id) => actions.undo(id)} />
+      <Toast toast={setOpen ? null : toast} onUndo={(id) => actions.undo(id)} />
       {delAsk && (
         <DeleteAsk
           n={delAsk.length}

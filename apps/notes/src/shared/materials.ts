@@ -3,6 +3,7 @@
  * 输入框顶上一排小卡，字里在当时的光标处留一个编号 ①②③；发出去时交给 AI 的话里照旧是 ①②，后面按同一套编号列出每块材料（图叫「图②」）。
  * 读 PDF 的这一问把材料列表带在 AskRequest.mats 里，后面记笔记用（第 3 段写成 md 脚注 [^1]）。界面、主进程共用，不碰 Electron。
  */
+import { list, t } from './i18n'
 
 /**
  * 一块材料。src 是来源（「AI的回答 · 第28页」「《随手记》」「粘贴的图」「第28页 · 我框的」）；
@@ -60,9 +61,11 @@ export function withMaterials(text: string, mats: Material[] | undefined, images
   let k = images
   const lines = mats.map((m, i) => {
     const n = markOf(i + 1)
+    // 不翻：给 AI 的话（材料一行一块）
     return m.kind === 'quote' ? `${n} 引文${n}「${m.text}」（${m.src}）` : `${n} 图${n}（${m.src}；附图里排第 ${++k}）`
   })
   const head = text.trim()
+  // 不翻：给 AI 的话
   return `${head ? head + '\n\n' : ''}我引用的材料（字里的 ①② 是它们的位置。回答里提到哪一块就用它的编号说，比如「引文②」「图①」，不要说「第几张图」「第几段」）：\n${lines.join('\n')}`
 }
 
@@ -70,7 +73,7 @@ export function withMaterials(text: string, mats: Material[] | undefined, images
 export function countLine(mats: readonly Material[]): string {
   const q = mats.filter((m) => m.kind === 'quote').length
   const g = mats.length - q
-  return [q ? `${q}段引用` : '', g ? `${g}张图` : ''].filter(Boolean).join('、')
+  return list([q ? t('{n}段引用', { n: q }) : '', g ? t('{n}张图', { n: g }) : ''].filter(Boolean))
 }
 
 /** 材料里的图（pasted/ 里的名字，按顺序） */
@@ -79,14 +82,14 @@ export const imageNames = (mats: readonly Material[] | undefined): string[] => (
 /** 界面给的材料（主进程收到时查一遍）：不对的整个不收 */
 export function checkMaterials(x: unknown): Material[] | undefined {
   if (x === undefined) return undefined
-  if (!Array.isArray(x) || x.length > MAX_MATERIALS) throw new Error('引用的材料不对')
+  if (!Array.isArray(x) || x.length > MAX_MATERIALS) throw new Error(t('引用的材料不对'))
   return x.map((m): Material => {
     const o = (m && typeof m === 'object' ? m : {}) as Record<string, unknown>
-    if (typeof o.src !== 'string' || o.src.length > 300) throw new Error('引用的材料不对')
+    if (typeof o.src !== 'string' || o.src.length > 300) throw new Error(t('引用的材料不对'))
     const url = typeof o.url === 'string' && o.url.length <= 4000 && /^https?:\/\//i.test(o.url) ? { url: o.url } : {}
     if (o.kind === 'quote' && typeof o.text === 'string' && o.text.length <= 20_000) return { kind: 'quote', text: o.text, src: o.src, ...url }
     if (o.kind === 'image' && typeof o.name === 'string' && PASTED_NAME.test(o.name))
       return { kind: 'image', name: o.name, src: o.src, ...(typeof o.page === 'number' && Number.isFinite(o.page) ? { page: o.page } : {}), ...url }
-    throw new Error('引用的材料不对')
+    throw new Error(t('引用的材料不对'))
   })
 }

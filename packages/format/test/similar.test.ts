@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { commonPassage, estimate, findSimilarPairs, jaccard, minhash, plainText, prepareSimilar, scanSimilar, shingles, similarity, type SimilarPair } from '../src'
+import { commonPassage, dupShingles, estimate, findSimilarPairs, jaccard, minhash, plainText, prepareSimilar, scanSimilar, shingles, similarity, type SimilarPair } from '../src'
 
 const PARIS_A = `---
 created: 2026-11-08 10:00
@@ -69,11 +69,12 @@ describe('找重复：3-gram + MinHash', () => {
       { id: 'b.md', text: ICELAND.replace('# 冰岛自驾', '# 冰岛自驾（副本）') },
     ])
     expect(pairs).toHaveLength(1)
-    expect(pairs[0]!.score).toBeGreaterThanOrEqual(0.9)
+    // 停用词去掉以后正文短了，标题多出来的「副本」占的比例大一点
+    expect(pairs[0]!.score).toBeGreaterThanOrEqual(0.8)
   })
 
   it('短的那篇几乎整段在长的那篇里，也算可能重复', () => {
-    const long = PARIS_B + '\n' + ICELAND + '\n' + RICH + '\n第三天去奥赛博物馆和蒙马特高地，晚上在塞纳河上坐游船，船上风很大要多穿一件。'
+    const long = PARIS_B + '\n' + ICELAND + '\n' + RICH + '\n第三天去奥赛博物馆和蒙马特高地，晚上在塞纳河上坐游船，船上风很大要多穿一件。第四天去凡尔赛宫，花园很大，租一辆自行车骑一圈，傍晚坐郊区快线回城，路上买两个可颂。'
     const pairs = findSimilarPairs([
       { id: 'long.md', text: long },
       { id: 'clip.md', text: PARIS_B },
@@ -146,7 +147,7 @@ describe('找重复：3-gram + MinHash', () => {
 
   /** 以前的写法：Set 里的字串一对对算，新写法（编号、提前停、分几份）结果要一样 */
   function pairsBySets(docs: { id: string; text: string }[]): SimilarPair[] {
-    const items = docs.map((d) => ({ id: d.id, text: d.text, set: shingles(plainText(d.text)) })).filter((d) => d.set.size >= 20)
+    const items = docs.map((d) => ({ id: d.id, text: d.text, set: dupShingles(d.text) })).filter((d) => d.set.size >= 20)
     const sigs = items.map((d) => minhash(d.set))
     const cands = new Set<string>()
     for (let band = 0; band < 64; band++) {

@@ -178,9 +178,25 @@ importers:
 
   apps/notes:
     dependencies:
+      '@cn/family':
+        specifier: workspace:*
+        version: link:../../packages/family
       '@cn/format':
         specifier: workspace:*
         version: link:../../packages/format
+      '@cn/tasks':
+        specifier: workspace:*
+        version: link:../../packages/tasks
+      electron:
+        specifier: ^45.3.2
+        version: 45.3.2(supports-color@7.2.0)
+      react:
+        specifier: ^19.3.1
+        version: 19.3.1
+    devDependencies:
+      '@types/react':
+        specifier: ^19.3.0
+        version: 19.3.0
 
   apps/today:
     dependencies:
@@ -194,6 +210,9 @@ importers:
       '@cn/design':
         specifier: workspace:*
         version: link:../../packages/design
+      '@cn/family':
+        specifier: workspace:*
+        version: link:../../packages/family
       '@cn/format':
         specifier: workspace:*
         version: link:../../packages/format
@@ -257,6 +276,10 @@ importers:
         version: 19.3.1(react@19.3.1)
 
   packages/design:
+    dependencies:
+      '@cn/family':
+        specifier: workspace:*
+        version: link:../family
     devDependencies:
       '@types/react':
         specifier: ^19.3.0
@@ -267,6 +290,8 @@ importers:
       react:
         specifier: ^19.3.1
         version: 19.3.1
+
+  packages/family: {}
 
   packages/format:
     dependencies:

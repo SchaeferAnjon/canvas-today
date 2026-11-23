@@ -1,6 +1,9 @@
 /**
  * 「打开再保存文件不变」用的样本：各种容易被改坏的写法。单元测试和端到端测试共用。
  */
+import { AI_DOC, AI_LECTURE, AI_NOTE, ECP_DOC, EXERCISES, HAND_BASE, LECTURES, ODD_BASE, OLD_BASE, SUMS_DOC } from './base-samples'
+import { ACCOUNT_DOC, HAND_AUTO_DOC, LIB_DOC } from './automation-samples'
+
 const enc = (s: string) => new TextEncoder().encode(s)
 
 /** 以前的白板写法（2026-11-21 以前）：列和卡的排版写在注释里。打开时一次转成「## 列名」写法（board-convert.ts） */
@@ -364,6 +367,34 @@ export const FIXTURES: Record<string, Uint8Array> = {
   ),
   // 和网页配成一对的笔记（task-kbnc0）：开头的 read-along 属性（CRLF）打开再保存一个字节都不变；网址是本机打不开的，测试不上网
   '对着看的笔记.md': enc('---\r\nread-along: http://127.0.0.1:9/\r\n类型: 笔记\r\n---\r\n# 对着看的笔记\r\n\r\n读到 2.1 的时候记的。\r\n'),
+  // 数据库第三批（task-i921u）：设计页那一块（五个视图、嵌套筛选、状态 / 关联 / 汇总、公式）、第二批表头写出来的老块、
+  // 手改过的（四格缩进、注释、单引号、一行的列表，CRLF）、别的写法（not 组、套两层、一个字的 groupBy、认不出的看法），
+  // 还有关联两边写的两篇（一行的 [..] 和一行一项的列表）
+  '数据库 课程计划.md': enc(ECP_DOC),
+  '数据库 以前的写法.md': enc('# 书单\n\n```base\n' + OLD_BASE + '\n```\n'),
+  '数据库 手改过的.md': enc(('# 读书清单\n\n读完的写日期。\n\n```base\n' + HAND_BASE + '\n```\n\n后面一段。\n').replace(/\n/g, '\r\n')),
+  // 前后都有正文（打开再保存的 e2e 点正文中间聚焦，整篇只有这一块时点到表底「+ 新建」会建一条记录）；
+  // 整篇只有一块、块后没有换行时文末打不进字，是编辑器原来就有的问题，task-i921u 交回里写了
+  '数据库 别的写法.md': enc(
+    '# 别的写法\n\n下面这块是手改和 Obsidian 的几种写法，软件读得懂、改的时候不动它们。\n\n```base\n' +
+      ODD_BASE +
+      '\n```\n\n' +
+      ['not：下面几条都不满足。', '套两层：and 里套 or，or 里再套 and。', 'groupBy 写成一个字，后面带注释。', 'list 是别的软件的看法，这里当表格画。', '数据源写成一句，不是 and 列表。', '每一条都是普通的 md，开头是属性。', '改格子只换那一篇开头的那一行。', '拖看板卡只换「状态:」那一行。', '拖日历只换「日期:」那一行。', '勾关联两篇各一行，一次提交。', '算出来的不写进任何一篇。', '这几行是凑高度的正文。']
+        .map((l) => l + '\n\n')
+        .join(''),
+  ),
+  '第3讲 生产.md': enc(LECTURES['课程/ecp/课程计划/第3讲 生产.md']!),
+  // AI 列（task-i921u「AI 生成一列」）：带 type: ai 的块、带「AI填的」的一讲、[!ai] 块的练习题笔记
+  '数据库 AI 列.md': enc(AI_DOC),
+  'AI 列 第3讲 生产.md': enc(AI_LECTURE),
+  'AI 列 第3讲 生产 练习题.md': enc(AI_NOTE),
+  // 表底合计（task-i921u「通用合计」）：新的几种计算、公式列的 summaries、按月分组、一行写的按周分组、认不出的 by: total、视图里的注释
+  '数据库 表底合计.md': enc(SUMS_DOC),
+  '练习 3.2.md': enc(EXERCISES['课程/ecp/练习/练习 3.2.md']!),
+  // 自动化（task-i921u「当……就……」）：记账那一块（按钮列、三条规则）、手改过的、库里的自动化.md 那样的一篇
+  '数据库 记账自动化.md': enc(ACCOUNT_DOC),
+  '数据库 手改过的自动化.md': enc(HAND_AUTO_DOC),
+  '自动化 库里的.md': enc(LIB_DOC),
   'no-trailing-newline.md': enc('最后一行没有换行'),
   'trailing-spaces.md': enc('行尾两个空格  \n\t缩进用 tab\n\n\n\n多个空行\n   '),
   'crlf.md': enc('# Windows 换行\r\n\r\n第一段\r\n第二段\r\n'),

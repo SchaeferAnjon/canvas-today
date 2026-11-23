@@ -3,8 +3,7 @@
  * 存在 userData/settings.json 的 dream 里；旧文件没有这一项、被手改坏的，一项一项回到默认。
  * 默认值就是加这一页以前梦游的样子：老用户升级后什么都不变。纯函数，主进程和界面都用。
  */
-import { CATEGORY_NAMES } from './categories'
-import { CLIPS, INBOX } from './layout'
+import { CATEGORY_IDS, type CatId, catName } from './categories'
 import { type Lang, list, tIn, uiLang } from './i18n'
 
 /** 梦游能做的事，一样一个开关 */
@@ -26,8 +25,8 @@ export interface DreamSettings {
   vizMax: number
   /** 一晚最多列几对可能重复 */
   dupMax: number
-  /** 能动的顶级分类（收件箱是归类改名的来源，周记是写小结的地方，别的补双链） */
-  folders: string[]
+  /** 能动的顶级分类（收件箱是归类改名的来源，周记是写小结的地方，别的补双链）；存的是分类的身份（中文名），英文库里换成英文的文件夹名再比 */
+  folders: CatId[]
   /** 改完直接收下（一次提交进当前分支，报告里能撤回）；默认先预览、收下才进库 */
   autoTake: boolean
 }
@@ -50,7 +49,7 @@ export const DEFAULT_DREAM: DreamSettings = {
   vizMax: 3,
   dupMax: 20,
   // 收件箱、阅读（微信读书同步的书摘 2026-11-18 起在这里）、剪藏、周记；按分类表的先后
-  folders: [INBOX, '阅读', CLIPS, '周记'],
+  folders: ['收件箱', '阅读', '剪藏', '周记'],
   autoTake: false,
 }
 
@@ -66,7 +65,7 @@ export function normalizeDream(raw: unknown): DreamSettings {
   const d = DEFAULT_DREAM
   const steps = {} as Record<DreamStep, boolean>
   for (const k of DREAM_STEPS) steps[k] = bool(st[k], d.steps[k])
-  const folders = Array.isArray(r.folders) ? CATEGORY_NAMES.filter((n) => (r.folders as unknown[]).includes(n)) : [...d.folders]
+  const folders = Array.isArray(r.folders) ? CATEGORY_IDS.filter((n) => (r.folders as unknown[]).includes(n)) : [...d.folders]
   return {
     auto: bool(r.auto, d.auto),
     idleMinutes: pick(r.idleMinutes, IDLE_CHOICES, d.idleMinutes as (typeof IDLE_CHOICES)[number]),
@@ -86,14 +85,14 @@ export function patchDream(cur: DreamSettings, p: DreamPatch): DreamSettings {
   return normalizeDream({ ...cur, ...p, steps: { ...cur.steps, ...(p.steps ?? {}) } })
 }
 
-/** 梦游能在这个路径上改字、建文件吗（在勾上的顶级分类里） */
-export const inDreamFolders = (s: DreamSettings, path: string) => s.folders.some((f) => path.startsWith(f + '/'))
+/** 梦游能在这个路径上改字、建文件吗（在勾上的顶级分类里，文件夹名照这个库的） */
+export const inDreamFolders = (s: DreamSettings, path: string) => s.folders.some((f) => path.startsWith(catName(f) + '/'))
 
-/** 补双链补在哪些笔记末尾：勾上的分类里除了周记（周记只放本周小结） */
-export const linkFolders = (s: DreamSettings) => s.folders.filter((f) => f !== '周记')
+/** 补双链补在哪些笔记末尾：勾上的分类里除了周记（周记只放本周小结）；给的是这个库里的文件夹名 */
+export const linkFolders = (s: DreamSettings) => s.folders.filter((f) => f !== '周记').map(catName)
 
 /** 归类、改名这一步做不做：两个开关有一个开着，而且收件箱勾着（挪的、改名的都是收件箱里的） */
-export const filesOn = (s: DreamSettings) => (s.steps.file || s.steps.rename) && s.folders.includes(INBOX)
+export const filesOn = (s: DreamSettings) => (s.steps.file || s.steps.rename) && s.folders.includes('收件箱')
 /** 本周小结写不写：开着、而且周记勾着 */
 export const weekOn = (s: DreamSettings) => s.steps.week && s.folders.includes('周记')
 

@@ -7,7 +7,7 @@
  * 收起来的分类记在同一个文件里（「预设分类」: false、「收起的分类」），再打开放回去；文件夹和笔记一个不动。
  * 纯函数，主进程和界面都用。
  */
-import { CATEGORY_NAMES, categoryOf, isCategory } from './categories'
+import { CATEGORY_NAMES, categoryOf, isCategory, isChildOf } from './categories'
 import { INBOX } from './layout'
 
 export const LEFT_FILE = '.canvas-notes/左栏.json'
@@ -191,9 +191,9 @@ export function remapLeft(c: LeftConfig, map: (p: string) => string | null | und
 export function defaultIcon(folder: string): string {
   const cat = categoryOf(folder)
   if (cat) return cat.icon
-  if (/^课程\/[^/]+$/.test(folder)) return 'folder-library'
+  if (isChildOf(folder, '课程')) return 'folder-library'
   // 阅读里一本书一个文件夹：书的符号（小样 2026-11-18 分类与入口）
-  if (/^阅读\/[^/]+$/.test(folder)) return 'book'
+  if (isChildOf(folder, '阅读')) return 'book'
   return 'folder'
 }
 
@@ -201,8 +201,8 @@ export function defaultIcon(folder: string): string {
 export function defaultColor(folder: string): FolderColor | null {
   const cat = categoryOf(folder)
   if (cat) return cat.color
-  if (/^课程\/[^/]+$/.test(folder)) return 'sky'
-  if (/^阅读\/[^/]+$/.test(folder)) return 'green'
+  if (isChildOf(folder, '课程')) return 'sky'
+  if (isChildOf(folder, '阅读')) return 'green'
   return null
 }
 
@@ -212,7 +212,7 @@ export function defaultColor(folder: string): FolderColor | null {
  */
 export const lookOf = (c: LeftConfig, folder: string): { icon: string; color: string | null } => {
   const l = c.looks[folder]
-  const plain = !presetsOn(c) && (isCategory(folder) || /^(课程|阅读)\/[^/]+$/.test(folder))
+  const plain = !presetsOn(c) && (isCategory(folder) || isChildOf(folder, '课程') || isChildOf(folder, '阅读'))
   if (plain && folder === INBOX && !l) return { icon: 'inbox', color: null }
   const color = l?.color ?? (plain ? null : defaultColor(folder))
   return { icon: l?.icon ?? (plain ? 'folder' : defaultIcon(folder)), color: color ? FOLDER_COLORS[color] : null }

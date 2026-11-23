@@ -3,7 +3,7 @@
  * 先认行：盘上第 line 行还是界面看到的那一行原文就改它；不是了（外面在上面加了几行、改了别处）就按原文找最近的一样的行，
  * 再按 🆔 找；都找不到就不改，告诉界面「这一行刚被别处改了」。
  */
-import { addSubtask, appendTask, completeTask, editLine, type ISODate, lineAt, makeId, moveBlock, newTaskLine, parseQuick, parseTaskLine, removeBlock, setDate, setDone, setId, setPrio, setRemind, setRepeat, setTime, setTitle, splitLines } from '@cn/tasks'
+import { addSubtask, appendTask, completeTask, editLine, type ISODate, isISODate, lineAt, makeId, moveBlock, newTaskLine, normTime, parseQuick, parseRemind, parseRepeat, parseTaskLine, removeBlock, setDate, setDone, setId, setPrio, setRemind, setRepeat, setTime, setTitle, setWhen, splitLines, type When } from '@cn/tasks'
 import type { AddCtx, AddResult, EditReq, EditResult, Snapshot } from '../shared/api'
 import { INBOX_NOTE } from '../shared/brand'
 import { isoPlus } from '../shared/when'
@@ -42,6 +42,8 @@ function say(req: EditReq, title: string): string {
       return e.remind ? `「${title}」${e.remind}提醒` : `「${title}」不提醒了`
     case 'repeat':
       return e.repeat ? `「${title}」${e.repeat}重复` : `「${title}」不重复了`
+    case 'when':
+      return e.when.date ? `「${title}」改到 ${e.when.date}${e.when.time ? ' ' + e.when.time : ''}` : `「${title}」拿掉日子`
     case 'prio':
       return `「${title}」改优先级`
     case 'title':
@@ -99,6 +101,10 @@ export async function applyEdit(v: TaskVault, req: EditReq, today: ISODate): Pro
           break
         case 'repeat':
           after = editLine(text, n, (l) => setRepeat(l, e.repeat))
+          break
+        case 'when':
+          // 选择器（task-pd289）：四样一起写，有提醒没 🆔 的给一个
+          after = editLine(text, n, (l) => setWhen(l, e.when, newId))
           break
         case 'prio':
           after = editLine(text, n, (l) => setPrio(l, e.prio))
@@ -210,9 +216,26 @@ function noteByName(s: Snapshot, name: string): string | null {
   return s.notes.find((x) => x.title.toLowerCase() === n)?.path ?? s.notes.find((x) => x.folder.split(' › ').pop()?.toLowerCase() === n)?.path ?? null
 }
 
-/** 快速加一条：认出日子钟点重复优先级；#清单 对上哪篇就写进哪篇，不然进 收件箱/待办.md（这一篇没有就建） */
-export async function addTask(v: TaskVault, text: string, ctx: AddCtx, today: ISODate, snap: Snapshot): Promise<AddResult> {
-  const q = parseQuick(text, today)
+/** 界面交来的 AI 认出来的那一份（task-pd289）：照 @cn/tasks 的写法再验一遍，不对的那项丢掉；没有标题、什么都不剩是 null */
+function aiWhen(x: unknown, today: ISODate): When | null {
+  if (!x || typeof x !== 'object') return null
+  const o = x as Record<string, unknown>
+  const s = (k: string) => (typeof o[k] === 'string' && (o[k] as string).trim() ? (o[k] as string).trim() : null)
+  const title = s('title')
+  if (!title) return null
+  const date = s('date') && isISODate(s('date')!) ? s('date') : null
+  const time = s('time') ? normTime(s('time')!) : null
+  const remind = s('remind') && parseRemind(s('remind')!) ? s('remind') : null
+  const repeat = s('repeat') && parseRepeat(s('repeat')!) ? s('repeat') : null
+  if (!date && !time && !remind && !repeat) return null
+  return { title, date: date ?? (time ? today : null), time, remind, repeat, hits: [] }
+}
+
+/** 快速加一条：认出日子钟点重复提醒优先级；#清单 对上哪篇就写进哪篇，不然进 收件箱/待办.md（这一篇没有就建）；when：AI 认出来的（task-pd289） */
+export async function addTask(v: TaskVault, text: string, ctx: AddCtx, today: ISODate, snap: Snapshot, when?: unknown, now?: string): Promise<AddResult> {
+  const q = parseQuick(text, now ?? today)
+  const w = aiWhen(when, today)
+  if (w) Object.assign(q, { title: w.title, date: w.date, time: w.time, remind: w.date ? w.remind : null, repeat: w.repeat })
   let title = q.title
   let path = typeof ctx === 'object' ? ctx.note : INBOX_NOTE
   if (q.list) {
@@ -223,7 +246,7 @@ export async function addTask(v: TaskVault, text: string, ctx: AddCtx, today: IS
   }
   if (!title) return { ok: false, reason: 'empty' }
   const date = q.date ?? (ctx === 'today' ? today : ctx === 'tomorrow' ? isoPlus(today, 1) : null)
-  const line = newTaskLine({ title, date, time: q.time, repeat: q.repeat, prio: q.prio })
+  const line = newTaskLine({ title, date, time: q.time, remind: date ? q.remind : null, repeat: q.repeat, prio: q.prio })
   try {
     let created = false
     const r = await v.change([path], `画布今日：加了「${title}」`, (now) => {

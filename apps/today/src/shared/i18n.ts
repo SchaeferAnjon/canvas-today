@@ -3,6 +3,9 @@
  * 笔记和任务自己的字不翻；写进文件的（📅、🔔 提前1小时、🔁 每周日）一律是中文写法，不跟界面语言走。
  * 中文里中西文、中文和数字之间不手打空格（DESIGN.md「字体」：靠 text-autospace 加间距）。
  */
+// 只引字（主进程也用这一份，不把日历的 React 组件带进主进程）
+import { remindText, repeatText } from '@cn/calendar/text'
+
 export type Lang = 'zh' | 'en'
 
 type Str = string | ((...a: never[]) => string)
@@ -45,7 +48,12 @@ const zh = {
   defaultToday: '在这里加的默认是今天；写了日子按写的来',
   defaultTomorrow: '在这里加的默认是明天；写了日子按写的来',
   understood: '认出来：',
+  aiUnderstood: 'AI 认出来：',
   noDateFound: '没认出日子',
+  // 写时间（task-pd289）：打 @、⌥⌘T 弹定日子和时间的选择器
+  whenPick: '选别的日子',
+  whenOther: '其他…',
+  recogAt: '写日子、钟点、重复（每周五）、提醒（提前一天提醒）、#清单、!高 都认得；打 @ 或 ⌥⌘T 自己选',
   dropHere: '把一条拖到这里',
   inboxEmpty: '收件箱是空的',
   inboxEmptySub: '在上面加一条，没写日子的都放在这里。',
@@ -55,7 +63,7 @@ const zh = {
   pickOne: '点一条看详情',
   pickOneSub: '日期、提醒、重复、子任务和它在哪篇笔记里都在这里。',
   date: '日期',
-  time: '时间',
+  time: '钟点',
   remind: '提醒',
   repeat: '重复',
   prio: '优先级',
@@ -119,6 +127,7 @@ const zh = {
   snoozedSub: (p: string) => `${p} 加了一行「推迟」`,
   openedNote: (n: string, l: number) => `在画布笔记里打开《${n}》第${l}行`,
   openedNoteOnly: (n: string) => `在画布笔记里打开《${n}》`,
+  openedNoteDefault: (n: string) => `用系统默认的软件打开了《${n}》`,
   noNotesApp: '没打开画布笔记：这台 Mac 上好像没装',
   taskNotFound: '链接里的那一条找不到了（可能删掉了）',
   // 四象限
@@ -177,11 +186,54 @@ const zh = {
   sLookDesc: '主题、界面风格、窗口背景',
   sCalRemDesc: '系统日历的日程只读显示；带提醒的待办放进提醒事项',
   sVaultDesc: '和画布笔记用同一个库',
+  // 设置 › 软件家族（task-59o3v，样子同画布笔记）
+  sFamily: '软件家族',
+  sFamilyDesc: '同一个人做的几个软件：装了的能互相接上，没装的先看看能做什么',
+  famLinked: '能和画布今日接上的',
+  famLinkedNote: '开关存在库里，两边看到的是同一个',
+  famMore: '家族里还有',
+  famMoreNote: '暂时不和画布今日联动',
+  famInstalled: (v: string) => (v ? `已装 ${v}` : '已装'),
+  famOpen: '打开',
+  famDownload: '下载',
+  famWaiting: '等你装好',
+  famRecheck: '装好了，再看一下',
+  famAfter: '装了以后能开',
+  famUpdate: (name: string) => `先更新${name}`,
+  famNoVault: '先打开一个库',
+  famSource: '名单每天从apps.us-cloud.uk看一次有没有新软件，没网时用软件里带的那份。家族软件都开源，不用注册账号。',
+  famSourceAt: (w: string) => `名单每天从apps.us-cloud.uk看一次有没有新软件（上次 ${w}），没网时用软件里带的那份。家族软件都开源，不用注册账号。`,
+  famSourceOff: '名单只用软件里带的那份（一般页里关了每天看一次）。家族软件都开源，不用注册账号。',
+  famHub: '去总站看看',
+  famOpened: (name: string) => `打开了${name}`,
+  famOpenFailed: (name: string) => `没打开${name}：它不在原来的地方了，要用再下载一次`,
+  famDownloadOpened: (name: string, url: string) => `在浏览器里打开了${name}的下载页：${url}`,
+  famFoundLinked: (name: string, v: string) => `认出来了：${name} ${v}已装，联动的开关能开了`,
+  famFound: (name: string, v: string) => `认出来了：${name} ${v}已装`,
+  famNotYet: (name: string) => `还没认出${name}：装进「应用程序」以后再点一下`,
+  sFamilyFetch: '每天看一次家族名单',
+  sFamilyFetchDesc: 'apps.us-cloud.uk；看家族里有没有新软件，关了只用软件里带的那份',
+  sFamilyFetchOn: '每天看一次家族里有没有新软件',
+  sFamilyFetchOff: '不再去总站看家族名单，只用软件里带的那份',
   sLangRow: '界面语言',
   sTrayDesc: '菜单栏里一个小窗：今天几条、快速加一条',
   sCalGroup: '系统日历',
   sRemGroup: '提醒事项',
   sVaultNow: '现在的库',
+  sLookWho: '外观跟着谁',
+  sThemeHint: '点一张就换',
+  sThemeHintSys: '跟着系统：点浅色换白天那套，点深色换夜里那套',
+  sLight: '浅色',
+  sDark: '深色',
+  sDay: '白天',
+  sNight: '夜里',
+  sFrameHint: '结构一样，只换样子和几处位置',
+  frameAName: '照VS Code',
+  frameANote: '平的、细线分区；底栏写满',
+  frameBName: '浮岛书桌',
+  frameBNote: '背景图铺满窗口，三块半透明的岛',
+  sWinBgHintB: '浮岛书桌铺满整个窗口，哪套主题都能配；照片会压暗一点',
+  sWinBgHintA: '换成B浮岛书桌时铺满整个窗口；A照VS Code不用',
   sFollowNotes: '和画布笔记一样',
   sFollowNotesSub: '主题、界面风格、窗口背景跟着画布笔记的设置',
   sNow: (skin: string, frame: string) => `现在：${skin} · ${frame}`,
@@ -191,6 +243,21 @@ const zh = {
   sTheme: '主题',
   sFollowSystem: '跟着系统换浅深',
   sWinBg: '窗口背景',
+  sImported: '导入的VS Code主题',
+  sImportedFrom: (src: string) => `导入的VS Code主题 · ${src}`,
+  sImportTheme: '导入VS Code主题…',
+  sImportThemeNote: '选 .json或 .vsix；对不上的颜色按底色和字色算',
+  sDayUse: '白天用',
+  sNightUse: '夜里用',
+  sRemoveTheme: (name: string) => `删掉 ${name}`,
+  sRemoveThemeTip: '删掉这套导入的主题',
+  sImportedOne: (name: string) => `导入了「${name}」，已经用上`,
+  sImportedMany: (n: number, names: string) => `导入了${n}套：${names}`,
+  sImportFail: (err: string) => `导入失败：${err}`,
+  sRemovedTheme: (name: string) => `删掉了「${name}」`,
+  themeDlgTitle: '导入 VS Code 主题',
+  themeDlgBtn: '导入',
+  themeDlgFilter: 'VS Code 主题',
   bgAurora: '极光照片',
   bgCave: '冰洞照片',
   bgNone: '不用图',
@@ -478,7 +545,11 @@ const en: { [K in keyof typeof zh]: (typeof zh)[K] } = {
   defaultToday: 'Added here means today unless you write a date',
   defaultTomorrow: 'Added here means tomorrow unless you write a date',
   understood: 'Understood:',
+  aiUnderstood: 'AI found:',
   noDateFound: 'No date found',
+  whenPick: 'Pick another date',
+  whenOther: 'Other…',
+  recogAt: 'Dates, times, repeats (every Fri), reminders (1 day before), #list and !high are understood; type @ or press ⌥⌘T to pick',
   dropHere: 'Drop a to-do here',
   inboxEmpty: 'Inbox is empty',
   inboxEmptySub: 'Add one above; to-dos without a date land here.',
@@ -551,6 +622,7 @@ const en: { [K in keyof typeof zh]: (typeof zh)[K] } = {
   snoozedSub: (p: string) => `Added a “snooze” line to ${p}`,
   openedNote: (n: string, l: number) => `Opened “${n}” at line ${l} in Canvas Notes`,
   openedNoteOnly: (n: string) => `Opened “${n}” in Canvas Notes`,
+  openedNoteDefault: (n: string) => `Opened “${n}” in your Mac’s default app`,
   noNotesApp: 'Could not open Canvas Notes: it does not seem to be installed',
   taskNotFound: 'The to-do in that link is gone (maybe deleted)',
   quadSub: 'Four boxes by priority; drag into another box to change it (⏫ 🔼 🔽)',
@@ -603,11 +675,53 @@ const en: { [K in keyof typeof zh]: (typeof zh)[K] } = {
   sLookDesc: 'Theme, layout style, window background',
   sCalRemDesc: 'Calendar events show read-only; to-dos with a reminder go into Reminders',
   sVaultDesc: 'The same vault as Canvas Notes',
+  sFamily: 'App family',
+  sFamilyDesc: 'Apps by the same person: installed ones work together, the rest show what they can do',
+  famLinked: 'Works with Canvas Today',
+  famLinkedNote: 'Switches are stored in the vault, so both apps see the same ones',
+  famMore: 'More in the family',
+  famMoreNote: 'Not linked to Canvas Today yet',
+  famInstalled: (v: string) => (v ? `Installed ${v}` : 'Installed'),
+  famOpen: 'Open',
+  famDownload: 'Download',
+  famWaiting: 'Waiting for install',
+  famRecheck: 'Installed, check again',
+  famAfter: 'Available once installed',
+  famUpdate: (name: string) => `Update ${name} first`,
+  famNoVault: 'Open a vault first',
+  famSource: 'The list checks apps.us-cloud.uk once a day for new apps; offline, the list built into the app is used. All family apps are open source; no account needed.',
+  famSourceAt: (w: string) => `The list checks apps.us-cloud.uk once a day for new apps (last: ${w}); offline, the list built into the app is used. All family apps are open source; no account needed.`,
+  famSourceOff: 'Only the list built into the app is used (the daily check is off in General). All family apps are open source; no account needed.',
+  famHub: 'Visit the app hub',
+  famOpened: (name: string) => `Opened ${name}`,
+  famOpenFailed: (name: string) => `Couldn’t open ${name}: it’s no longer where it was. Download it again to use it`,
+  famDownloadOpened: (name: string, url: string) => `Opened the ${name} download page in your browser: ${url}`,
+  famFoundLinked: (name: string, v: string) => `Found ${name} ${v}; its switches can be turned on now`,
+  famFound: (name: string, v: string) => `Found ${name} ${v}`,
+  famNotYet: (name: string) => `${name} not found yet: move it into Applications, then click again`,
+  sFamilyFetch: 'Check the family list daily',
+  sFamilyFetchDesc: 'apps.us-cloud.uk: looks for new apps in the family; when off, only the list built into the app is used',
+  sFamilyFetchOn: 'Checks once a day for new apps in the family',
+  sFamilyFetchOff: 'No longer checks the app hub; the list built into the app is used',
   sLangRow: 'Interface language',
   sTrayDesc: "A small window in the menu bar: today's count and quick add",
   sCalGroup: 'Calendar',
   sRemGroup: 'Reminders',
   sVaultNow: 'Current vault',
+  sLookWho: 'Where the look comes from',
+  sThemeHint: 'Click one to switch',
+  sThemeHintSys: 'Following the system: a light one sets day, a dark one sets night',
+  sLight: 'Light',
+  sDark: 'Dark',
+  sDay: 'Day',
+  sNight: 'Night',
+  sFrameHint: 'Same structure, a different look',
+  frameAName: 'Like VS Code',
+  frameANote: 'Flat, thin dividers; a full-width status bar',
+  frameBName: 'Floating desk',
+  frameBNote: 'A photo fills the window behind three translucent islands',
+  sWinBgHintB: 'Fills the whole window in Floating desk and goes with any theme; the photo is dimmed a little',
+  sWinBgHintA: 'Used when you switch to B Floating desk; A Like VS Code has none',
   sFollowNotes: 'Same as Canvas Notes',
   sFollowNotesSub: 'Theme, layout style and window background follow Canvas Notes',
   sNow: (skin: string, frame: string) => `Now: ${skin} · ${frame}`,
@@ -617,6 +731,21 @@ const en: { [K in keyof typeof zh]: (typeof zh)[K] } = {
   sTheme: 'Theme',
   sFollowSystem: 'Follow system light and dark',
   sWinBg: 'Window background',
+  sImported: 'Imported VS Code themes',
+  sImportedFrom: (src: string) => `Imported VS Code theme · ${src}`,
+  sImportTheme: 'Import VS Code theme…',
+  sImportThemeNote: 'Pick a .json or .vsix; missing colors are derived from background and text',
+  sDayUse: 'Day',
+  sNightUse: 'Night',
+  sRemoveTheme: (name: string) => `Delete ${name}`,
+  sRemoveThemeTip: 'Delete this imported theme',
+  sImportedOne: (name: string) => `Imported “${name}” and switched to it`,
+  sImportedMany: (n: number, names: string) => `Imported ${n} themes: ${names}`,
+  sImportFail: (err: string) => `Import failed: ${err}`,
+  sRemovedTheme: (name: string) => `Deleted “${name}”`,
+  themeDlgTitle: 'Import VS Code theme',
+  themeDlgBtn: 'Import',
+  themeDlgFilter: 'VS Code theme',
   bgAurora: 'Aurora photo',
   bgCave: 'Ice cave photo',
   bgNone: 'No picture',
@@ -856,15 +985,8 @@ const en: { [K in keyof typeof zh]: (typeof zh)[K] } = {
 }
 
 /** 提醒写法的英文说法（文件里照旧写中文） */
-function remindEn(v: string): string {
-  const s = v.replace(/\s+/g, '')
-  if (s === '准时') return 'On time'
-  let m = /^提前(\d+)(分钟|小时|天)$/.exec(s)
-  if (m) return `${m[1]} ${m[2] === '分钟' ? 'min' : m[2] === '小时' ? (m[1] === '1' ? 'hour' : 'hours') : m[1] === '1' ? 'day' : 'days'} before`
-  m = /^前一天(\d{1,2}:\d{2})$/.exec(s)
-  if (m) return `Day before at ${m[1]}`
-  return v
-}
+/** 提醒的英文说法：和选择器同一份（@cn/calendar 的 remindText，task-pd289） */
+const remindEn = (v: string): string => remindText('en', v)
 
 export const TABLES = { zh, en }
 export type Key = keyof typeof zh
@@ -880,23 +1002,5 @@ export function tr<K extends Key>(lang: Lang, key: K, ...args: Args<K>): string 
 
 export const wdName = (lang: Lang, wd: number) => TABLES[lang].wd[wd]!
 
-/** 重复写法的英文说法（文件里照旧写中文） */
-export function repeatLabel(lang: Lang, v: string): string {
-  if (lang === 'zh') return v
-  const tail = /[（(]做完后[）)]$/.test(v) ? ' (after done)' : ''
-  const s = v.replace(/[（(]做完后[）)]$/, '').replace(/\s+/g, '')
-  const W = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-  const WC: Record<string, number> = { 日: 0, 天: 0, 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6 }
-  let m: RegExpExecArray | null
-  let out: string | null = null
-  if (s === '每天') out = 'Every day'
-  else if ((m = /^每(\d+)天$/.exec(s))) out = `Every ${m[1]} days`
-  else if (s === '工作日') out = 'Weekdays'
-  else if (s === '每周') out = 'Every week'
-  else if ((m = /^每(\d+)周$/.exec(s))) out = `Every ${m[1]} weeks`
-  else if ((m = /^每周([一二三四五六日天、]+)$/.exec(s))) out = 'Every ' + [...m[1]!.replace(/、/g, '')].map((c) => W[WC[c]!]).join(', ')
-  else if (s === '每月') out = 'Every month'
-  else if ((m = /^每月(\d+)日$/.exec(s))) out = `Monthly on day ${m[1]}`
-  else if (s === '每年') out = 'Every year'
-  return out ? out + tail : v
-}
+/** 重复写法的英文说法（文件里照旧写中文）：和选择器同一份（@cn/calendar 的 repeatText，task-pd289） */
+export const repeatLabel = (lang: Lang, v: string): string => repeatText(lang, v)

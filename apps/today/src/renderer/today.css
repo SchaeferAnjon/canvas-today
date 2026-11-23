@@ -590,6 +590,10 @@ strong {
 
 /* B 有窗口背景图时三块岛都半透明、透出背景图（2026-11-22 用户：「这个大白底能不能做成…半透明的」，照 v2 和画布笔记首页 B）；
    颜色、透多少、模糊是 @cn/design themes.css 的 --isle*（画布笔记首页 B 也用）。不用图时照旧是实色：后面是一块纯色，透了只是变色 */
+[data-winbg='photo'] .fb {
+  /* 日历里的待办块压在格线上，要实底才读得清：先记下实的 --card */
+  --card-solid: var(--card);
+}
 [data-winbg='photo'] .fb .left,
 [data-winbg='photo'] .fb .center,
 [data-winbg='photo'] .fb .right {
@@ -597,6 +601,12 @@ strong {
   backdrop-filter: var(--isle-blur);
   --t2: var(--isle-t2);
   --t3: var(--isle-t3);
+  /* 岛里的卡片、勾选框、按钮、下拉、存在哪那张卡也半透明（设计复审：不然是岛上一块块白底） */
+  --card: var(--isle-card);
+  --clip: var(--isle-card);
+}
+[data-winbg='photo'] .fb .cal-blk:not(.ev):not(.ghost) {
+  background: var(--card-solid);
 }
 [data-winbg='photo'] .fb .left {
   background: var(--isle-side);
@@ -897,6 +907,16 @@ strong {
 }
 .acc .ci {
   color: var(--t3);
+}
+/* 日子那一格点得开定日子和时间的选择器（task-pd289）：悬停一块 --fill 底，和画布笔记的日子小块一样 */
+.acc.when {
+  margin: -2px -5px;
+  padding: 2px 5px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.acc.when:hover {
+  background: var(--fill);
 }
 .cb {
   width: 14px;
@@ -1894,56 +1914,6 @@ select.sel {
 .fa .status .udot.err {
   background: var(--red);
 }
-.skins {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 6px;
-  padding: 8px 10px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--card);
-}
-.skins button {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  height: 30px;
-  min-width: 0;
-  font-size: 12px;
-  color: var(--t2);
-  padding: 0 6px;
-  border-radius: 6px;
-  white-space: nowrap;
-}
-.skins button span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.skins button.on {
-  background: var(--acc-soft);
-  color: var(--acc-t);
-  font-weight: 500;
-}
-.skins i {
-  flex: none;
-  width: 28px;
-  height: 18px;
-  border-radius: 5px;
-  box-shadow: 0 0 0 1px var(--line2);
-  background: linear-gradient(90deg, var(--side) 0 30%, var(--win) 30% 100%);
-  position: relative;
-}
-.skins i::after {
-  content: '';
-  position: absolute;
-  left: 40%;
-  right: 12%;
-  top: 7px;
-  height: 4px;
-  border-radius: 2px;
-  background: var(--acc);
-}
 /* 方角开关。关着：轨道 --fill2 加一圈 1px --line2、滑块 --t3（弹窗 --pop 底上也看得出，深湖里 --card 和 --pop 是同一个色）；
    开着不变。画布笔记的 .sw-toggle（settings.css）同样这么画，两个软件一个样 */
 .sw {
@@ -2081,12 +2051,6 @@ select.sel {
 .sa-ds .ubar {
   position: static;
   margin-top: 6px;
-}
-/* 主题：十个小窗口色块，一张细线表那样的框（圆角 12，同 .sa-card） */
-.set .skins {
-  border-radius: 12px;
-  background: none;
-  padding: 10px 12px;
 }
 
 /* 导入提醒事项：样子同设置弹窗（.setw），一组一块；顶边固定在 120（两步之间标题和 × 不挪），内容多了往下长、在弹窗里滚 */

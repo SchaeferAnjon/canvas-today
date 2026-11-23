@@ -4,6 +4,7 @@
  * 每类一句「放什么」，用户能改，改了写进库里的 .canvas-notes/分类.json（跟着 Git 走）；没改过不建文件，用这里的默认。
  * 活动栏横线下默认摘这一套，文件树最外层按它排，梦游归类、「移到…」菜单也按它。纯函数，主进程和界面都用。
  */
+import { onVaultLang, vaultLang } from './i18n/vault'
 import type { FolderColor } from './left'
 
 export const CATEGORY_FILE = '.canvas-notes/分类.json'
@@ -39,6 +40,44 @@ export const CATEGORIES: readonly Category[] = [
 ]
 
 export const CATEGORY_NAMES: readonly string[] = CATEGORIES.map((c) => c.name)
+
+/** 分类的「身份」：上面那张表里的中文名。设置里存的、代码里认的都用它，不跟库语言变（i18n.mjs 不把 catName 这几个函数的参数当界面字） */
+export type CatId = '收件箱' | '课程' | '阅读' | '剪藏' | '周记' | '写作' | '项目' | '生活'
+export const CATEGORY_IDS = [...CATEGORY_NAMES] as readonly CatId[]
+
+/**
+ * 英文库的分类文件夹名（task-zojmg，库语言，设计稿第 4 节）：英文界面新建的库（.canvas-notes/库.json 记着 en）磁盘上的八个分类就叫这几个，
+ * 界面照磁盘上的名字显示；中文库照上面的表，和以前一模一样。
+ */
+export const EN_CATEGORY_NAMES: Readonly<Record<CatId, string>> = { 收件箱: 'Inbox', 课程: 'Courses', 阅读: 'Reading', 剪藏: 'Clippings', 周记: 'Weekly', 写作: 'Writing', 项目: 'Projects', 生活: 'Life' }
+
+/** 这个库里这一类的文件夹叫什么：中文库是中文名，英文库是英文名。代码里写死的分类名都过它 */
+export const catName = (id: CatId): string => (vaultLang() === 'en' ? EN_CATEGORY_NAMES[id] : id)
+
+/** 反过来：库最外层这个文件夹是哪一类；不是分类给 undefined */
+export const catId = (folder: string): CatId | undefined => CATEGORY_IDS[CATEGORY_NAMES.indexOf(folder)]
+
+/** 路径在这一类下面（「课程/线代/第1讲.md」在「课程」下面）；分类名照这个库的 */
+export const underCat = (path: string, id: CatId) => path.startsWith(catName(id) + '/')
+
+/** 直接放在这一类下面的一层文件夹：一门课（课程/线代）、一本书（阅读/某本书）、一个项目 */
+export const isChildOf = (folder: string, id: CatId) => {
+  const [top, child, ...more] = folder.split('/')
+  return top === catName(id) && !!child && !more.length
+}
+
+/**
+ * 换了库（库语言可能变了）：CATEGORIES 里每一类的 name 和 CATEGORY_NAMES 原地换成这个库的名字。
+ * 原地换是有意的：别处 import 进去的同一个数组、同一批对象（shared/files.ts 的 TOP_ORDER、left.ts 的 DEFAULT_LEFT）跟着就对了，不用一处处改。
+ * 一次只开一个库，主进程、界面各有一份，各自照自己的库语言换（主进程 main/lang.ts 的 settleVaultLang，界面 renderer/i18n.ts）
+ */
+function applyVaultNames() {
+  CATEGORIES.forEach((c, i) => ((c as { name: string }).name = catName(CATEGORY_IDS[i]!)))
+  ;(CATEGORY_NAMES as string[]).splice(0, CATEGORY_NAMES.length, ...CATEGORIES.map((c) => c.name))
+}
+// 这个文件晚于库语言载入时（界面里 renderer/i18n.ts 先设好了库语言）也要对
+applyVaultNames()
+onVaultLang(applyVaultNames)
 
 /** 库最外层的这个文件夹是不是自带的分类 */
 export const isCategory = (folder: string) => CATEGORY_NAMES.includes(folder)
@@ -79,7 +118,7 @@ export const descOf = (d: CategoryDescs, name: string) => d[name] ?? categoryOf(
  * 空的组不出现。presets 关着（task-wniqx）：收件箱一段，别的（关着时放上去的分类也算）都在自己摘的那一段。
  */
 export function groupLeft(left: readonly string[], presets = true): string[][] {
-  const seg = (f: string) => (presets || f === '收件箱' ? categoryOf(f)?.group : undefined)
+  const seg = (f: string) => (presets || f === catName('收件箱') ? categoryOf(f)?.group : undefined)
   const groups: string[][] = CATEGORY_GROUPS.map((g) => left.filter((f) => seg(f) === g))
   groups.push(left.filter((f) => seg(f) === undefined))
   return groups.filter((g) => g.length)

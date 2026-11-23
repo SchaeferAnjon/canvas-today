@@ -31,6 +31,12 @@ test('开发版不查更新；下好了底栏出「重启更新到 x」，装不
     await expect(s.getByRole('button', { name: '现在查一次' })).toHaveCount(0)
     await expect(page.getByTestId('update-bar')).toHaveCount(0)
     const auto = s.getByRole('switch', { name: '自动检查更新' })
+    // 开发版：开关灰掉、点不了（同画布笔记）
+    await expect(auto).toBeDisabled()
+    await expect(auto).toHaveAttribute('aria-checked', 'false')
+    // 打好的包（查过一次、已是最新）：开关能点，关掉记进设置文件
+    await push(run, { phase: 'latest', checkedAt: Date.now() })
+    await expect(auto).toBeEnabled()
     await expect(auto).toHaveAttribute('aria-checked', 'true')
     await auto.click()
     await expect(auto).toHaveAttribute('aria-checked', 'false')
@@ -71,7 +77,7 @@ test('开发版不查更新；下好了底栏出「重启更新到 x」，装不
     await expect(s.getByRole('button', { name: '现在查一次' })).toBeVisible()
 
     // 英文
-    await s.getByRole('radio', { name: 'English' }).click()
+    await s.getByLabel('界面语言').selectOption({ label: 'English' })
     await push(run, { phase: 'ready', version: '0.1.1', percent: 100 })
     await page.keyboard.press('Escape')
     await expect(bar).toHaveText('Restart to update to 0.1.1')

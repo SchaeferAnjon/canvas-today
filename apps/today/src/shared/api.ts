@@ -1,9 +1,10 @@
 /** 主进程和界面之间说的话（window.ct）。界面只拿到索引的样子，改文件一律交给主进程。 */
 import type { CalEvent } from '@cn/calendar'
 import type { EngineId } from '../../../notes/src/shared/agent'
-import type { FocusRecord, Habit, Prio, RingBy } from '@cn/tasks'
+import type { FocusRecord, Habit, Prio, RingBy, When, WhenFields } from '@cn/tasks'
 import type { Lang } from './i18n'
 import type { TodayAppearance, TodaySettings } from './settings'
+import type { ThemeFile } from '../../../notes/src/shared/vscode-theme'
 
 /** 检查更新的状态：和画布笔记同一个 Updater（apps/notes/src/main/updater.ts），类型也用它的 */
 export type { UpdateState } from '../../../notes/src/shared/api'
@@ -84,6 +85,8 @@ export interface AppState {
   settings: TodaySettings
   /** 现在用的外观（跟画布笔记时是画布笔记的） */
   look: TodayAppearance
+  /** 导入的 VS Code 主题（和画布笔记同一份，存在画布笔记设置目录 themes/） */
+  themes: ThemeFile[]
   /** 界面的钟比真的钟快多少毫秒（测试用 CT_NOW 拨钟） */
   clockOffset: number
   device: string
@@ -97,6 +100,8 @@ export type EditOp =
   | { op: 'time'; time: string | null }
   | { op: 'remind'; remind: string | null }
   | { op: 'repeat'; repeat: string | null }
+  /** 日子、钟点、提醒、重复一起照这样写（定日子和时间的选择器，task-pd289；null 是拿掉那一项） */
+  | { op: 'when'; when: WhenFields }
   | { op: 'prio'; prio: Prio }
   | { op: 'title'; title: string }
   | { op: 'addSub'; title: string }
@@ -300,24 +305,38 @@ export interface Notice {
   bg?: boolean
 }
 
+/** 设置和外观：改了设置、画布笔记那边换了外观、导入或删掉了主题，主进程推过来的这一份 */
+export interface LookState {
+  settings: TodaySettings
+  look: TodayAppearance
+  themes: ThemeFile[]
+}
+
 export interface CtApi {
   state(): Promise<AppState>
   chooseVault(): Promise<AppState>
   snapshot(): Promise<Snapshot>
   onSnapshot(cb: (s: Snapshot) => void): () => void
   edit(req: EditReq): Promise<EditResult>
-  add(text: string, ctx: AddCtx): Promise<AddResult>
+  /** when：AI 认出来的（task-pd289，标题和时间照它） */
+  add(text: string, ctx: AddCtx, when?: When | null): Promise<AddResult>
+  /** 写时间本地认不出、看着有时间词的那一句问 AI（task-pd289）；认不出、问不成是 null */
+  whenAi(text: string, now: string): Promise<When | null>
   undo(id: string): Promise<UndoResult>
   /** 新清单：建一篇 收件箱/<名字>.md，返回它的路径 */
   newList(name: string): Promise<string | null>
   git(): Promise<GitInfo | null>
   onGit(cb: (g: GitInfo) => void): () => void
   /** 在画布笔记里打开这一篇，到第 line 行（从 0 数） */
-  openNote(path: string, line?: number): Promise<{ ok: boolean }>
+  openNote(path: string, line?: number): Promise<{ ok: boolean; by?: 'notes' | 'default' }>
   /** 「到点的样子」：马上弹一次这条的提醒 */
   previewNotif(key: string): Promise<void>
-  setSettings(p: Partial<TodaySettings>): Promise<{ settings: TodaySettings; look: TodayAppearance }>
-  onSettings(cb: (s: { settings: TodaySettings; look: TodayAppearance }) => void): () => void
+  setSettings(p: Partial<TodaySettings>): Promise<LookState>
+  onSettings(cb: (s: LookState) => void): () => void
+  /** 导入 VS Code 主题（.json 或 .vsix，存进和画布笔记同一个文件夹）：导进来就用上；取消了是 null */
+  importTheme(): Promise<{ added: { id: string; name: string }[]; state: LookState } | null>
+  /** 删掉一套导入的主题（画布笔记那边也没了） */
+  removeTheme(id: string): Promise<LookState>
   /** 系统右键菜单（照家族规矩用原生菜单） */
   taskMenu(key: string, lang: Lang): Promise<MenuPick>
   /** 打卡、取消、新建、改重复、删掉一个习惯 */

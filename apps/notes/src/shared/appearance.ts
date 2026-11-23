@@ -109,6 +109,8 @@ export interface AppSettings {
   archiveDays: ArchiveDays
   /** 自动检查更新（启动 30 秒后一次，之后每 6 小时） */
   autoUpdate: boolean
+  /** 软件家族的名单每天从 apps.us-cloud.uk 看一次（设置 › 隐私和联网）；关了只用软件带的那份 */
+  familyFetch: boolean
   /** 设置 › 梦游：什么时候梦游、能做哪些事、能动哪些文件夹、改完怎么收（shared/dream-settings.ts） */
   dream: DreamSettings
   /** 设置方向 A 放进来的几组（shared/prefs.ts）：一般、文档和白板、文件和附件、读PDF、网页、同步 */
@@ -126,6 +128,7 @@ export interface SettingsPatch {
   autoCommitMinutes?: number
   archiveDays?: number
   autoUpdate?: boolean
+  familyFetch?: boolean
   dream?: DreamPatch
   general?: Partial<GeneralPrefs>
   editor?: Partial<EditorPrefs>
@@ -153,6 +156,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   autoCommitMinutes: 10,
   archiveDays: DEFAULT_ARCHIVE_DAYS,
   autoUpdate: true,
+  familyFetch: true,
   dream: DEFAULT_DREAM,
   general: DEFAULT_GENERAL,
   editor: DEFAULT_EDITOR,
@@ -194,6 +198,7 @@ export function normalizeSettings(raw: unknown, user: readonly SkinInfo[] = []):
     autoCommitMinutes: Number.isFinite(mins) && mins >= 0 && mins <= 24 * 60 ? Math.round(mins) : DEFAULT_SETTINGS.autoCommitMinutes,
     archiveDays: isArchiveDays(r.archiveDays) ? r.archiveDays : DEFAULT_SETTINGS.archiveDays,
     autoUpdate: typeof r.autoUpdate === 'boolean' ? r.autoUpdate : DEFAULT_SETTINGS.autoUpdate,
+    familyFetch: typeof r.familyFetch === 'boolean' ? r.familyFetch : DEFAULT_SETTINGS.familyFetch,
     dream: normalizeDream(r.dream),
     general: normalizeGeneral(r.general),
     editor: normalizeEditor(r.editor),

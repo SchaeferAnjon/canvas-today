@@ -1,6 +1,7 @@
 /** window.ct：界面和主进程说话的口（见 shared/api.ts）。主窗口和菜单栏小窗共用 */
 import { contextBridge, ipcRenderer } from 'electron'
 import type { CtApi } from '../shared/api'
+import { familyApi } from '../../../notes/src/preload/family'
 
 const on =
   <A extends unknown[]>(channel: string) =>
@@ -16,7 +17,7 @@ const api: CtApi = {
   snapshot: () => ipcRenderer.invoke('ct:snapshot'),
   onSnapshot: on('ct:snapshot'),
   edit: (req) => ipcRenderer.invoke('ct:edit', req),
-  add: (text, ctx) => ipcRenderer.invoke('ct:add', text, ctx),
+  add: (text, ctx, when) => ipcRenderer.invoke('ct:add', text, ctx, when ?? null),
   undo: (id) => ipcRenderer.invoke('ct:undo', id),
   newList: (name) => ipcRenderer.invoke('ct:newList', name),
   git: () => ipcRenderer.invoke('ct:git'),
@@ -25,11 +26,14 @@ const api: CtApi = {
   previewNotif: (key) => ipcRenderer.invoke('ct:previewNotif', key),
   setSettings: (p) => ipcRenderer.invoke('ct:setSettings', p),
   onSettings: on('ct:settings'),
+  importTheme: () => ipcRenderer.invoke('ct:importTheme'),
+  removeTheme: (id) => ipcRenderer.invoke('ct:removeTheme', id),
   taskMenu: (key, lang) => ipcRenderer.invoke('ct:taskMenu', key, lang),
   habit: (op) => ipcRenderer.invoke('ct:habit', op),
   habitMenu: (path, lang) => ipcRenderer.invoke('ct:habitMenu', path, lang),
   aiInfo: () => ipcRenderer.invoke('ct:aiInfo'),
   aiSplit: (key, job) => ipcRenderer.invoke('ct:aiSplit', key, job),
+  whenAi: (text, now) => ipcRenderer.invoke('ct:whenAi', text, now),
   aiSplitAccept: (key, steps) => ipcRenderer.invoke('ct:aiSplitAccept', key, steps),
   aiSchedule: (job) => ipcRenderer.invoke('ct:aiSchedule', job),
   aiScheduleAccept: (slots) => ipcRenderer.invoke('ct:aiScheduleAccept', slots),
@@ -72,3 +76,5 @@ const api: CtApi = {
 }
 
 contextBridge.exposeInMainWorld('ct', api)
+/** 设置 › 软件家族：和画布笔记同一套（main/family.ts、preload/family.ts 都是画布笔记那份） */
+contextBridge.exposeInMainWorld('cnFamily', familyApi)

@@ -7,10 +7,12 @@ import type { CalEvent } from '@cn/calendar'
 import aurora from '@notes-assets/covers/aurora.jpg'
 import cave from '@notes-assets/covers/ice-cave.jpg'
 import { activeSkin, skinOf } from '../../../notes/src/shared/appearance'
-import type { AiInfo, AppState, CalState, FocusInfo, GitInfo, RemState, Snapshot, UpdateState } from '../shared/api'
+import { themeCss, themeInfo } from '../../../notes/src/shared/vscode-theme'
+import { installThemeCss } from '../../../notes/src/renderer/skin'
+import type { AiInfo, AppState, CalState, FocusInfo, GitInfo, LookState, RemState, Snapshot, UpdateState } from '../shared/api'
 import type { Lang } from '../shared/i18n'
 import type { TodayAppearance, TodaySettings } from '../shared/settings'
-import { isoOf } from '../shared/when'
+import { isoOf, localNowOf } from '../shared/when'
 
 export interface Data {
   state: AppState | null
@@ -52,6 +54,9 @@ export const useData = (): Data =>
 /** 软件里的现在（测试拨过钟的话照拨过的） */
 export const nowMs = () => Date.now() + data.offset
 
+/** 软件里的现在「2026-11-22T16:05」（写时间用，task-pd289） */
+export const nowLocal = () => localNowOf(nowMs())
+
 /** 今天：每分钟看一次（跨了午夜界面跟着换） */
 export function useToday(): string {
   const [t, setT] = useState(() => isoOf(nowMs()))
@@ -70,7 +75,9 @@ function applyLook() {
   const s = data.state
   if (!s) return
   const look: TodayAppearance = s.look
-  const skin = skinOf(activeSkin({ ...look, homeStyle: 'a', homeWinBg: false, winBgFile: null }, data.dark))
+  // 导入的 VS Code 主题（和画布笔记同一份）：样式放进一个 <style>，自带的十套在 themes.css 里
+  installThemeCss(s.themes.map(themeCss).join('\n'))
+  const skin = skinOf(activeSkin({ ...look, homeStyle: 'a', homeWinBg: false, winBgFile: null }, data.dark), s.themes.map(themeInfo))
   const r = document.documentElement
   r.dataset.skin = skin.id
   r.dataset.tone = skin.tone
@@ -97,7 +104,7 @@ export async function boot() {
   window.ct.onSnapshot((snap) => set({ snap }))
   window.ct.onGit((git) => set({ git }))
   window.ct.onClock((offset) => set({ offset }))
-  window.ct.onSettings(({ settings, look }) => data.state && set({ state: { ...data.state, settings, look } }))
+  window.ct.onSettings(setLook)
   window.ct.onUpdate((update) => set({ update }))
   void window.ct.updateStatus().then((update) => set({ update }))
   window.ct.onRem((rem) => set({ rem }))
@@ -122,8 +129,12 @@ export async function reloadState() {
 }
 
 export async function saveSettings(p: Partial<TodaySettings>) {
-  const r = await window.ct.setSettings(p)
-  if (data.state) set({ state: { ...data.state, settings: r.settings, look: r.look } })
+  setLook(await window.ct.setSettings(p))
+}
+
+/** 主进程给的设置、外观、导入的主题换上（改了设置、导入或删掉了主题、画布笔记那边换了） */
+export function setLook(ls: LookState) {
+  if (data.state) set({ state: { ...data.state, ...ls } })
 }
 
 /** 这几天（from…to，本地日子，都含）系统日历的日程：开着才读，日历 App 里改了、开关换了就重读 */

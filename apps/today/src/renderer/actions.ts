@@ -1,6 +1,6 @@
 /** 界面上的动作（改库里那一行、选中、提示条）：Desk 里建一份，各个看法用 useActions() 拿 */
 import { createContext, useContext } from 'react'
-import type { Prio } from '@cn/tasks'
+import type { Prio, When } from '@cn/tasks'
 import type { AddCtx, AiSlot, EditOp, HabitView, TaskView } from '../shared/api'
 
 export interface Actions {
@@ -14,7 +14,9 @@ export interface Actions {
   field(t: TaskView, op: EditOp): void
   del(t: TaskView): void
   move(t: TaskView, to: string): void
-  add(text: string, ctx: AddCtx): Promise<boolean>
+  add(text: string, ctx: AddCtx, when?: When | null): Promise<boolean>
+  /** 定日子和时间的选择器（task-pd289）：贴着 el 弹，改什么写进这一条，关上时说一句带撤销 */
+  pickWhen(t: TaskView, el: HTMLElement, keys?: boolean): void
   openNote(path: string, line?: number): void
   menu(t: TaskView): void
   preview(t: TaskView): void

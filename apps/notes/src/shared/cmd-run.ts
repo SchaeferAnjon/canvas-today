@@ -8,6 +8,7 @@
  */
 import { addSection, answerLead, type DocColumn, type DocUnit, insertInColumn, moveUnit, parseReadingNote, resolveLink, splitDoc, unitKeys } from '@cn/format'
 import { jsonIn } from './distill'
+import { catName } from './categories'
 import { answerRule } from './answer-lang'
 import type { Write } from './ai-cmds'
 
@@ -1139,8 +1140,8 @@ export interface WeekInfo {
   had: string | null
 }
 
-/** 这一周的周记放在哪（一周一篇） */
-export const weekPath = (week: string) => `周记/${week} 周记.md`
+/** 这一周的周记放在哪（一周一篇）；英文库是 Weekly/2026-W47 Weekly.md */
+export const weekPath = (week: string) => `${catName('周记')}/${week} ${catName('周记')}.md`
 
 /** 一条划线、想法交给 AI 的样子：「划线原话」想法 */
 function highlightItem(g: DigestGroup): string {
@@ -1330,6 +1331,14 @@ export function fakeCmdAnswer(prompt: string): string | null {
     }
     case '写这周的周记': {
       const notes = [...prompt.matchAll(/^- \[\[(.+?)\]\]/gm)].map((m) => m[1]!)
+      // 自动化「周记」那一问（main/automation-engine.ts 的 weekAsk，task-i921u）：照设计页三节，小标题加粗
+      if (prompt.includes('**这周写了、剪了什么**')) {
+        const list = (title: string) => (/^这周(?:做完的待办|梦游整理了什么)/.test(title) ? (new RegExp(`^${title}（\\d+ [条处]）：\\n([\\s\\S]*?)(?:\\n\\n|(?![\\s\\S]))`, 'm').exec(prompt)?.[1] ?? '').split('\n').filter((l) => l.startsWith('- ')) : [])
+        const done = list('这周做完的待办')
+        const dream = list('这周梦游整理了什么')
+        const secs = [['这周写了、剪了什么', notes.map((n) => `- 改了 [[${n}]]`)], ['做完的待办', done], ['梦游整理了什么', dream]] as const
+        return secs.filter(([, ls]) => ls.length).map(([t, ls]) => `**${t}**\n${ls.join('\n')}`).join('\n\n') || '没有要加的'
+      }
       // 「读了什么」照提示里「这周读的」那几行原样写（书名一行，下面每条一行）
       const reads = (/^这周读的：\n([\s\S]*?)(?:\n\n|(?![\s\S]))/m.exec(prompt)?.[1] ?? '')
         .split('\n')

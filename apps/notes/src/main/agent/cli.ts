@@ -15,14 +15,24 @@ import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { homedir, userInfo } from 'node:os'
 import { basename, delimiter, dirname, join } from 'node:path'
 import type { EngineId } from '../../shared/agent'
+import { t } from '../../shared/i18n'
 
 export const COMMAND: Record<EngineId, string> = { claude: 'claude', codex: 'codex', gemini: 'gemini', opencode: 'opencode' }
 
+/** 没装时怎么装（用到时才取，跟界面语言） */
 export const INSTALL_HINT: Record<EngineId, string> = {
-  claude: '没找到 claude 命令。装 Claude Code：curl -fsSL https://claude.ai/install.sh | bash，再在终端里运行一次 claude 登录。',
-  codex: '没找到 codex 命令。装 Codex：brew install codex 或 npm i -g @openai/codex，再运行一次 codex 登录。',
-  gemini: '没找到 gemini 命令。装 Gemini CLI：brew install gemini-cli 或 npm i -g @google/gemini-cli，再运行一次 gemini 登录。',
-  opencode: '没找到 opencode 命令。装 OpenCode：brew install opencode 或 curl -fsSL https://opencode.ai/install | bash。',
+  get claude() {
+    return t('没找到 claude 命令。装 Claude Code：curl -fsSL https://claude.ai/install.sh | bash，再在终端里运行一次 claude 登录。')
+  },
+  get codex() {
+    return t('没找到 codex 命令。装 Codex：brew install codex 或 npm i -g @openai/codex，再运行一次 codex 登录。')
+  },
+  get gemini() {
+    return t('没找到 gemini 命令。装 Gemini CLI：brew install gemini-cli 或 npm i -g @google/gemini-cli，再运行一次 gemini 登录。')
+  },
+  get opencode() {
+    return t('没找到 opencode 命令。装 OpenCode：brew install opencode 或 curl -fsSL https://opencode.ai/install | bash。')
+  },
 }
 
 /** 自带命令行的 Mac 应用：包里 Contents/Resources/<命令>（Codex 桌面 App 带着 codex；并进 ChatGPT 桌面 App 以后在 ChatGPT.app 里） */
@@ -119,7 +129,7 @@ function isExecutable(p: string): boolean {
 /** 给界面看的「在哪找到」：家目录写成 ~（「~/.local/bin」），App 包里的写「在 Codex.app 里找到」 */
 export function whereOf(path: string, home: string): string {
   const app = /\/([^/]+\.app)\/Contents\//.exec(path)
-  if (app) return `在 ${app[1]} 里找到`
+  if (app) return t('在 {app} 里找到', { app: app[1] })
   const dir = dirname(path)
   return dir === home || dir.startsWith(home + '/') ? '~' + dir.slice(home.length) : dir
 }
@@ -257,7 +267,7 @@ const line = (s: string, last: boolean) => {
 export function checkCli(path: string, timeoutMs = 3000): Promise<CliCheck> {
   const name = basename(path)
   const key = fileKey(path)
-  if (!key) return Promise.resolve({ ok: false, why: `${path} 不在了` })
+  if (!key) return Promise.resolve({ ok: false, why: t('{path} 不在了', { path }) })
   const hit = checked.get(path)
   if (hit?.key === key) return Promise.resolve(hit.result)
   return new Promise((resolve) => {
@@ -274,17 +284,17 @@ export function checkCli(path: string, timeoutMs = 3000): Promise<CliCheck> {
     const child = spawn(path, ['--version'], { env: cliEnv(), stdio: ['ignore', 'pipe', 'pipe'] })
     const timer = setTimeout(() => {
       child.kill('SIGKILL')
-      finish({ ok: false, why: `运行 ${name} --version ${+(timeoutMs / 1000).toFixed(1)} 秒没反应` })
+      finish({ ok: false, why: t('运行 {name} --version {s} 秒没反应', { name, s: +(timeoutMs / 1000).toFixed(1) }) })
     }, timeoutMs)
     child.stdout!.setEncoding('utf8')
     child.stdout!.on('data', (d: string) => (out += d))
     child.stderr!.setEncoding('utf8')
     child.stderr!.on('data', (d: string) => (err = (err + d).slice(-4000)))
-    child.on('error', (e) => finish({ ok: false, why: `${name} 运行不了：${e.message}` }))
+    child.on('error', (e) => finish({ ok: false, why: t('{name} 运行不了：{error}', { name, error: e.message }) }))
     child.on('close', (code, signal) => {
       if (code === 0) return finish({ ok: true, version: line(out, false) || line(err, false) })
       const why = line(err, true) || line(out, true)
-      finish({ ok: false, why: `运行 ${name} --version 出错（退出码 ${code ?? signal}）${why ? `：${why}` : ''}` })
+      finish({ ok: false, why: why ? t('运行 {name} --version 出错（退出码 {code}）：{why}', { name, code: code ?? signal, why }) : t('运行 {name} --version 出错（退出码 {code}）', { name, code: code ?? signal }) })
     })
   })
 }

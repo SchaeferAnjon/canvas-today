@@ -43,31 +43,31 @@ test('设置（照画布笔记分页）：不跟画布笔记时换 A 风格、�
     const s = page.getByRole('dialog', { name: '设置' })
     await expect(s).toBeVisible()
     const nav = s.getByRole('navigation', { name: '设置分页' })
-    // 左边四页，开在「一般」
-    await expect(nav.getByRole('button')).toHaveText(['一般', '外观', '日历和提醒事项', '库'])
+    // 左边五页（第五页软件家族，task-59o3v），开在「一般」
+    await expect(nav.getByRole('button')).toHaveText(['一般', '外观', '日历和提醒事项', '库', '软件家族'])
     await expect(nav.getByRole('button', { name: '一般' })).toHaveAttribute('aria-current', 'page')
     await expect(s.getByRole('heading', { name: '一般' })).toBeVisible()
     await nav.getByRole('button', { name: '外观' }).click()
     await expect(s.getByRole('heading', { name: '外观' })).toBeVisible()
     await s.getByRole('switch', { name: '和画布笔记一样' }).click()
     await expect(s.getByTestId('settings-toast')).toHaveText(/已存 · 「和画布笔记一样」关了\s*撤回/)
-    await s.getByRole('radio', { name: 'A 照 VS Code' }).click()
+    await s.getByRole('radio', { name: /^A · 照VS Code/ }).click()
     await expect(page.locator('.win')).toHaveClass(/fa/)
     await expect(page.locator('.crumb')).toContainText('测试库')
     // 提示条上「撤回」：回到 B
     await s.getByTestId('settings-toast').getByRole('button', { name: '撤回' }).click()
     await expect(page.locator('.win')).toHaveClass(/fb/)
-    await s.getByRole('radio', { name: 'A 照 VS Code' }).click()
+    await s.getByRole('radio', { name: /^A · 照VS Code/ }).click()
     await expect(page.locator('.win')).toHaveClass(/fa/)
     await s.getByRole('radio', { name: '深湖' }).click()
     await expect(page.locator('html')).toHaveAttribute('data-skin', 'petrol')
     await expect(page.locator('html')).toHaveAttribute('data-tone', 'dark')
-    await s.getByLabel('窗口背景').selectOption({ label: '冰洞照片' })
+    await s.getByRole('radio', { name: '冰洞照片' }).click()
     await nav.getByRole('button', { name: '一般' }).click()
     await s.getByRole('switch', { name: '开着时常驻菜单栏' }).click()
-    await s.getByRole('radio', { name: 'English' }).click()
+    await s.getByLabel('界面语言').selectOption({ label: 'English' })
     await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible()
-    await expect(page.getByRole('navigation', { name: 'Settings pages' }).getByRole('button')).toHaveText(['General', 'Appearance', 'Calendar & Reminders', 'Vault'])
+    await expect(page.getByRole('navigation', { name: 'Settings pages' }).getByRole('button')).toHaveText(['General', 'Appearance', 'Calendar & Reminders', 'Vault', 'App family'])
     const saved = JSON.parse(readFileSync(join(run.userData, 'settings.json'), 'utf8'))
     expect(saved).toMatchObject({ lang: 'en', followNotes: false, tray: false, appearance: { frame: 'a', skin: 'petrol', winBg: 'cave' } })
     await page.keyboard.press('Escape')
@@ -83,10 +83,10 @@ test('设置（照画布笔记分页）：不跟画布笔记时换 A 风格、�
 })
 
 /**
- * 设置在原型那么大的窗口（1420 × 800）里：弹窗 960 × 680（同画布笔记），四页中英文都不用滚就看全
+ * 设置在原型那么大的窗口（1420 × 800）里：弹窗 960 × 740（同画布笔记；窗口 800 高时正好 800 - 60），四页中英文都不用滚就看全
  * （最长的样子：提醒事项连着、三行都在；正在下载新版本那一行多一条进度条；不跟画布笔记时外观四行加十个主题），主题名不截断
  */
-test('设置弹窗在 1420 × 800 里：四页中英文都不用滚，主题名不截断', async () => {
+test('设置弹窗在 1420 × 800 里：一般、日历和提醒事项、库中英文都不用滚，外观的十个主题一屏看全、名字不截断', async () => {
   for (const lang of ['zh', 'en'] as const) {
     const run = await launch({ settings: { ...LOOK('sky', 'a', lang), followNotes: false }, reminders: {} })
     const { page } = run
@@ -96,7 +96,10 @@ test('设置弹窗在 1420 × 800 里：四页中英文都不用滚，主题名�
       await page.locator('.ab[data-k="settings"]').click()
       const s = page.locator('.set')
       const box = (await s.boundingBox())!
-      expect([Math.round(box.width), Math.round(box.height)]).toEqual([960, 680])
+      // 高是 min(740, 窗口内高 - 60)：窗口内高 799 / 800 时是 739 / 740
+      expect(Math.round(box.width)).toBe(960)
+      expect(Math.round(box.height)).toBeGreaterThanOrEqual(738)
+      expect(Math.round(box.height)).toBeLessThanOrEqual(740)
       const nav = s.getByRole('navigation')
       // 正在下载新版本时那一行多一条进度条
       await run.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.webContents.send('ct:update', { phase: 'downloading', current: '0.1.0', version: '0.1.1', percent: 40, error: '', checkedAt: 0, inApps: true }))
@@ -110,17 +113,23 @@ test('设置弹窗在 1420 × 800 里：四页中英文都不用滚，主题名�
         await nav.getByRole('button').nth(i).click()
         const body = s.locator('.set-body')
         await expect(body.locator('.sa-head')).toBeVisible()
+        if (i === 1) {
+          // 外观照画布笔记：主题卡、界面风格两张大图、窗口背景缩略图，比一屏长；十个主题不用滚就看全
+          const { last, bottom } = await body.evaluate((e) => ({ last: [...e.querySelectorAll('.sk')].pop()!.getBoundingClientRect().bottom, bottom: e.getBoundingClientRect().bottom }))
+          expect(last, `${lang} 外观：最后一个主题的下沿 ${last}，能看见的下沿 ${bottom}`).toBeLessThanOrEqual(bottom)
+          continue
+        }
         const { scroll, client } = await body.evaluate((e) => ({ scroll: e.scrollHeight, client: e.clientHeight }))
         expect(scroll, `${lang} 第${i + 1}页：内容 ${scroll}，能看见的 ${client}`).toBeLessThanOrEqual(client)
       }
       await nav.getByRole('button').nth(1).click()
-      await expect(s.locator('.skins button')).toHaveCount(10)
+      await expect(s.locator('.sk-pick')).toHaveCount(10)
       // 主题名一个都不截断
-      const cut = await s.locator('.skins button span').evaluateAll((bs) => bs.filter((b) => b.scrollWidth > b.clientWidth).map((b) => b.textContent))
+      const cut = await s.locator('.sk .nm .t').evaluateAll((bs) => bs.filter((b) => b.scrollWidth > b.clientWidth).map((b) => b.textContent))
       expect(cut).toEqual([])
-      // 分段、下拉里的字也不截断（A / B 两格、语言两格）
-      const segCut = await s.locator('.sa-seg button').evaluateAll((bs) => bs.filter((b) => b.scrollWidth > b.clientWidth).map((b) => b.textContent))
-      expect(segCut).toEqual([])
+      // 界面风格两张大图的名字也不截断
+      const frameCut = await s.locator('.hs .nm').evaluateAll((bs) => bs.filter((b) => b.scrollWidth > b.clientWidth).map((b) => b.textContent))
+      expect(frameCut).toEqual([])
     } finally {
       await run.close()
     }

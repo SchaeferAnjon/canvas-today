@@ -65,8 +65,13 @@ export interface DocUnit {
   place?: { id: string; x: number; y: number; from: number; to: number }
   /** 只记编号的那一行（连线的一头、AI 总结的卡）：卡还在列里 */
   tag?: { id: string; from: number; to: number }
-  /** 位置行、编号行上别的属性（ai=日期、color=…） */
+  /** 位置行、编号行上别的属性（ai=日期、color=…、merge=3） */
   attrs?: Record<string, string>
+  /**
+   * 合成的一张（task-5ryf9「合成一张」：字一个不改，前面一行注释 `merge=N` 记后面 N 张是一张）：每一张原来的样子。
+   * from–to、text 是整张（几段连着中间的空行）；只有一张的不算合成
+   */
+  parts?: DocUnit[]
 }
 
 export interface DocColumn {
@@ -190,6 +195,11 @@ function kindOf(text: string, b: MdBlock): UnitKind {
   if (b.kind === 'html') return 'html'
   if (/^!\[[^\]]*\]\([^)]*\)\s*$/.test(t)) return 'image'
   return 'text'
+}
+
+/** 合成的一张里头一张原来的样子（不带位置行、编号行，那一行是整张的） */
+function partOf(u: DocUnit): DocUnit {
+  return { kind: u.kind, from: u.from, to: u.to, text: u.text, ...(u.lead ? { lead: u.lead } : {}), ...(u.sub ? { sub: u.sub } : {}), ...(u.moments ? { moments: u.moments } : {}) }
 }
 
 /** 把文档切成列和卡（只读，纯函数） */
@@ -327,13 +337,27 @@ export function splitDoc(text: string): DocBoard {
     let pendingTag: DocUnit['tag'] | undefined
     let pendingAttrs: Record<string, string> | undefined
     let carry: MdBlock | null = null
+    /** 合成的那张还要吞几张（注释行上 merge=N）：只吞这一节里紧跟着、自己没有位置行和编号行的卡；碰到标题、分隔线就停 */
+    let merging: { unit: DocUnit; left: number } | null = null
     const push = (u: DocUnit) => {
+      if (merging && merging.left > 0 && !pendingPlace && !pendingTag && !pendingAttrs) {
+        const m = merging.unit
+        ;(m.parts ??= [partOf(m)]).push(u)
+        m.to = u.to
+        m.text = text.slice(m.from, m.to)
+        merging.left--
+        return
+      }
+      merging = null
       if (pendingAttrs) u.attrs = pendingAttrs
-      if (pendingPlace) placed.push({ ...u, place: pendingPlace, section: name })
+      let stored: DocUnit = u
+      if (pendingPlace) placed.push((stored = { ...u, place: pendingPlace, section: name } as DocBoard['placed'][number]))
       else {
         if (pendingTag) u.tag = pendingTag
         col.cards.push(u)
       }
+      const n = Number(u.attrs?.merge)
+      if (Number.isInteger(n) && n >= 2) merging = { unit: stored, left: n - 1 }
       pendingPlace = undefined
       pendingTag = undefined
       pendingAttrs = undefined
@@ -343,6 +367,7 @@ export function splitDoc(text: string): DocBoard {
       const b = s.body[k]!
       const t = at(b)
       const card = CARD_LINE.exec(t)
+      if (b.kind === 'heading' || b.kind === 'hr') merging = null
       if (b.kind === 'html' && card) {
         // 位置行（有 x、y）：这张卡摆在空白处；只记编号的一行：卡还在列里，留着编号给连线、AI 总结的卡
         const a = lineAttrs(card[1]!)
@@ -421,17 +446,26 @@ export function splitDoc(text: string): DocBoard {
 
 // ---------- 写回 ----------
 
-/** 把 [from, to) 连同它后面的空行拿掉，返回新文字和拿掉的那一段 */
-function cut(text: string, from: number, to: number): { rest: string; piece: string } {
+/**
+ * 把 [from, to) 连同它后面的空行拿掉，返回新文字和拿掉的那一段；a–b 是原文里真拿掉的那一截，换成了 keep
+ * （拿的是最后一段：前面的空行也收掉，文末留一个换行）
+ */
+function cutRange(text: string, from: number, to: number): { rest: string; piece: string; a: number; b: number; keep: string } {
   let end = to
   while (text[end] === '\n') end++
-  // 拿的是最后一段：把前面的空行也收掉，文末留一个换行
   if (end >= text.length) {
     let start = from
     while (start > 0 && text[start - 1] === '\n') start--
-    return { rest: text.slice(0, start) + (start > 0 ? '\n' : ''), piece: text.slice(from, to) }
+    const keep = start > 0 ? '\n' : ''
+    return { rest: text.slice(0, start) + keep, piece: text.slice(from, to), a: start, b: text.length, keep }
   }
-  return { rest: text.slice(0, from) + text.slice(end), piece: text.slice(from, to) }
+  return { rest: text.slice(0, from) + text.slice(end), piece: text.slice(from, to), a: from, b: end, keep: '' }
+}
+
+/** 把 [from, to) 连同它后面的空行拿掉，返回新文字和拿掉的那一段 */
+function cut(text: string, from: number, to: number): { rest: string; piece: string } {
+  const r = cutRange(text, from, to)
+  return { rest: r.rest, piece: r.piece }
 }
 
 /** 在 pos 插一整段：前后各隔一个空行 */
@@ -680,6 +714,149 @@ export function renameColumn(text: string, column: DocColumn, title: string): st
   const line = text.slice(h.from, h.to)
   const marks = /^\s*#+/.exec(line)?.[0] ?? '##'
   return text.slice(0, h.from) + `${marks} ${t}` + text.slice(h.to)
+}
+
+// ---------- 选中好几张一起改（task-5ryf9，白板框选以后那一条操作条） ----------
+
+/** 几张卡按文档里的先后（同一张只算一次） */
+function inOrder(units: readonly DocUnit[]): DocUnit[] {
+  const seen = new Map<number, DocUnit>()
+  for (const u of units) seen.set(span(u).from, u)
+  return [...seen.values()].sort((a, b) => span(a).from - span(b).from)
+}
+
+/** 拿掉这几张（连位置行、编号行），从后往前拿，前面的位置不变；at 是原文里的一个位置，跟着挪到拿完以后的地方 */
+function cutUnits(text: string, units: readonly DocUnit[], at = 0): { rest: string; at: number } {
+  let rest = text
+  let p = at
+  for (const u of [...inOrder(units)].reverse()) {
+    const s = span(u)
+    const r = cutRange(rest, s.from, s.to)
+    p = p <= r.a ? p : p >= r.b ? p - (r.b - r.a) + r.keep.length : r.a
+    rest = r.rest
+  }
+  return { rest, at: Math.max(0, Math.min(rest.length, p)) }
+}
+
+const idsOf = (units: readonly DocUnit[]) => new Set(units.map(unitId).filter((x): x is string => !!x))
+
+/** 去掉两头碰到这些编号的线 */
+function dropLinks(text: string, ids: ReadonlySet<string>): string {
+  if (!ids.size) return text
+  const links = linksOf(text)
+  const kept = links.filter((l) => !ids.has(l.from) && !ids.has(l.to))
+  return kept.length === links.length ? text : withLinksText(text, kept)
+}
+
+/**
+ * 几张卡一起挪进一列：按文档里的先后挨着插到 before 前面（null 是这一节末尾；before 自己也在挪的那几张里，插到它后面第一张不挪的前面）。
+ * 拖出来的卡位置行拿掉（连线的一头、带别的属性的换成只记编号的一行），和 moveUnit 一个规矩
+ */
+export function moveUnits(text: string, units: readonly DocUnit[], column: DocColumn, before: DocUnit | null): string {
+  if (column.ask) throw new Error('「问过 AI」这一列是软件记的，不能往里放')
+  const list = inOrder(units)
+  if (!list.length) return text
+  const moving = new Set(list.map((u) => span(u).from))
+  let to = before
+  if (to && moving.has(span(to).from)) {
+    const cards = column.cards.filter((c) => c.kind !== 'gap')
+    const i = cards.findIndex((c) => span(c).from === span(to!).from)
+    to = cards.slice(i + 1).find((c) => !moving.has(span(c).from)) ?? null
+  }
+  const bodies = list.map((u) => (u.place ? (keepsId(text, u.place.id, u.attrs) ? tagLine(u.place.id, u.attrs) + '\n' : '') + text.slice(u.from, u.to) : text.slice(span(u).from, u.to)))
+  const { rest, at } = cutUnits(text, list, to ? span(to).from : column.end)
+  return insertBlock(rest, at, bodies.join('\n\n'))
+}
+
+/** 几张卡一起摆到空白处：每张一行位置（已有的改坐标，列里的前面多一行），正文顺序不变；从后往前改，前面的位置不受影响 */
+export function placeUnits(text: string, moves: readonly { unit: DocUnit; x: number; y: number }[]): string {
+  let out = text
+  for (const m of [...moves].sort((a, b) => span(b.unit).from - span(a.unit).from)) out = placeUnit(out, m.unit, Math.max(0, m.x), Math.max(0, m.y))
+  return out
+}
+
+/** 删掉几张卡：这几段连位置行、编号行一起删，连着它们的线也去掉 */
+export function removeUnits(text: string, units: readonly DocUnit[]): string {
+  const list = inOrder(units)
+  if (!list.length) return text
+  return dropLinks(cutUnits(text, list).rest, idsOf(list))
+}
+
+/**
+ * 合成一张（用户定「字不改、加一行注释」）：这几段挪到第一张那里（按原来的先后挨着），字一个不改；
+ * 前面一行记「后面 N 张是一张」：第一张在空白处是它的位置行加 merge=N，在列里是只记编号的一行加 merge=N。
+ * 本来就是合成的几张，段数加起来；连到被并进来的那几张的线改连到这一张（自己连自己的、重了的去掉）
+ */
+export function mergeUnits(text: string, units: readonly DocUnit[]): { text: string; id: string } {
+  const list = inOrder(units)
+  if (list.length < 2) throw new Error('合成一张要选两张以上')
+  const first = list[0]!
+  const others = list.slice(1)
+  const id = unitId(first) ?? freshId(text)
+  const n = list.reduce((s, u) => s + (u.parts?.length ?? 1), 0)
+  const attrs = { ...(first.attrs ?? {}), merge: String(n) }
+  const head = first.place ? placeLine(id, first.place.x, first.place.y, attrs) : tagLine(id, attrs)
+  const body = head + '\n' + list.map((u) => text.slice(u.from, u.to)).join('\n\n')
+  const gone = idsOf(others)
+  const { rest } = cutUnits(text, others)
+  const s = span(first)
+  let out = rest.slice(0, s.from) + body + rest.slice(first.to)
+  if (gone.size) {
+    const links = linksOf(out)
+    const seen = new Set<string>()
+    const next = links
+      .map((l) => ({ from: gone.has(l.from) ? id : l.from, to: gone.has(l.to) ? id : l.to }))
+      .filter((l) => l.from !== l.to && !seen.has(l.from + '>' + l.to) && (seen.add(l.from + '>' + l.to), true))
+    if (next.length !== links.length || next.some((l, i) => l.from !== links[i]!.from || l.to !== links[i]!.to)) out = withLinksText(out, next)
+  }
+  return { text: out, id }
+}
+
+/** 新的几个编号（d1、d2……，前缀同 freshId），一个都不和文件里已有的重 */
+function freshIds(text: string, count: number): string[] {
+  const used = usedIds(text)
+  const out: string[] = []
+  for (let n = 1; out.length < count; n++) if (!used.has(`d${n}`)) out.push(`d${n}`)
+  return out
+}
+
+/**
+ * 拆开合成的一张：去掉那一行上的 merge（编号还要留着的换成只记编号的一行，不用留的整行去掉），几段各是各的卡。
+ * 合成的摆在空白处：第一张留着位置，后面几张各自往右下错开 24 摆在旁边
+ */
+export function splitMerged(text: string, unit: DocUnit): string {
+  const line = unit.place ?? unit.tag
+  if (!line || !unit.attrs?.merge) return text
+  const rest = Object.fromEntries(Object.entries(unit.attrs).filter(([k]) => k !== 'merge'))
+  const attrs = Object.keys(rest).length ? rest : undefined
+  let out = text
+  if (unit.place) {
+    const later = (unit.parts ?? []).slice(1)
+    const ids = freshIds(text, later.length)
+    for (let k = later.length - 1; k >= 0; k--) {
+      const p = later[k]!
+      out = out.slice(0, p.from) + placeLine(ids[k]!, unit.place.x + 24 * (k + 1), unit.place.y + 24 * (k + 1)) + '\n' + out.slice(p.from)
+    }
+    return out.slice(0, line.from) + placeLine(line.id, unit.place.x, unit.place.y, attrs) + out.slice(line.to)
+  }
+  if (keepsId(text, line.id, attrs)) return out.slice(0, line.from) + tagLine(line.id, attrs) + out.slice(line.to)
+  let end = line.to
+  if (out[end] === '\n') end++
+  return out.slice(0, line.from) + out.slice(end)
+}
+
+/**
+ * 这几张换成一段 body（挪进新白板：原处换成一行 `[[新的白板]]`）：放在第一张那里（第一张在空白处时带它的位置行），
+ * 别的几段删掉；连着这几张的线都去掉（它们挪到别处去了）
+ */
+export function replaceUnits(text: string, units: readonly DocUnit[], body: string): string {
+  const list = inOrder(units)
+  if (!list.length) return text
+  const first = list[0]!
+  const { rest } = cutUnits(text, list.slice(1))
+  const s = span(first)
+  const head = first.place ? placeLine(first.place.id, first.place.x, first.place.y) + '\n' : ''
+  return dropLinks(rest.slice(0, s.from) + head + body.trim() + rest.slice(first.to), idsOf(list))
 }
 
 // ---------- 认卡：白板、AI、大纲用的编号 ----------

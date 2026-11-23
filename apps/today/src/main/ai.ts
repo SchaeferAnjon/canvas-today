@@ -12,6 +12,9 @@ import { ENGINE_LABEL, INITIAL_PREFS, normalizePrefs, pickLabel, resolvePick, ty
 import { loadShellPath } from '../../../notes/src/main/agent/cli'
 import { claudeEngine, codexEngine, type Engine, geminiEngine, opencodeEngine } from '../../../notes/src/main/agent/engines'
 import { type Busy, fitSchedule, freeSlots, parseSteps, SCHED_SYSTEM, type SchedCandidate, schedulePrompt, type Slot, SPLIT_SYSTEM, type SplitInput, splitPrompt } from '../shared/ai-plan'
+import { type When, WHEN_AI_SYSTEM, whenAiPrompt, whenFromAi } from '@cn/tasks'
+import { fakeWhenAnswer } from '../../../notes/src/shared/when-ai'
+import { findCli } from '../../../notes/src/main/agent/cli'
 
 export const FAKE = () => process.env.CT_AI_FAKE === '1' || process.env.CN_AI_FAKE === '1'
 
@@ -78,4 +81,30 @@ export async function aiSchedule(pick: AiPick, now: { date: string; time: string
   if (!cands.length) return []
   const answer = FAKE() ? (await sleep(Number(process.env.CT_AI_FAKE_MS ?? 600), signal), JSON.stringify(freeSlots(cands, busy, now))) : await ask(pick, SCHED_SYSTEM, schedulePrompt(now, cands, busy), cwd, signal)
   return fitSchedule(answer, cands, busy, now)
+}
+
+/**
+ * 写时间本地认不出、看着有时间词的那一句问 AI（task-pd289，和画布笔记 main/when-ai.ts 同一套话）：「小活」那一家，Claude Code 一律用 Haiku，
+ * 超时 8 秒，只送这一句；回答照 @cn/tasks 的 whenFromAi 验过才用。没装、没登录、没网、超时、答得不对都是 null，不报错
+ */
+export async function aiWhen(pick: AiPick, text: string, now: string, cwd: string): Promise<When | null> {
+  const line = text.replace(/[\r\n]+/g, ' ').trim().slice(0, 300)
+  if (!line) return null
+  const signal = AbortSignal.timeout(8000)
+  try {
+    let answer: string
+    if (FAKE()) {
+      await sleep(Number(process.env.CT_AI_FAKE_MS ?? 300), signal)
+      answer = fakeWhenAnswer(line, now)
+    } else {
+      if (!findCli(pick.engine)) return null
+      const model = pick.engine === 'claude' ? process.env.CT_WHEN_MODEL || 'haiku' : pick.model
+      const r = await engineOf(pick.engine).run({ prompt: whenAiPrompt(line, now), system: WHEN_AI_SYSTEM, cwd, signal, onText: () => {}, ...(model ? { model } : {}) })
+      answer = r.text
+    }
+    return whenFromAi(answer, line, now)
+  } catch (e) {
+    console.warn('认时间问 AI 没成：', (e as Error).message ?? e)
+    return null
+  }
 }

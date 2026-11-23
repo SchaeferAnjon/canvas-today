@@ -4,6 +4,7 @@
  * 不依赖 Electron，单元测试在 test/ai-act.test.ts。
  */
 import type { AiActArea } from './agent'
+import { t as tNow } from './i18n'
 
 /** 这一轮做了多少：做完时「整理好了 · 挪了4张卡」、停下时「做完的N步留着」从这里来 */
 export interface ActTally {
@@ -61,20 +62,20 @@ export function actScope(name: string, args: Record<string, unknown>, tab: ActTa
 /** 做完时提示条上的话（原型 A：「整理好了 · 挪了4张卡」「改好了 · 改了3段」），后面跟「撤回」 */
 export function actDoneText(area: AiActArea, t: ActTally): string {
   if (area === 'board') {
-    const parts = [t.moved && `挪了${t.moved}张卡`, t.added && `加了${t.added}张卡`, t.changed && `改了${t.changed}张卡`].filter(Boolean)
-    return ['整理好了', ...parts].join(' · ')
+    const parts = [t.moved && tNow('挪了{n}张卡', { n: t.moved }), t.added && tNow('加了{n}张卡', { n: t.added }), t.changed && tNow('改了{n}张卡', { n: t.changed })].filter(Boolean)
+    return [tNow('整理好了'), ...parts].join(' · ')
   }
   if (area === 'doc') {
-    const parts = [t.changed && `改了${t.changed}段`, t.added && `加了${t.added}段`].filter(Boolean)
-    return ['改好了', ...parts].join(' · ')
+    const parts = [t.changed && tNow('改了{n}段', { n: t.changed }), t.added && tNow('加了{n}段', { n: t.added })].filter(Boolean)
+    return [tNow('改好了'), ...parts].join(' · ')
   }
-  return t.clipped ? `做好了 · 剪了${t.clipped}段` : '做好了'
+  return t.clipped ? tNow('做好了 · 剪了{n}段', { n: t.clipped }) : tNow('做好了')
 }
 
 /** 停下以后（这一步做完了）提示条上的话 */
 export function actHaltText(t: ActTally): string {
   const n = t.moved + t.added + t.changed + t.clipped
-  return n ? `停下了 · 做完的${n}步留着` : '停下了 · 什么也没改'
+  return n ? tNow('停下了 · 做完的{n}步留着', { n }) : tNow('停下了 · 什么也没改')
 }
 
 /** 整篇改写时改了几段：新的一篇里有几段是原来没有的（按空行分段，空段不算） */

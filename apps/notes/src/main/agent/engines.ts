@@ -18,6 +18,7 @@ import { join } from 'node:path'
 import type { EngineId } from '../../shared/agent'
 import { effortOption, type ModelOption } from '../../shared/ai-features'
 import { cliEnv, findCli, INSTALL_HINT } from './cli'
+import { t } from '../../shared/i18n'
 import { RpcProcess } from './jsonrpc'
 
 export interface EngineRun {
@@ -112,7 +113,7 @@ function need(id: EngineId): string {
 
 const withHistory = (r: EngineRun, fresh: boolean) => (fresh && r.history ? `${r.history}\n\n${r.prompt}` : r.prompt)
 
-const aborted = () => Object.assign(new Error('停下了'), { name: 'AbortError' })
+const aborted = () => Object.assign(new Error(t('停下了')), { name: 'AbortError' })
 
 /**
  * 没答完（停下、出错、步数到上限）也带上会话号：已经做了的几步、读过的东西都在这个会话里，
@@ -286,11 +287,11 @@ function runClaude(exe: string, args: string[], prompt: string, r: EngineRun): P
           if (!step) continue
           steps.delete(c.tool_use_id!)
           // 跑命令出错的原话「Exit code 1」写成中文，和 Codex 那边一样
-          r.onStep({ id: c.tool_use_id!, ...step, status: c.is_error ? 'err' : 'ok', ...(c.is_error ? { detail: firstLine(c.content).replace(/^Exit code (\d+)$/, '退出码 $1') } : {}) })
+          r.onStep({ id: c.tool_use_id!, ...step, status: c.is_error ? 'err' : 'ok', ...(c.is_error ? { detail: firstLine(c.content).replace(/^Exit code (\d+)$/, (_m, n: string) => t('退出码 {n}', { n })) } : {}) })
         }
       } else if (m.type === 'result') {
         if (m.subtype === 'success' && !m.is_error) result = m.result ?? ''
-        else error = (m.subtype === 'success' ? m.result : m.subtype) || '不知道为什么'
+        else error = (m.subtype === 'success' ? m.result : m.subtype) || t('不知道为什么')
       }
     }
 
@@ -305,15 +306,16 @@ function runClaude(exe: string, args: string[], prompt: string, r: EngineRun): P
     })
     child.stderr!.setEncoding('utf8')
     child.stderr!.on('data', (d: string) => (stderr = (stderr + d).slice(-4000)))
-    child.on('error', (e) => finish(() => reject(new Error(`${exe} 启动不了：${e.message}`))))
+    child.on('error', (e) => finish(() => reject(new Error(t('{name} 启动不了：{error}', { name: exe, error: e.message })))))
     child.on('close', (code) =>
       finish(() => {
         onLine(buf)
         if (r.signal.aborted) return reject(tagSession(aborted(), session))
         const why = stderr.trim().split('\n').slice(-3).join(' ')
-        if (error) return reject(tagSession(new Error(`Claude Code 没答完：${error === 'error_max_turns' ? '步数到了上限' : error}${why ? `（${why}）` : ''}`), session))
+        const reason = error === 'error_max_turns' ? t('步数到了上限') : error
+        if (error) return reject(tagSession(new Error(why ? t('Claude Code 没答完：{reason}（{why}）', { reason, why }) : t('Claude Code 没答完：{reason}', { reason })), session))
         if (result === null && !text) {
-          return reject(tagSession(new Error(code ? `Claude Code 退出了（${code}）${why ? `：${why}` : ''}` : 'Claude Code 没有回答。确认这台 Mac 上的 Claude Code 已经登录（终端里运行 claude）。'), session))
+          return reject(tagSession(new Error(code ? (why ? t('Claude Code 退出了（{code}）：{why}', { code, why }) : t('Claude Code 退出了（{code}）', { code })) : t('Claude Code 没有回答。确认这台 Mac 上的 Claude Code 已经登录（终端里运行 claude）。')), session))
         }
         if (!streamed && result) r.onText(result)
         resolve({ text: streamed ? text.trim() : (result ?? ''), session })
@@ -389,8 +391,8 @@ export function codexStep(item: Record<string, unknown> | undefined, done: boole
     case 'commandExecution': {
       const command = Array.isArray(item.command) ? item.command.join(' ') : String(item.command ?? '')
       const code = typeof item.exitCode === 'number' ? item.exitCode : 0
-      if (done && status === 'ok' && code !== 0) return { ...base, status: 'err', tool: 'Bash', input: { command }, detail: `退出码 ${code}` }
-      return { ...base, tool: 'Bash', input: { command }, ...(status === 'err' ? { detail: st === 'declined' ? '没放行' : '没跑成' } : {}) }
+      if (done && status === 'ok' && code !== 0) return { ...base, status: 'err', tool: 'Bash', input: { command }, detail: t('退出码 {n}', { n: code }) }
+      return { ...base, tool: 'Bash', input: { command }, ...(status === 'err' ? { detail: st === 'declined' ? t('没放行') : t('没跑成') } : {}) }
     }
     case 'fileChange': {
       const changes = (Array.isArray(item.changes) ? item.changes : []) as { path?: string; kind?: { type?: string } }[]
@@ -398,7 +400,7 @@ export function codexStep(item: Record<string, unknown> | undefined, done: boole
       const tool = first?.kind?.type === 'add' ? 'Write' : first?.kind?.type === 'delete' ? 'Delete' : 'Edit'
       // 一次改好几个文件：步骤行写第一个，paths 是全部（这一轮结束时分清哪些是 AI 改的）
       const paths = changes.flatMap((c) => (typeof c.path === 'string' && c.path ? [c.path] : []))
-      return { ...base, tool, input: { file_path: first?.path ?? '', ...(paths.length > 1 ? { paths } : {}) }, ...(status === 'err' ? { detail: st === 'declined' ? '没放行' : '没改成' } : {}) }
+      return { ...base, tool, input: { file_path: first?.path ?? '', ...(paths.length > 1 ? { paths } : {}) }, ...(status === 'err' ? { detail: st === 'declined' ? t('没放行') : t('没改成') } : {}) }
     }
     case 'webSearch':
       return { ...base, tool: 'WebSearch', input: { query: String(item.query ?? '') } }
@@ -445,7 +447,7 @@ export function codexEngine(command?: string, prefix: string[] = []): Engine {
         if (method === 'mcpServer/elicitation/request') return params.serverName === MCP_NAME || omni ? { action: 'accept', content: {}, _meta: null } : { action: 'decline', content: null, _meta: null }
         if (method === 'item/commandExecution/requestApproval' || method === 'item/fileChange/requestApproval') return { decision: omni ? 'accept' : 'decline' }
         if (method === 'execCommandApproval' || method === 'applyPatchApproval') return { decision: omni ? 'approved' : 'denied' }
-        throw new Error(`不支持 ${method}`)
+        throw new Error(`不支持 ${method}`) // 不翻：回给 AI 进程的协议错误
       })
       await p.request('initialize', { clientInfo: { name: APP.name, title: APP.name, version: APP.version }, capabilities: null })
       p.notify('initialized', undefined)
@@ -505,17 +507,17 @@ export function codexEngine(command?: string, prefix: string[] = []): Engine {
             if (step) r.onStep(step)
           } else if (method === 'error' && !params.willRetry) {
             off()
-            reject(new Error(`Codex 出错了：${(params.error as { message?: string })?.message ?? '不知道为什么'}`))
+            reject(new Error(t('Codex 出错了：{error}', { error: (params.error as { message?: string })?.message ?? t('不知道为什么') })))
           } else if (method === 'turn/completed') {
             off()
             const turn = params.turn as { status?: string; error?: { message?: string } | null }
-            if (turn.status === 'failed') reject(new Error(`Codex 没答完：${turn.error?.message ?? ''}`))
+            if (turn.status === 'failed') reject(new Error(t('Codex 没答完：{error}', { error: turn.error?.message ?? '' })))
             else resolve()
           }
         })
         void p.exited.then(() => {
           off()
-          reject(new Error(`Codex 退出了：${p.lastError.split('\n').slice(-2).join(' ')}`))
+          reject(new Error(t('Codex 退出了：{error}', { error: p.lastError.split('\n').slice(-2).join(' ') })))
         })
       })
       const stop = () => turnId && void p.request('turn/interrupt', { threadId, turnId }).catch(() => undefined)
@@ -701,14 +703,14 @@ export function acpEngine(o: AcpOptions): Engine {
           st.now = { model: want }
         }
       } catch (e) {
-        throw new Error(`${LABELS[o.id]} 换不成模型 ${want}：${(e as Error).message}`)
+        throw new Error(t('{name} 换不成模型 {model}：{error}', { name: LABELS[o.id], model: want, error: (e as Error).message }))
       }
     }
     if (st.via !== 'config' || !st.effortOpt) return
     const effort = r.effort && st.efforts.includes(r.effort) ? r.effort : st.first.effort
     if (!effort || effort === st.now.effort) return
     await p.request('session/set_config_option', { sessionId, configId: st.effortOpt, value: effort }).catch((e) => {
-      throw new Error(`${LABELS[o.id]} 换不成这一档 ${effort}：${(e as Error).message}`)
+      throw new Error(t('{name} 换不成这一档 {effort}：{error}', { name: LABELS[o.id], effort, error: (e as Error).message }))
     })
     st.now = { ...st.now, effort }
   }
@@ -736,7 +738,7 @@ export function acpEngine(o: AcpOptions): Engine {
         else if (u?.sessionUpdate === 'tool_call' || u?.sessionUpdate === 'tool_call_update') stepSinks.get(String(params.sessionId))?.(u as Record<string, unknown>)
       })
       p.onRequest(async (method, params) => {
-        if (method !== 'session/request_permission') throw new Error(`不支持 ${method}`)
+        if (method !== 'session/request_permission') throw new Error(`不支持 ${method}`) // 不翻：回给 AI 进程的协议错误
         const call = params.toolCall as { title?: string; kind?: string; rawInput?: unknown } | undefined
         const options = (params.options ?? []) as { optionId: string; kind: string }[]
         // 我们的工具放行；AI 自己改文件、跑命令：全能模式放行，关着一律拒绝
@@ -807,7 +809,7 @@ export function acpEngine(o: AcpOptions): Engine {
           if (!step || (status !== 'completed' && status !== 'failed')) return
           steps.delete(id)
           const said = Array.isArray(u.content) ? (u.content as { content?: { text?: unknown } }[]).map((c) => (typeof c.content?.text === 'string' ? c.content.text : '')).join('\n') : ''
-          onStep({ ...step, status: status === 'failed' ? 'err' : 'ok', ...(status === 'failed' ? { detail: firstLine(said) || '没做成' } : {}) })
+          onStep({ ...step, status: status === 'failed' ? 'err' : 'ok', ...(status === 'failed' ? { detail: firstLine(said) || t('没做成') } : {}) })
         })
       const stop = () => p.notify('session/cancel', { sessionId })
       r.signal.addEventListener('abort', stop)
@@ -816,7 +818,7 @@ export function acpEngine(o: AcpOptions): Engine {
         const prompt = fresh ? `${r.system}\n\n---\n\n${withHistory(r, true)}` : r.prompt
         const images = (r.images ?? []).map((i) => ({ type: 'image', mimeType: i.mime, data: i.data }))
         const res = await p.request<{ stopReason?: string }>('session/prompt', { sessionId, prompt: [{ type: 'text', text: prompt }, ...images] }, 0)
-        if (res.stopReason === 'refusal') throw new Error(`${LABELS[o.id]} 拒绝回答`)
+        if (res.stopReason === 'refusal') throw new Error(t('{name} 拒绝回答', { name: LABELS[o.id] }))
       } catch (e) {
         throw tagSession(e as Error, sessionId)
       } finally {
@@ -834,6 +836,7 @@ export function acpEngine(o: AcpOptions): Engine {
  * 全能模式关着时给 Gemini 的策略文件（gemini --policy，0.64.0 核过，写法见 geminicli.com 的 Policy engine）：跑命令、写文件、改文件、
  * 上网、子 Agent 一律拒绝，被拒的工具不进它的工具单（读、搜库里的文件照样能用，Gemini 的文件工具只认工作目录，也就是库）
  */
+// 不翻：交给 Gemini 的规则（给 AI 的话）
 export const GEMINI_POLICY = `[[rule]]
 toolName = ["run_shell_command", "write_file", "replace", "web_fetch", "google_web_search", "invoke_agent"]
 decision = "deny"
@@ -875,7 +878,10 @@ export const geminiEngine = () =>
       if (geminiPolicyDir) rmSync(geminiPolicyDir, { recursive: true, force: true })
       geminiPolicyDir = null
     },
-    loginHint: 'Gemini 还没登录：在终端里运行一次 gemini，选「Log in with Google」，或者设好 GEMINI_API_KEY',
+    // 用到时才取（跟界面语言）
+    get loginHint() {
+      return t('Gemini 还没登录：在终端里运行一次 gemini，选「Log in with Google」，或者设好 GEMINI_API_KEY')
+    },
     // 没登录时 gemini --acp 要等一分钟才报错，先看有没有登录凭据
     loggedIn: () => geminiLoggedIn(),
   })
@@ -899,5 +905,7 @@ export const opencodeEngine = () =>
     args: (cwd) => ['acp', '--cwd', cwd],
     // 全能模式都放行；关着 OpenCode 自己改文件、跑命令、上网一律不许，改笔记走我们的工具
     env: (omni) => ({ OPENCODE_CONFIG_CONTENT: opencodeConfig(omni) }),
-    loginHint: 'OpenCode 还没登录：在终端里运行 opencode auth login',
+    get loginHint() {
+      return t('OpenCode 还没登录：在终端里运行 opencode auth login')
+    },
   })

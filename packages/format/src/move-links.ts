@@ -40,12 +40,18 @@ export function remapLinks(text: string, oldPath: string, newPath: string, map: 
     const md = map(t + '.md')
     return md !== null && md.endsWith('.md') ? `[[${md.slice(0, -3)}` : all
   })
-  // 数据库（```base 代码块）的数据源 file.inFolder("文件夹")：文件夹改名、挪走时跟着换，不然表变成 0 条
+  // 数据库（```base 代码块）的数据源 file.inFolder("文件夹")：文件夹改名、挪走时跟着换，不然表变成 0 条；
+  // 关联列连到的文件夹（properties 里的 to: 课程/ecp/练习）也一样，不然关联、汇总全空（数据库第三批）
   out = out.replace(/^(```base[^\n]*\n)([\s\S]*?)(^```)/gm, (_all, open: string, body: string, close: string) => {
-    const next = body.replace(/(file\.inFolder\(\s*)(["'])([^"'\n]+)\2/g, (m, a: string, q: string, folder: string) => {
-      const to = map(folder)
-      return to === null ? m : a + q + to + q
-    })
+    const next = body
+      .replace(/(file\.inFolder\(\s*)(["'])([^"'\n]+)\2/g, (m, a: string, q: string, folder: string) => {
+        const to = map(folder)
+        return to === null ? m : a + q + to + q
+      })
+      .replace(/^([ \t]+to:[ \t]+)(["']?)([^"'\n#]*?[^"'\n#\s])\2([ \t]*(?:#.*)?)$/gm, (m, a: string, q: string, folder: string, tail: string) => {
+        const to = map(folder.replace(/\/+$/, ''))
+        return to === null ? m : a + q + to + q + tail
+      })
     return open + next + close
   })
   return out

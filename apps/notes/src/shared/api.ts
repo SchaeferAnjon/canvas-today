@@ -1,5 +1,6 @@
 /** 主进程和界面之间的接口，preload 按这个暴露成 window.cn */
 
+import type { AutoApi } from './automation'
 import type { AiAct, AiEvent, BridgeOp, ChatSide, EngineId, EngineInfo, SideTurnRequest, StoredMsg, TurnRequest, TurnResult } from './agent'
 import type { ChatSummary } from './ai-chats'
 import type { AiFeature, AiPick, AiPrefs } from './ai-features'
@@ -160,6 +161,36 @@ export interface SummaryConverted {
 }
 
 /** 库里的一个数据库：数据源文件夹、名字、几条、第一个写着它的 ```base 块的 YAML 和在哪篇 */
+/** 数据库一次改好几篇的结果：没写成时 path 是哪一篇刚被别处改过；提交没成功时 commitError 一句话（字已经写进去了） */
+export type BaseWriteResult = { ok: true; hash: string | null; commitError?: string } | { ok: false; path: string }
+
+/** 数据库 AI 列跑一批（task-i921u）：哪一块、哪一列、跑哪几条（照视图的先后）、这一列现在看得到的每一条（记成见过）、提交说明 */
+export interface AiColRun {
+  src: string
+  col: string
+  paths: string[]
+  all: string[]
+  label: string
+}
+/** 一格的进度：排队、在写、写好了、停下了（没写）、没写出来 */
+export interface AiColProgress {
+  job: number
+  path: string
+  state: 'queued' | 'running' | 'done' | 'stopped' | 'error'
+  error?: string
+}
+/** 一批跑完或停下：这一批改了哪些文件（撤回用），写好几格、没写出几格、新建几篇，提交了没有 */
+export interface AiColDone {
+  job: number
+  writes: { path: string; before: string; after: string }[]
+  done: number
+  failed: number
+  created: number
+  stopped: boolean
+  hash: string | null
+  commitError?: string
+}
+
 export interface BoardBase {
   folder: string
   name: string
@@ -264,6 +295,22 @@ export interface CnApi {
   boardCommit(paths: string[], message: string): Promise<string | null>
   /** 撤回 boardCommit 那一次（反向提交） */
   boardRevert(hash: string): Promise<string>
+  /** 数据库一次改好几篇（关联两边写、补上对不上的、撤回）：before 和盘上不一样就一篇都不写；写好一次提交 */
+  baseWrite(writes: { path: string; before: string; after: string }[], message: string): Promise<BaseWriteResult>
+  /** 数据库 AI 列（task-i921u）：跑一批（一次 3 格，写好一格存一格，跑完或停下一次提交）、停下、撤回这一批 */
+  aiColRun(run: AiColRun): Promise<{ job: number } | { error: string }>
+  aiColStop(job: number): Promise<boolean>
+  aiColUndo(writes: { path: string; before: string; after: string }[], message: string): Promise<BaseWriteResult>
+  onAiColProgress(cb: (p: AiColProgress) => void): () => void
+  onAiColDone(cb: (d: AiColDone) => void): () => void
+  /** 这一列每一条 AI 读的时候正文的样子（「原文改过」） */
+  aiColSources(folder: string, col: string): Promise<Record<string, string>>
+  /** 这一列第一次见到的那几条（新加的一讲自动填） */
+  aiColFresh(folder: string, col: string, paths: string[]): Promise<string[]>
+  /** AI 建的那几篇现在的字（删列前问一句） */
+  aiColNotes(paths: string[]): Promise<Record<string, string>>
+  /** 自动化（当……就……、按钮列、周记，task-i921u）：契约在 shared/automation.ts */
+  auto: AutoApi
   search(q: string): Promise<SearchHit[]>
   /** 置顶的笔记（库里 .canvas-notes/置顶.json），按置顶的先后 */
   pins(): Promise<string[]>

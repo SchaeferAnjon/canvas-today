@@ -3,24 +3,26 @@
  */
 import { app, BrowserWindow, dialog, ipcMain, autoUpdater as nativeUpdater, nativeTheme, shell } from 'electron'
 import { execFileSync } from 'node:child_process'
-import { existsSync, statSync } from 'node:fs'
+import { existsSync, mkdirSync, statSync } from 'node:fs'
 import { hostname, homedir, userInfo } from 'node:os'
 import { join, resolve } from 'node:path'
 import * as git from '@cn/git'
 import { Updater } from '../../../notes/src/main/updater'
 import { activeSkin, skinOf } from '../../../notes/src/shared/appearance'
+import { ThemeStore } from '../../../notes/src/main/themes'
+import { themeInfo } from '../../../notes/src/shared/vscode-theme'
 import { deviceDir, lineAt, minutesOf, splitLines } from '@cn/tasks'
-import type { AddCtx, AiSlot, AppState, EditReq, FocusOp, FocusTask, GitInfo, HabitOp, TaskView } from '../shared/api'
+import type { AddCtx, AiSlot, AppState, LookState, EditReq, FocusOp, FocusTask, GitInfo, HabitOp, TaskView } from '../shared/api'
 import type { Busy, SchedCandidate } from '../shared/ai-plan'
 import PKG from '../../package.json'
 import { BRAND, noteUrl, releaseUrl } from '../shared/brand'
 import { type Lang, tr } from '../shared/i18n'
 import type { TodaySettings } from '../shared/settings'
 import { findAgain, listed, open } from '../shared/views'
-import { isoOf, isoPlus, localStamp } from '../shared/when'
+import { isoOf, isoPlus, localNowOf, localStamp } from '../shared/when'
 import { clockOffset, now, onClock } from './clock'
 import { Committer } from './commit'
-import { aiLabel, aiPick, aiSchedule, aiSplit, warmUp } from './ai'
+import { aiLabel, aiPick, aiSchedule, aiSplit, aiWhen, warmUp } from './ai'
 import { CalendarLink } from './calendar'
 import { addSubtasks, addTask, applyEdit, ensureTaskId, newList, setTimes } from './edits'
 import { FocusTimer } from './focus'
@@ -29,8 +31,9 @@ import { appMenu, habitMenu, taskMenu } from './menu'
 import { RemMirror } from './mirror'
 import { helperCommand, RemHelper } from './rem-helper'
 import { notifier, Reminders } from './remind'
-import { effectiveLook, notesDataDir, notesVault, SettingsFile, watchNotesSettings } from './settings'
+import { effectiveLook, notesDataDir, notesVault, SettingsFile, themesDir, watchNotesSettings, watchThemes } from './settings'
 import { E2E, guardScreen } from './test-mode'
+import { registerFamily } from '../../../notes/src/main/family'
 import { MenuBar } from './tray'
 import { TaskVault } from './vault'
 
@@ -40,9 +43,18 @@ guardScreen()
 
 const preload = () => join(__dirname, '../preload/index.js')
 const notesDir = notesDataDir(homedir())
+/** 导入的 VS Code 主题：和画布笔记同一个文件夹（main/settings.ts themesDir） */
+const themes = new ThemeStore(themesDir(notesDir, app.getPath('userData')))
+const userSkins = () => themes.list().map(themeInfo)
+/** 现在该用的外观（跟画布笔记时是画布笔记的，导入的主题也认） */
+const lookOf = (s: TodaySettings) => effectiveLook(s, notesDir, userSkins())
+/** 设置、外观、导入的主题一起：推给界面的那一份 */
+const lookState = (s: TodaySettings = settings.read()): LookState => ({ settings: s, look: lookOf(s), themes: themes.list() })
 let settings: SettingsFile
 let win: BrowserWindow | null = null
 let vault: TaskVault | null = null
+/** 设置 › 软件家族（和画布笔记同一份 main/family.ts）：whenReady 里建好 */
+let family: ReturnType<typeof registerFamily> | null = null
 let committer: Committer | null = null
 let reminders: Reminders | null = null
 /** 镜像进系统提醒事项（task-b9y8i）：whenReady 里建好 */
@@ -84,8 +96,17 @@ function broadcast(channel: string, ...args: unknown[]) {
 }
 
 function winColor(): string {
-  const look = effectiveLook(settings.read(), notesDir)
-  return skinOf(activeSkin({ ...look, homeStyle: 'a', homeWinBg: false, winBgFile: null }, nativeTheme.shouldUseDarkColors)).win
+  const look = lookOf(settings.read())
+  return skinOf(activeSkin({ ...look, homeStyle: 'a', homeWinBg: false, winBgFile: null }, nativeTheme.shouldUseDarkColors), userSkins()).win
+}
+
+/** 外观变了：窗口底色、红绿灯、所有窗口都换上 */
+function pushLook(s: TodaySettings): LookState {
+  const ls = lookState(s)
+  win?.setBackgroundColor(winColor())
+  lights(ls.look.frame)
+  broadcast('ct:settings', ls)
+  return ls
 }
 
 function isDir(p: string) {
@@ -124,6 +145,20 @@ function pushSnapshot() {
   }, 30)
 }
 
+/**
+ * 「打开笔记，到这一行」：设置 › 软件家族「用画布笔记打开」开着（默认）时 canvas-notes://open 跳进画布笔记那一行；
+ * 关了用系统里默认打开 .md 的软件打开这一篇（不带行号）
+ */
+async function openNote(path: string, line?: number): Promise<'notes' | 'default'> {
+  if (family?.linkOn('cn-open') === false) {
+    const err = await shell.openPath(needVault().abs(path))
+    if (err) throw new Error(err)
+    return 'default'
+  }
+  await shell.openExternal(noteUrl(path, line === undefined ? undefined : line + 1))
+  return 'notes'
+}
+
 async function openVault(dir: string): Promise<void> {
   const root = resolve(dir)
   if (!(await git.isRepo(root))) await git.init(root)
@@ -149,6 +184,7 @@ async function openVault(dir: string): Promise<void> {
   v.onLogs = () => void reminders?.loadEvents().then(() => reminders?.soon())
   v.onFocusLogs = () => void focus?.load()
   v.watch()
+  family?.watch(root)
   // 先认出哪些镜像着（索引里 ringBy: 'reminders'），本机通知再开始排：重开软件时不把提醒事项已经响过的再补响一次
   mirror?.setVault(v)
   reminders = new Reminders(v, DEVICE, {
@@ -161,7 +197,7 @@ async function openVault(dir: string): Promise<void> {
       if (!r.ok) broadcast('ct:say', tr(lang(), 'gone'))
     },
     open: (t) => showMain({ key: t.key }),
-    openNote: (t) => void shell.openExternal(noteUrl(t.path, t.line + 1)).catch((e) => console.error('打不开画布笔记', e)),
+    openNote: (t) => void openNote(t.path, t.line).catch((e) => console.error('打不开笔记', e)),
     say: (text) => broadcast('ct:say', text),
     wrote: (paths, msg) => committer?.add(paths, msg),
   })
@@ -183,7 +219,8 @@ async function state(): Promise<AppState> {
   return {
     vault: vault ? { path: vault.root, name: vault.name, branch: g?.branch ?? '' } : null,
     settings: s,
-    look: effectiveLook(s, notesDir),
+    look: lookOf(s),
+    themes: themes.list(),
     clockOffset: clockOffset(),
     device: DEVICE,
     // 开发时 Electron 找不到包里的 package.json，app.getVersion() 是 Electron 自己的版本：直接用 package.json 的
@@ -205,7 +242,7 @@ function lights(frame: 'a' | 'b') {
 }
 
 function createWindow() {
-  const look = effectiveLook(settings.read(), notesDir)
+  const look = lookOf(settings.read())
   win = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -346,10 +383,17 @@ function registerIpc() {
     if (!req || typeof req.path !== 'string' || typeof req.line !== 'number' || typeof req.raw !== 'string' || !req.edit) throw new Error('改动的参数不对')
     return applyEdit(needVault(), req, today())
   })
-  ipcMain.handle('ct:add', (_e, text: unknown, ctx: AddCtx) => {
+  ipcMain.handle('ct:add', (_e, text: unknown, ctx: AddCtx, when: unknown) => {
     if (typeof text !== 'string') throw new Error('加一条的参数不对')
     const v = needVault()
-    return addTask(v, text, ctx, today(), v.snapshot())
+    return addTask(v, text, ctx, today(), v.snapshot(), when, localNowOf(now()))
+  })
+  // 写时间问 AI（task-pd289）：「小活」那一家，Claude Code 用 Haiku，只送这一句；工作目录是自己设置目录里单独一格
+  ipcMain.handle('ct:whenAi', (_e, text: unknown, now: unknown) => {
+    if (typeof text !== 'string' || typeof now !== 'string' || !/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?$/.test(now)) return null
+    const cwd = join(app.getPath('userData'), 'ai-when')
+    mkdirSync(cwd, { recursive: true })
+    return aiWhen(aiPick(notesDir), text, now, cwd)
   })
   ipcMain.handle('ct:undo', async (_e, id: unknown) => {
     if (typeof id !== 'string') throw new Error('撤销的参数不对')
@@ -365,8 +409,7 @@ function registerIpc() {
     if (typeof path !== 'string') throw new Error('路径不对')
     needVault().abs(path)
     try {
-      await shell.openExternal(noteUrl(path, typeof line === 'number' ? line + 1 : undefined))
-      return { ok: true }
+      return { ok: true, by: await openNote(path, typeof line === 'number' ? line : undefined) }
     } catch (e) {
       console.error('打不开画布笔记', e)
       return { ok: false }
@@ -382,16 +425,33 @@ function registerIpc() {
     if (!p || typeof p !== 'object') throw new Error('设置参数不对')
     const before = settings.read()
     const s = settings.set(p)
-    const look = effectiveLook(s, notesDir)
     if (s.lang !== before.lang) {
       appMenu(s.lang, menuHandlers)
       menuBar.relabel()
     }
     if (s.tray !== before.tray) menuBar.set(s.tray)
-    win?.setBackgroundColor(winColor())
-    lights(look.frame)
-    broadcast('ct:settings', { settings: s, look })
-    return { settings: s, look }
+    return pushLook(s)
+  })
+  // 导入 VS Code 主题（同画布笔记 themes:import）：存进和画布笔记同一个文件夹，导进来就用上（跟系统时按浅深换白天或夜里那套）
+  ipcMain.handle('ct:importTheme', async (): Promise<{ added: { id: string; name: string }[]; state: LookState } | null> => {
+    const l = lang()
+    const r = await dialog.showOpenDialog(win!, {
+      title: tr(l, 'themeDlgTitle'),
+      buttonLabel: tr(l, 'themeDlgBtn'),
+      properties: ['openFile'],
+      filters: [{ name: tr(l, 'themeDlgFilter'), extensions: ['json', 'vsix'] }],
+    })
+    if (r.canceled || !r.filePaths[0]) return null
+    const added = themes.import(r.filePaths[0])
+    const a = settings.read().appearance
+    const first = themeInfo(added[0]!)
+    const appearance = !a.followSystem ? { ...a, skin: first.id } : first.tone === 'light' ? { ...a, day: first.id } : { ...a, night: first.id }
+    return { added: added.map((t) => ({ id: t.id, name: t.name })), state: pushLook(settings.set({ appearance })) }
+  })
+  ipcMain.handle('ct:removeTheme', (_e, id: unknown): LookState => {
+    if (typeof id !== 'string') throw new Error('主题 id 不对')
+    themes.remove(id)
+    return pushLook(settings.read())
   })
   ipcMain.handle('ct:taskMenu', async (e, key: unknown, l: Lang) => {
     const t = needVault()
@@ -694,11 +754,19 @@ if (app.isPackaged && !E2E) {
 }
 
 app.whenReady().then(async () => {
-  settings = new SettingsFile(join(app.getPath('userData'), 'settings.json'), sysLang())
+  settings = new SettingsFile(join(app.getPath('userData'), 'settings.json'), sysLang(), userSkins)
   if (E2E) app.dock?.hide()
   else if (!app.isPackaged) app.dock?.setIcon(join(__dirname, '../../build/icon.png'))
   if (app.isPackaged && !E2E) app.setAsDefaultProtocolClient(BRAND.scheme)
   registerIpc()
+  family = registerFamily({
+    vault: () => vault,
+    // 联动.json 不是 md，库的监视不报它：底栏的「未提交」重数一次
+    send: (ch, ...a) => (ch === 'files:changed' ? refreshGit() : broadcast(ch, ...a)),
+    fetchOn: () => settings.read().familyFetch,
+    // 测试模式：装了哪些读 CT_FAMILY_INSTALLED_FILE（和画布笔记一样的 CN_FAMILY_INSTALLED_FILE 也认），名单只从 CT_FAMILY_URL 读
+    test: E2E ? { installedFile: process.env.CT_FAMILY_INSTALLED_FILE ?? process.env.CN_FAMILY_INSTALLED_FILE, url: process.env.CT_FAMILY_URL } : null,
+  })
   setupMirror()
   setupFocus()
   appMenu(lang(), menuHandlers)
@@ -715,13 +783,10 @@ app.whenReady().then(async () => {
     focus?.check()
   })
   watchNotesSettings(notesDir, () => {
-    const s = settings.read()
-    if (!s.followNotes) return
-    const look = effectiveLook(s, notesDir)
-    win?.setBackgroundColor(winColor())
-    lights(look.frame)
-    broadcast('ct:settings', { settings: s, look })
+    if (settings.read().followNotes) pushLook(settings.read())
   })
+  // 画布笔记那边导入、删掉了主题：外观页的那一排、正在用的那套跟着换
+  watchThemes(themesDir(notesDir, app.getPath('userData')), () => pushLook(settings.read()))
   nativeTheme.on('updated', () => win?.setBackgroundColor(winColor()))
   app.on('activate', () => showMain())
 })

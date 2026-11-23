@@ -10,6 +10,12 @@ export function isoOf(ms: number): ISODate {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
+/** 本地的现在「2026-11-22T16:05」（写时间：只写了钟点、今天已经过了的算明天，task-pd289） */
+export function localNowOf(ms: number): string {
+  const d = new Date(ms)
+  return `${isoOf(ms)}T${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
 /** 本地钟点「2026-11-23T14:00:05」 */
 export function localStamp(ms: number): string {
   const d = new Date(ms)

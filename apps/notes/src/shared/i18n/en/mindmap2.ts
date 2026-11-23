@@ -1,0 +1,147 @@
+/** 英文表：思维导图第二批（task-wuv05）：配色、骨架、鱼骨、时间线、备注、找、链接、多选、外框、概要、联系线、浮动主题、图片、导出 */
+import type { Table } from '../core'
+
+export const MINDMAP2: Table = {
+  // ---------- 布局菜单：鱼骨、时间线、配色、骨架 ----------
+  鱼骨: 'Fishbone',
+  时间线: 'Timeline',
+  '找原因：中心是鱼头，原因一根根长在骨头上': 'Find causes: the center is the head, causes grow along the bones',
+  '按先后：第一层排在一根横线上': 'In order: first-level topics sit on one line',
+  配色: 'Colors',
+  骨架: 'Skeleton',
+  跟主题: 'Theme',
+  跟着软件主题: 'Follows the app theme',
+  彩虹: 'Rainbow',
+  第一层每枝一个颜色: 'One color per first-level branch',
+  墨线: 'Ink',
+  '只有黑白线，打印用': 'Black lines only, for printing',
+  卡片: 'Cards',
+  '第一层是小卡片，往下是线': 'First level as cards, lines below',
+  线条: 'Lines',
+  除了中心都是线: 'Lines everywhere except the center',
+  方框: 'Boxes',
+  每个主题都套框: 'Every topic in a box',
+  '{name}：{desc}': '{name}: {desc}',
+  '换布局、配色、骨架': 'Change layout, colors and skeleton',
+
+  // ---------- 命令表 ----------
+  '导图：加备注 / 改备注': 'Mind map: add or edit note',
+  '写在主题下面，缩进的一段': 'Written under the topic as an indented paragraph',
+  '导图：加外框': 'Mind map: add boundary',
+  框住选中的几个: 'Encloses the selected topics',
+  '导图：连一条联系线': 'Mind map: add relationship',
+  '选两个；选一个再点另一个也行': 'Select two, or select one and click another',
+  '导出导图…': 'Export mind map…',
+  '图片、SVG、PDF、OPML 大纲': 'Image, SVG, PDF, OPML outline',
+
+  // ---------- 标签条「⋯」 ----------
+  在导图里找: 'Find in mind map',
+  '导出图片…': 'Export image…',
+  '导出 PDF…': 'Export PDF…',
+  '导出 OPML 大纲…': 'Export OPML outline…',
+
+  // ---------- 主题右键菜单 ----------
+  改备注: 'Edit note',
+  加备注: 'Add note',
+  去掉外框: 'Remove boundary',
+  加外框: 'Add boundary',
+  去掉概要: 'Remove summary',
+  加概要: 'Add summary',
+  '连一条联系线…': 'Add relationship…',
+  '挂回树上：拖到一个主题正中间': 'Reattach: drag it onto the middle of a topic',
+  拆成浮动主题: 'Detach as floating topic',
+  '换一张图…': 'Replace image…',
+  '加图片…': 'Add image…',
+  改线上的字: 'Edit label',
+  删掉这条联系线: 'Delete relationship',
+
+  // ---------- 拖、联系线、外框、概要 ----------
+  松手放在这里: 'Release to place it here',
+  选两个主题才能连线: 'Select two topics to connect them',
+  '点另一个主题，连一条线过去 · esc 不连了': 'Click another topic to connect · esc to cancel',
+  拖着改弯度: 'Drag to change the curve',
+  '线上写什么（可以不写）': 'Label (optional)',
+  '外框的名字（可以不写）': 'Boundary name (optional)',
+  用一句话收住这几个: 'Sum these up in one line',
+  '图没存成：{why}': 'Could not save the image: {why}',
+  拖着改大小: 'Drag to resize',
+
+  // ---------- 多选的操作条 ----------
+  选中的主题: 'Selected topics',
+  外框: 'Boundary',
+  概要: 'Summary',
+  联系线: 'Relationship',
+  用一个括号把这几个收成一句话: 'Sum these up with one bracket and a line',
+  在这两个之间连一条弯线: 'Draw a curved line between these two',
+  '把这几个主题一起交给 AI': 'Give these topics to AI together',
+  '删掉这几个（连同下面的）': 'Delete these (with their subtopics)',
+  只读的文件不能改: 'This file is read-only',
+  中心主题不能加外框: 'The center topic can’t have a boundary',
+  中心主题不能加概要: 'The center topic can’t have a summary',
+  '鱼骨、时间线、向下展开里先不画概要': 'Summaries aren’t drawn in fishbone, timeline or downward layouts yet',
+  '拷好了{n}个主题：贴进文档是一段缩进列表': 'Copied {n} topics: paste into a doc as an indented list',
+  '《{name}》里选中的{n}个主题': '{n} topics selected in “{name}”',
+  收起这几个: 'Collapse these',
+  展开这几个: 'Expand these',
+  不选了: 'Deselect',
+
+  // ---------- 备注 ----------
+  备注: 'Note',
+  '写在这里：公式、为什么、老师怎么说……': 'Write here: formulas, why, what the teacher said…',
+  '存在文件里「{topic}」那一行下面，缩进的一段；文档看法里就是这一项下面的正文。': 'Saved under the “{topic}” line as an indented paragraph; in the doc view it is the text under this item.',
+
+  // ---------- 在导图里找 ----------
+  在这块导图里找: 'Find in this mind map',
+  也找备注: 'Also search notes',
+  '找主题的字和备注；收着的枝里找到了会临时展开': 'Searches topics and notes; collapsed branches open for a moment when something is found',
+  '找主题的字；收着的枝里找到了会临时展开': 'Searches topics; collapsed branches open for a moment when something is found',
+  '这块导图里没有「{q}」 · 到全库找 {key}': 'No “{q}” in this mind map · search the whole vault with {key}',
+  '第 {n} 处在{topic}的备注里': 'Match {n} is in the note of {topic}',
+  '第 {n} 处：{topic}': 'Match {n}: {topic}',
+  '{names}本来收着，先临时展开了，关掉就收回': '{names} were collapsed and are open for now; they collapse again when you close this',
+  '为了给你看找到的，先临时展开了；关掉找就收回': 'Opened for now to show a match; collapses again when you close Find',
+
+  // ---------- 链接、链接卡 ----------
+  链接到笔记: 'Link to note',
+  链到哪一篇: 'Linked note',
+
+  // ---------- 导出 ----------
+  导出导图: 'Export mind map',
+  预览: 'Preview',
+  格式: 'Format',
+  'PNG 图片': 'PNG image',
+  'OPML 大纲': 'OPML outline',
+  有什么: 'Contents',
+  '每个主题一行，备注跟着主题走': 'One line per topic, notes go with their topics',
+  清晰度: 'Resolution',
+  '1倍': '1×',
+  '2倍': '2×',
+  '3倍': '3×',
+  纸: 'Paper',
+  跟导图一样大: 'Same size as the map',
+  'A4 横放': 'A4 landscape',
+  'A4 竖放': 'A4 portrait',
+  底色: 'Background',
+  跟现在一样: 'As shown',
+  '白底（打印）': 'White (for printing)',
+  白底: 'White',
+  透明: 'Transparent',
+  带上原照片: 'Include the original photo',
+  只导出一枝时不带照片: 'The photo is left out when exporting one branch',
+  '只导出「{name}」这一枝': 'Export only the “{name}” branch',
+  只导出选中的那一枝: 'Export only the selected branch',
+  先在导图上选一个主题: 'Select a topic on the map first',
+  'OPML 是大纲的通用格式：OmniOutliner、幕布、XMind 都能打开。外框、概要、联系线、图片、配色带不过去。':
+    'OPML is the common outline format: OmniOutliner, Mubu and XMind open it. Boundaries, summaries, relationships, images and colors don’t come along.',
+  '画成矢量图，放大不糊；字用系统字体，在别的电脑上打开字形可能略有不同。': 'Drawn as vectors, sharp at any size; text uses system fonts, so glyphs may differ slightly on another computer.',
+  '一页放下整张导图；字能选、能搜。': 'The whole map on one page; text is selectable and searchable.',
+  '{w} 像素宽 · 贴进微信、Keynote 都清楚。': '{w} pixels wide · sharp in chats and Keynote.',
+  '下次照这回的设置；导出不改这篇文件': 'These settings are kept for next time; exporting doesn’t change this file',
+  '导出到…': 'Export to…',
+  '存好了：{path}': 'Saved: {path}',
+
+  // ---------- 复审后补的 ----------
+  '（向右是默认，不写）': ' (rightward is the default and isn’t written)',
+  '挂上了图：拖右下角改大小 · 右键「换一张图…」「去掉图片」 · 也能把图拖到主题上、或者 {key} 贴':
+    'Image attached: drag its corner to resize · right-click for “Replace image…” and “Remove image” · you can also drop an image on a topic or paste with {key}',
+}

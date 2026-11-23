@@ -331,6 +331,14 @@
   align-items: baseline;
   gap: 4px;
 }
+/* 名字前的小圆点（CalItem.dot：画布笔记数据库的日历按状态组上色） */
+.cal-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+  align-self: center;
+}
 .cal-chip.mad .nm {
   min-width: 0;
   overflow: hidden;
@@ -628,4 +636,153 @@
   color: var(--acc-t);
   pointer-events: none;
   z-index: 3;
+}
+
+/* ---------- 定日子和时间的选择器（WhenPicker，task-pd289）：照「定日子」小菜单（cm-tdmenu）和详情小卡（td-pop）的数 ----------
+ * --pop 底、圆角 12、--shadow-up、内边距 6；一项 30 高、圆角 8、13 字，右边哪天 12 --t3；分隔 1px --line；
+ * 小月历选着的那天实心强调色、今天强调色的字、键盘挪到的一圈 1.5 --acc-ring；钟点 / 提醒 / 重复一行 30 高，下拉框 24 高（同 td-sel）。
+ * 定位交给宿主（贴着日子小块、光标、输入框，放不下往上翻）
+ */
+/* 宿主没把按钮的样子去掉时（画布笔记）：选择器里的按钮从零画起（:where 不加权重，下面每一种自己的样子照旧赢） */
+:where(.cal-when) button {
+  appearance: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+}
+.cal-when:focus {
+  outline: none;
+}
+.cal-when {
+  width: 252px;
+  padding: 6px;
+  background: var(--pop);
+  border-radius: 12px;
+  box-shadow: var(--shadow-up);
+  font-size: 13px;
+  color: var(--t1);
+}
+.cal-when-qi {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 30px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  color: var(--t1);
+  text-align: left;
+  white-space: nowrap;
+}
+.cal-when-qi:hover {
+  background: var(--fill);
+}
+.cal-when-qi.on {
+  color: var(--acc-t);
+  font-weight: 500;
+}
+.cal-when-qi .k {
+  margin-left: auto;
+  padding-left: 16px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--t3);
+  font-variant-numeric: tabular-nums;
+}
+.cal-when-sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--line);
+}
+.cal-when .cal-mini {
+  padding: 2px 4px 4px;
+}
+.cal-when .cal-mini-h {
+  padding: 0 0 4px 6px;
+  font-size: 13px;
+}
+.cal-mini-g .on,
+.cal-mini-g .on:hover {
+  background: var(--acc-bg);
+  color: var(--acc-on);
+  font-weight: 600;
+}
+.cal-mini-g .now:not(.on) {
+  color: var(--acc-t);
+  font-weight: 600;
+}
+.cal-mini-g .kf {
+  box-shadow: inset 0 0 0 1.5px var(--acc-ring);
+}
+.cal-mini-g .on.has::after {
+  background: var(--acc-on);
+}
+.cal-when-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 10px;
+  color: var(--t2);
+}
+/* 标签 12 --t2、下拉 26 高（同画布今日详情的 select.sel）；箭头是 Codicon chevron-down 12 --t3，不用系统画的 */
+.cal-when-lb {
+  flex: 1;
+  font-size: 12px;
+  color: var(--t2);
+}
+.cal-when-sel {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+.cal-when-sel select {
+  appearance: none;
+  width: 124px;
+  height: 26px;
+  padding: 0 24px 0 8px;
+  border: 1px solid var(--line2);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--t1);
+  font: inherit;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.cal-when-sel .ci {
+  position: absolute;
+  right: 8px;
+  color: var(--t3);
+  pointer-events: none;
+}
+.cal-when-row.off {
+  opacity: 0.5;
+}
+.cal-when-clear {
+  color: var(--t2);
+}
+.cal-when-clear svg {
+  color: var(--t3);
+}
+.cal-when-clear:disabled {
+  opacity: 0.45;
+}
+.cal-when-clear:disabled:hover {
+  background: none;
+}
+.cal-when-keys {
+  padding: 4px 10px 2px;
+  font-size: 12px;
+  color: var(--t3);
+}
+/* 不是这个月的日子：直接 --t3（别再叠透明度，对弹层要够 3:1） */
+.cal-when .cal-mini-g .o {
+  opacity: 1;
 }

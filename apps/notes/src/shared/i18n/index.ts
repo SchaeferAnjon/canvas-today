@@ -5,20 +5,19 @@
  * - t()：界面上的字，跟界面语言。
  * - tv()：软件写进文件的字（提示块标题、AI 讲解头…），跟库语言；切界面语言不动库（设计稿第 4 节）。
  */
-import { type Lang, listText, type Params, translate } from './core'
+import { CTX_SEP, fill, type Lang, listText, type Params, translate } from './core'
 import { EN } from './en'
+import { vaultLang } from './vault'
 
 export { count, fill, holes, keyOf, LANG_NAMES, LANG_SETTINGS, langOfLocale, isLangSetting, resolveLang, type Lang, type LangSetting, type Params } from './core'
+export { onVaultLang, setVaultLang, vaultLang } from './vault'
 export { EN }
 
 let ui: Lang = 'zh'
-let vault: Lang = 'zh'
 let h12 = false
 const uiSubs = new Set<() => void>()
-const vaultSubs = new Set<() => void>()
 
 export const uiLang = (): Lang => ui
-export const vaultLang = (): Lang => vault
 /** 英文界面里钟点用 12 小时制（跟系统）；中文界面一直 24 小时制 */
 export const hour12 = (): boolean => ui === 'en' && h12
 
@@ -35,18 +34,6 @@ export function onUiLang(f: () => void): () => void {
   return () => void uiSubs.delete(f)
 }
 
-export function setVaultLang(l: Lang) {
-  if (l === vault) return
-  vault = l
-  for (const f of [...vaultSubs]) f()
-}
-
-/** 换了库（库语言可能变了）：分类文件夹名这些跟着换 */
-export function onVaultLang(f: () => void): () => void {
-  vaultSubs.add(f)
-  return () => void vaultSubs.delete(f)
-}
-
 /** 界面上的一句：中文原句当键，{name} 放变量 */
 export const t = (key: string, p?: Params): string => translate(ui, EN, key, p)
 
@@ -54,7 +41,51 @@ export const t = (key: string, p?: Params): string => translate(ui, EN, key, p)
 export const tIn = (lang: Lang, key: string, p?: Params): string => translate(lang, EN, key, p)
 
 /** 软件写进文件的一句：跟库语言 */
-export const tv = (key: string, p?: Params): string => translate(vault, EN, key, p)
+export const tv = (key: string, p?: Params): string => translate(vaultLang(), EN, key, p)
 
 /** 列举：中文「A、B、C」，英文「A, B, and C」 */
 export const list = (items: readonly string[], lang: Lang = ui): string => listText(lang, items)
+
+/** 英文表倒过来查：整句（不带占位的）→ 中文原句；带占位的编成正则，字面越长越先试 */
+let back: { exact: Map<string, string>; tpl: { re: RegExp; names: string[]; key: string }[] } | null = null
+const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+/**
+ * 软件自己说的一句英文换回中文原句（task-zojmg）：出错原因照中文原句认（shared/ai-errors.ts），英文界面里主进程报的错是英文，
+ * 先换回中文再认是哪一种、是不是我们自己的话。占位里的字也试着换回（「… didn’t finish: Reached the step limit」）。
+ * 认不出的（命令行、API 的原话）是 null。
+ */
+export function zhOf(s: string, depth = 0): string | null {
+  if (!back) {
+    const exact = new Map<string, string>()
+    const tpl: { re: RegExp; names: string[]; key: string }[] = []
+    for (const [k, v] of Object.entries(EN)) {
+      if (typeof v !== 'string') continue
+      const key = k.includes(CTX_SEP) ? k.slice(k.indexOf(CTX_SEP) + CTX_SEP.length) : k
+      const names = [...v.matchAll(/\{(\w+)\}/g)].map((m) => m[1]!)
+      if (!names.length) {
+        if (!exact.has(v)) exact.set(v, key)
+        continue
+      }
+      const lits = v.split(/\{\w+\}/)
+      // 几乎全是占位的（「{name}」「{a}。{b}」）什么都能对上，不算
+      if (new Set(names).size !== names.length || lits.join('').replace(/\W/g, '').length < 4) continue
+      tpl.push({ re: new RegExp(`^${lits.map(esc).join('([\\s\\S]+?)')}$`), names, key })
+    }
+    tpl.sort((a, b) => b.re.source.length - a.re.source.length)
+    back = { exact, tpl }
+  }
+  const hit = back.exact.get(s)
+  if (hit !== undefined) return hit
+  for (const x of back.tpl) {
+    const m = x.re.exec(s)
+    if (!m) continue
+    const p: Params = {}
+    x.names.forEach((n, i) => {
+      const v = m[i + 1]!
+      p[n] = depth < 2 ? (zhOf(v, depth + 1) ?? v) : v
+    })
+    return fill(x.key, p)
+  }
+  return null
+}

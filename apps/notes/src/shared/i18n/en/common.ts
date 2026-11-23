@@ -30,6 +30,7 @@ export const COMMON: Table = {
   '菜单栏::左栏：文件': 'Left Sidebar: Files',
   '菜单栏::左栏：最近': 'Left Sidebar: Recent',
   '菜单栏::左栏：书桌': 'Left Sidebar: Desks',
+  '菜单栏::左栏：最近删掉的': 'Left Sidebar: Recently Deleted',
   '菜单栏::梦游报告': 'Dream Report',
   '菜单栏::大纲': 'Outline',
   '菜单栏::网页': 'Web',
@@ -100,9 +101,49 @@ export const COMMON: Table = {
   昨天: 'Yesterday',
 
   // ---------- 文档里的 AI 块（右键、块菜单，task-dtc34） ----------
-  变成我的字: 'Make it my writing',
+  变成我的字: 'Mark as written by me',
   '标成 AI 写的': 'Mark as written by AI',
+
+  // ---------- AI 对话里回答下面那排的 ⋯（ans-acts.tsx，task-r00en） ----------
+  这条回答还能做什么: 'More for this answer',
+  '这条回答原样存成收件箱里的一篇，之后再分': 'Saves this answer as is as a note in the Inbox, to sort later',
+  存进了收件箱: 'Saved to the Inbox',
 
   // ---------- 数量（中文「3篇」，英文分单复数） ----------
   '{n}篇': (p) => count(p.n, 'note'),
+
+  // ---------- 第二批几处都用的（右键菜单、目录树、文件夹首页、文档、历史…） ----------
+  '{n}条': (p) => count(p.n, 'item'),
+  在访达中显示: 'Show in Finder',
+  拷贝路径: 'Copy path',
+  排序: 'Sort',
+  这一块的写法: 'Source of this block',
+  新的在前: 'Newest first',
+  旧的在前: 'Oldest first',
+  新: 'New',
+  关闭: 'Close',
+  值: 'Value',
+  表格: 'Table',
+  文件夹名字: 'Folder name',
+  双击改名: 'Double-click to rename',
+  '还有{n}个': '{n} more',
+  打开: 'Open',
+  在新标签打开: 'Open in new tab',
+  重命名: 'Rename',
+  '重命名…': 'Rename…',
+  '移到…': 'Move to…',
+  从左边拿下: 'Remove from icon bar',
+  放到左边: 'Add to icon bar',
+  '换图标和颜色…': 'Change icon and color…',
+  '问 AI': 'Ask AI',
+  '放进「{name}」': 'Into “{name}”',
+  '改于{when}': (p) => `Edited ${inline(p.when)}`,
+  // 合进 dev 后几张分表都有的（task-zojmg）
+  更多命令: 'More commands',
+  往上挪: 'Move up',
+  往下挪: 'Move down',
+  展开: 'Expand',
+  改字: 'Edit text',
+  '「{name}」': '“{name}”',
+  拷好了: 'Copied',
 }

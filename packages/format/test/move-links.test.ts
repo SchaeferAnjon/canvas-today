@@ -45,6 +45,14 @@ describe('文件夹改名后链接跟着改', () => {
     expect(remapLinks(untouched, '表.md', '表.md', map)).toBe(untouched)
   })
 
+  it('数据库关联列连到的文件夹（properties 里的 to:）也跟着换；只换那一行，引号、注释照旧', () => {
+    const base = (f: string, g: string) => '```base\nfilters:\n  and:\n    - file.inFolder("课程/计划")\nproperties:\n  练习:\n    type: relation\n    to: ' + f + '   # 那边\n    twoWay: 所属讲\n  别的:\n    type: relation\n    to: "' + g + '"\nviews:\n  - type: table\n```'
+    expect(remapLinks(base('课程/ecp/练习', '课程/ecp'), '表.md', '表.md', map)).toBe(base('课程/ECP 经济学/练习', '课程/ECP 经济学'))
+    // 别的文件夹、视图里的键、代码块外面的 to: 不动
+    const other = base('课程/ecpx/练习', '阅读/书单') + '\n\nto: 课程/ecp\n'
+    expect(remapLinks(other, '表.md', '表.md', map)).toBe(other)
+  })
+
   it('folderMap 只认整段文件夹名', () => {
     expect(map('课程/ecp')).toBe('课程/ECP 经济学')
     expect(map('课程/ecp/a.md')).toBe('课程/ECP 经济学/a.md')

@@ -2,7 +2,7 @@
  * 画布今日自己的设置（userData/settings.json）：语言、外观（默认跟画布笔记一样）、菜单栏、两边的栏开不开、自动检查更新、提醒事项。
  * 库不另存一份：先看画布笔记的设置里上次打开的库（两个软件用同一个库），没有才用这里记的。
  */
-import { type Appearance, DEFAULT_SETTINGS as NOTES_DEFAULT, normalizeSettings, SKINS } from '../../../notes/src/shared/appearance'
+import { allSkins, type Appearance, DEFAULT_SETTINGS as NOTES_DEFAULT, normalizeSettings, type SkinInfo } from '../../../notes/src/shared/appearance'
 import type { Lang } from './i18n'
 
 export type TodayAppearance = Pick<Appearance, 'followSystem' | 'day' | 'night' | 'skin' | 'frame' | 'winBg'>
@@ -42,6 +42,8 @@ export interface TodaySettings {
   vaultChosen?: boolean
   /** 自动检查更新（发布包才查） */
   autoUpdate: boolean
+  /** 软件家族的名单每天从 apps.us-cloud.uk 看一次（设置 › 一般）；关了只用软件带的那份 */
+  familyFetch: boolean
   /** 上次查到「已是最新」的时间，重开软件后设置里也显示 */
   updateCheckedAt?: number
   reminders: RemSettings
@@ -58,6 +60,7 @@ export const DEFAULT_TODAY: TodaySettings = {
   left: true,
   right: true,
   autoUpdate: true,
+  familyFetch: true,
   reminders: DEFAULT_REM,
   calendar: { show: false },
 }
@@ -73,22 +76,21 @@ function normalizeRem(raw: unknown): RemSettings {
   }
 }
 
-const skinIds = new Set<string>(SKINS.map((s) => s.id))
-
-/** 读出来的设置一项项检查，不对的用默认值 */
-export function normalizeToday(raw: unknown, sysLang: Lang = 'zh'): TodaySettings {
+/** 读出来的设置一项项检查，不对的用默认值。user：导入的 VS Code 主题（和画布笔记同一份；删掉了的不认，回到默认；白天只认浅色、夜里只认深色，同画布笔记） */
+export function normalizeToday(raw: unknown, sysLang: Lang = 'zh', user: readonly SkinInfo[] = []): TodaySettings {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
   const a = (r.appearance && typeof r.appearance === 'object' ? r.appearance : {}) as Record<string, unknown>
   const d = DEFAULT_TODAY.appearance
-  const skin = (v: unknown, fb: string) => (typeof v === 'string' && skinIds.has(v) ? v : fb)
+  const all = allSkins(user)
+  const skin = (v: unknown, fb: string, tone?: 'light' | 'dark') => all.find((s) => s.id === v && (!tone || s.tone === tone))?.id ?? fb
   const winBg = a.winBg === 'none' || a.winBg === 'aurora' || a.winBg === 'cave' ? a.winBg : d.winBg
   return {
     lang: r.lang === 'en' || r.lang === 'zh' ? r.lang : sysLang,
     followNotes: typeof r.followNotes === 'boolean' ? r.followNotes : DEFAULT_TODAY.followNotes,
     appearance: {
       followSystem: typeof a.followSystem === 'boolean' ? a.followSystem : d.followSystem,
-      day: skin(a.day, d.day),
-      night: skin(a.night, d.night),
+      day: skin(a.day, d.day, 'light'),
+      night: skin(a.night, d.night, 'dark'),
       skin: skin(a.skin, d.skin),
       frame: a.frame === 'a' ? 'a' : a.frame === 'b' ? 'b' : d.frame,
       winBg,
@@ -99,14 +101,15 @@ export function normalizeToday(raw: unknown, sysLang: Lang = 'zh'): TodaySetting
     ...(typeof r.lastVault === 'string' ? { lastVault: r.lastVault } : {}),
     ...(r.vaultChosen === true ? { vaultChosen: true } : {}),
     autoUpdate: typeof r.autoUpdate === 'boolean' ? r.autoUpdate : DEFAULT_TODAY.autoUpdate,
+    familyFetch: typeof r.familyFetch === 'boolean' ? r.familyFetch : DEFAULT_TODAY.familyFetch,
     ...(typeof r.updateCheckedAt === 'number' && Number.isFinite(r.updateCheckedAt) && r.updateCheckedAt > 0 ? { updateCheckedAt: r.updateCheckedAt } : {}),
     reminders: normalizeRem(r.reminders),
     calendar: { show: (r.calendar as { show?: unknown } | undefined)?.show === true },
   }
 }
 
-/** 画布笔记设置里的外观换成画布今日能用的：老主题名、导入的 VS Code 主题照画布笔记自己的规矩换（导入的画布今日没有，回到默认）；自己选的背景图画布今日拿不到，当极光照片 */
-export function lookFromNotes(raw: unknown): TodayAppearance {
-  const a = normalizeSettings(raw).appearance
+/** 画布笔记设置里的外观换成画布今日能用的：老主题名、导入的 VS Code 主题照画布笔记自己的规矩换（user 是两边共用的导入主题，删掉了的回到默认）；自己选的背景图画布今日拿不到，当极光照片 */
+export function lookFromNotes(raw: unknown, user: readonly SkinInfo[] = []): TodayAppearance {
+  const a = normalizeSettings(raw, user).appearance
   return { followSystem: a.followSystem, day: a.day, night: a.night, skin: a.skin, frame: a.frame, winBg: a.winBg === 'custom' ? 'aurora' : a.winBg }
 }

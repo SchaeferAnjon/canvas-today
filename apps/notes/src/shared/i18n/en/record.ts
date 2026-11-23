@@ -1,0 +1,31 @@
+/** 英文表：数据库里点一条在右栏打开（renderer/base/RecordPeek.tsx，数据库第三批第 4 块） */
+import type { Table } from '../core'
+
+export const RECORD: Table = {
+  '记录：{name}': 'Record: {name}',
+  '记录（在数据库里点一条，在这里打开）': 'Record (click an entry in a database to open it here)',
+  '在数据库里点一条，在这里打开': 'Click an entry in a database to open it here',
+  '在右栏打开「{name}」': 'Open “{name}” in the side panel',
+  回到上一条: 'Back',
+  上一条: 'Previous entry',
+  下一条: 'Next entry',
+  整页打开这一条: 'Open entry as full page',
+  看这篇的写法: 'Show Markdown',
+  '{said}，写进 {file}': '{said}, saved to {file}',
+  '《{name}》后来又改过，没撤回': '“{name}” changed again since, so it wasn’t undone',
+  '改了「{col}」': 'Changed “{col}”',
+  空着: 'Empty',
+  没排: 'Not scheduled',
+  '库里没有「{name}」': '“{name}” isn’t in the vault',
+  没有: 'None',
+  算出来的: 'Calculated',
+  '顺着「{via}」数「{prop}」': 'Counts “{prop}” through “{via}”',
+  '改「{col}」': 'Edit “{col}”',
+  '数据库里的一条：{name}': 'Database entry: {name}',
+  '「{name}」不在这个数据库里了（删了、挪走了，或者改了名）': '“{name}” is no longer in this database (deleted, moved, or renamed)',
+  '这篇 md 现在的样子（刚改过的几行上了底色）': 'This note’s Markdown now (lines just changed are highlighted)',
+  这一条的名字: 'Entry name',
+  '加了「{col}」': 'Added “{col}”',
+  '新建「{v}」': 'Create “{v}”',
+  '「{other}」那一列是两边都写的：在「{db}」里连上这一条，这里的「{prop}」跟着有。': 'The “{other}” column writes both ways: link this entry in “{db}” and “{prop}” here follows.',
+}

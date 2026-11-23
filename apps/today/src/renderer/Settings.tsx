@@ -2,43 +2,70 @@
  * 设置（2026-11-22 用户：「这里的设置你也改的和canvas note一样的结构. 可以把框架的代码直接拿来用吧我觉得.」）：
  * 用画布笔记设置的框架 @cn/design/settings（居中弹窗，左边分页，右边一页一个头、按组一张细线表、一行左边名字和说明右边 220 一列，
  * 改了马上存、底下提示条一句说会怎样、带「撤回」），只放画布今日自己的设置：
- * 一般（语言、菜单栏、版本和更新）、外观（和画布笔记一样；不跟时界面风格、跟着系统换浅深、窗口背景、主题）、日历和提醒事项、库。
+ * 一般（语言、菜单栏、版本和更新）、外观（和画布笔记一样；不跟时界面风格、跟着系统换浅深、窗口背景、主题）、日历和提醒事项、库，
+ * 软件家族（task-59o3v，和画布笔记同一个 FamilyPage，family.tsx）。
  */
 import { Codicon, type CodiconName } from '@cn/design'
-import { Group, PageHead, Row, Seg, Sel, SettingsShell, Toggle, useSaid } from '@cn/design/settings'
+import aurora from '@notes-assets/covers/aurora.jpg'
+import cave from '@notes-assets/covers/ice-cave.jpg'
+import { AppearancePage, Group, type LookSkin, PageHead, Row, Sel, SettingsShell, Toggle, useSaid } from '@cn/design/settings'
+import { FamilySettings } from './family'
 import '@cn/design/settings.css'
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
-import { activeSkin, SKINS, skinOf } from '../../../notes/src/shared/appearance'
+import { activeSkin, allSkins, SKINS, skinOf } from '../../../notes/src/shared/appearance'
+import { themeInfo } from '../../../notes/src/shared/vscode-theme'
 import type { RemList } from '../shared/api'
-import type { TodaySettings } from '../shared/settings'
+import type { TodayAppearance, TodaySettings } from '../shared/settings'
 import { updateError, updateLine } from '../shared/update'
-import { nowMs, reloadState, saveSettings, useData, useLang } from './store'
+import { nowMs, reloadState, saveSettings, setLook, useData, useLang } from './store'
 import { useT } from './ui'
 
-export type SettingsPage = 'general' | 'look' | 'calrem' | 'vault'
+export type SettingsPage = 'general' | 'look' | 'calrem' | 'vault' | 'family'
 
 const SKIN_EN: Record<string, string> = { mint: 'Mint', sky: 'Sky', sakura: 'Sakura', lilac: 'Lilac', stone: 'Stone', pine: 'Pine', petrol: 'Deep lake', cocoa: 'Cocoa', ink: 'Ink', graphite: 'Graphite' }
+/** 主题卡悬停那句的英文（中文在 SKINS 里；和画布笔记的英文表一样） */
+const SKIN_NOTE_EN: Record<string, string> = {
+  mint: 'Pale green layers; a green line on top of the current tab',
+  sky: 'Cyan status bar; cards are outlined only',
+  sakura: 'Pale pink; current tab filled with color; soft card shadows',
+  lilac: 'Pale purple with plum accents',
+  stone: 'Dispatch white: no dividers, only shades of background',
+  pine: 'Warm dark green with beige text, after Everforest',
+  petrol: 'After Solarized; dark cyan status bar; cards outlined only',
+  cocoa: 'Warm brown with coral accents, after Monokai Pro',
+  ink: 'Near-black blue with orange accents, after Ayu Dark',
+  graphite: 'Dispatch black: no dividers, white buttons on black',
+}
 
-const PAGES: { id: SettingsPage; icon: CodiconName; name: 'sGeneral' | 'sLook' | 'sCalRem' | 'sVault'; desc: 'sGeneralDesc' | 'sLookDesc' | 'sCalRemDesc' | 'sVaultDesc' }[] = [
+const PAGES: { id: SettingsPage; icon: CodiconName; name: 'sGeneral' | 'sLook' | 'sCalRem' | 'sVault' | 'sFamily'; desc: 'sGeneralDesc' | 'sLookDesc' | 'sCalRemDesc' | 'sVaultDesc' | 'sFamilyDesc' }[] = [
   { id: 'general', icon: 'settings-gear', name: 'sGeneral', desc: 'sGeneralDesc' },
   { id: 'look', icon: 'symbol-color', name: 'sLook', desc: 'sLookDesc' },
   { id: 'calrem', icon: 'calendar', name: 'sCalRem', desc: 'sCalRemDesc' },
   { id: 'vault', icon: 'library', name: 'sVault', desc: 'sVaultDesc' },
+  { id: 'family', icon: 'multiple-windows', name: 'sFamily', desc: 'sFamilyDesc' },
 ]
 
-export function SettingsDialog({ page: first = 'general', onClose, onImport }: { page?: SettingsPage; onClose: () => void; onImport: () => void }) {
+export function SettingsDialog({ page: first = 'general', onClose, onImport, appNotice }: { page?: SettingsPage; onClose: () => void; onImport: () => void; appNotice?: string | null }) {
   const t = useT()
   const [page, setPage] = useState<SettingsPage>(first)
+  /** 从软件家族「去库 ›」「去外观 ›」跳过去：翻到那一行、闪一下 */
+  const [focus, setFocus] = useState<{ row: string; seq: number } | null>(null)
+  const goRow = (row: string) => {
+    const to: SettingsPage = row === 'followNotes' ? 'look' : 'vault'
+    setPage(to)
+    setFocus({ row, seq: Date.now() })
+  }
   const cur = PAGES.find((p) => p.id === page)!
   const text = useMemo(() => ({ title: t('settings'), nav: t('sNav'), close: t('sCloseSet'), closeTip: t('sCloseTip'), saved: (hint: string) => t('sSaved', hint), undo: t('sUndo') }), [t])
   const sections = [{ pages: PAGES.map((p) => ({ id: p.id, name: t(p.name), icon: <Codicon name={p.icon} /> })) }]
   return (
-    <SettingsShell text={text} sections={sections} page={page} onPage={(id) => setPage(id as SettingsPage)} onClose={onClose}>
+    <SettingsShell text={text} sections={sections} page={page} onPage={(id) => setPage(id as SettingsPage)} onClose={onClose} appNotice={appNotice} focus={focus}>
       <PageHead icon={<Codicon name={cur.icon} size={18} />} title={t(cur.name)} desc={t(cur.desc)} />
       {page === 'general' && <GeneralPage />}
       {page === 'look' && <LookPage />}
       {page === 'calrem' && <CalRemPage onImport={onImport} />}
       {page === 'vault' && <VaultPage />}
+      {page === 'family' && <FamilySettings onGoRow={goRow} />}
     </SettingsShell>
   )
 }
@@ -60,10 +87,10 @@ function GeneralPage() {
   return (
     <>
       <Group title={t('sLang')}>
-        {/* 换了语言整个界面马上换，提示条不说（说的话还是换之前那种语言） */}
+        {/* 换了语言整个界面马上换，提示条不说（说的话还是换之前那种语言）；下拉同画布笔记「界面语言」那一行 */}
         <Row id="lang" label={t('sLangRow')}>
-          <Seg
-            label={t('sLang')}
+          <Sel
+            label={t('sLangRow')}
             value={s.lang}
             options={[
               ['zh', '简体中文'],
@@ -80,6 +107,14 @@ function GeneralPage() {
       </Group>
       <Group title={t('sAbout')}>
         <UpdateRow onFlip={() => flip('autoUpdate', t('uAuto'))} />
+        {/* 软件家族的名单每天从总站看一次（画布笔记在「隐私和联网」里，画布今日没有那一页，放在这里） */}
+        <Row id="familyFetch" label={t('sFamilyFetch')} desc={t('sFamilyFetchDesc')}>
+          <Toggle
+            on={s.familyFetch}
+            label={t('sFamilyFetch')}
+            onChange={(v) => change({ familyFetch: v }, { familyFetch: !v }, v ? t('sFamilyFetchOn') : t('sFamilyFetchOff'))}
+          />
+        </Row>
       </Group>
     </>
   )
@@ -88,71 +123,112 @@ function GeneralPage() {
 function LookPage() {
   const t = useT()
   const change = useChange()
+  const said = useSaid()
   const { state, dark } = useData()
   const s = state!.settings
   const look = state!.look
   const own = s.appearance
   const lang = s.lang
-  const active = skinOf(activeSkin({ ...look, homeStyle: 'a', homeWinBg: false, winBgFile: null }, dark))
-  const skinName = (id: string) => (lang === 'zh' ? (SKINS.find((k) => k.id === id)?.name ?? id) : (SKIN_EN[id] ?? id))
+  const user = state!.themes
+  const all = allSkins(user.map(themeInfo))
+  const name = (id: string) => {
+    const k = all.find((x) => x.id === id)
+    return !k ? id : k.imported || lang === 'zh' ? k.name : (SKIN_EN[k.id] ?? k.name)
+  }
+  // 自带的十套照界面语言（名字、悬停那句）；导入的用它自己的名字，悬停说从哪个文件导入的
+  const skins: LookSkin[] = [
+    ...SKINS.map((k) => ({ id: k.id, tab: k.tab, tone: k.tone, name: name(k.id), note: lang === 'zh' ? k.note : SKIN_NOTE_EN[k.id] })),
+    ...user.map((th) => ({ id: th.id, tab: th.tab, tone: th.tone, name: th.name, note: t('sImportedFrom', th.source), imported: true })),
+  ]
+  const active = skinOf(activeSkin({ ...look, homeStyle: 'a', homeWinBg: false, winBgFile: null }, dark), all)
   const frameName = (f: 'a' | 'b') => (f === 'a' ? t('frameA') : t('frameB'))
   const bgName = (b: string) => (b === 'cave' ? t('bgCave') : b === 'none' ? t('bgNone') : t('bgAurora'))
-  const pickSkin = (id: string, tone: 'light' | 'dark') => {
-    const next = own.followSystem ? (tone === 'light' ? { ...own, day: id } : { ...own, night: id }) : { ...own, skin: id }
-    change({ appearance: next }, { appearance: own }, t('sSetTo', t('sTheme'), skinName(id)))
-  }
+  const now = own.followSystem ? (dark ? own.night : own.day) : own.skin
+  const setLookTo = (next: TodayAppearance, hint: string) => change({ appearance: next }, { appearance: own }, hint)
+  const flipFollow = (v: boolean) =>
+    // 关掉「跟着系统」时留住现在看到的那套，界面不跳（同画布笔记 setFollowSystem）
+    setLookTo(v ? { ...own, followSystem: true } : { ...own, followSystem: false, skin: now }, v ? t('sTurnedOn', t('sFollowSystem')) : t('sTurnedOff', t('sFollowSystem')))
+  const errText = (e: unknown) => String((e as Error).message ?? e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
   return (
     <>
-      <Group title={t('sLook')}>
-        <Row id="followNotes" label={t('sFollowNotes')} desc={s.followNotes ? `${t('sFollowNotesSub')} · ${t('sNow', skinName(active.id), frameName(look.frame))}` : t('sFollowNotesSub')}>
+      <Group title="" label={t('sLookWho')}>
+        <Row id="followNotes" label={t('sFollowNotes')} desc={s.followNotes ? `${t('sFollowNotesSub')} · ${t('sNow', name(active.id), frameName(look.frame))}` : t('sFollowNotesSub')}>
           <Toggle on={s.followNotes} label={t('sFollowNotes')} onChange={(v) => change({ followNotes: v }, { followNotes: !v }, v ? t('sTurnedOn', t('sFollowNotes')) : t('sTurnedOff', t('sFollowNotes')))} />
         </Row>
-        {!s.followNotes && (
-          <>
-            <Row id="frame" label={t('sFrame')}>
-              <Seg
-                label={t('sFrame')}
-                value={own.frame}
-                options={[
-                  ['a', t('frameA')],
-                  ['b', t('frameB')],
-                ]}
-                onChange={(frame) => change({ appearance: { ...own, frame } }, { appearance: own }, t('sSetTo', t('sFrame'), frameName(frame)))}
-              />
-            </Row>
-            <Row id="followSystem" label={t('sFollowSystem')}>
-              <Toggle on={own.followSystem} label={t('sFollowSystem')} onChange={(v) => change({ appearance: { ...own, followSystem: v } }, { appearance: own }, v ? t('sTurnedOn', t('sFollowSystem')) : t('sTurnedOff', t('sFollowSystem')))} />
-            </Row>
-            <Row id="winBg" label={t('sWinBg')}>
-              <Sel
-                label={t('sWinBg')}
-                value={own.winBg === 'custom' ? 'aurora' : own.winBg}
-                options={[
-                  ['aurora', t('bgAurora')],
-                  ['cave', t('bgCave')],
-                  ['none', t('bgNone')],
-                ]}
-                onChange={(winBg) => change({ appearance: { ...own, winBg } }, { appearance: own }, t('sSetTo', t('sWinBg'), bgName(winBg)))}
-              />
-            </Row>
-          </>
-        )}
       </Group>
+      {/* 不跟画布笔记时：外观整页和画布笔记是同一份（@cn/design/settings AppearancePage），画布今日没有首页、不能从电脑选窗口背景，这两样不出 */}
       {!s.followNotes && (
-        <>
-          <div className="sa-grph">{t('sTheme')}</div>
-          <div className="skins" role="radiogroup" aria-label={t('sTheme')}>
-            {SKINS.map((k) => {
-              const on = own.followSystem ? (k.tone === 'light' ? own.day === k.id : own.night === k.id) : own.skin === k.id
-              return (
-                <button key={k.id} className={on ? 'on' : ''} role="radio" aria-checked={on} onClick={() => !on && pickSkin(k.id, k.tone)}>
-                  <i data-skin={k.id} />
-                  <span>{skinName(k.id)}</span>
-                </button>
-              )
-            })}
-          </div>
-        </>
+        <div className="sa-keep">
+          <AppearancePage
+            text={{
+              theme: t('sTheme'),
+              themeHint: t('sThemeHint'),
+              themeHintSys: t('sThemeHintSys'),
+              light: t('sLight'),
+              dark: t('sDark'),
+              imported: t('sImported'),
+              day: t('sDay'),
+              night: t('sNight'),
+              follow: t('sFollowSystem'),
+              dayUse: t('sDayUse'),
+              nightUse: t('sNightUse'),
+              frame: t('sFrame'),
+              frameHint: t('sFrameHint'),
+              winBg: t('sWinBg'),
+              winBgHintA: t('sWinBgHintA'),
+              winBgHintB: t('sWinBgHintB'),
+            }}
+            skins={skins}
+            current={now}
+            followSystem={own.followSystem}
+            day={own.day}
+            night={own.night}
+            onPick={(k) => {
+              if (now === k.id) return
+              const next = own.followSystem ? (k.tone === 'light' ? { ...own, day: k.id } : { ...own, night: k.id }) : { ...own, skin: k.id }
+              setLookTo(next, t('sSetTo', t('sTheme'), k.name))
+            }}
+            onFollow={flipFollow}
+            onDay={(day) => setLookTo({ ...own, day }, t('sSetTo', t('sDayUse'), name(day)))}
+            onNight={(night) => setLookTo({ ...own, night }, t('sSetTo', t('sNightUse'), name(night)))}
+            frame={{
+              value: own.frame,
+              pv: `url("${aurora}")`,
+              a: { name: t('frameAName'), note: t('frameANote') },
+              b: { name: t('frameBName'), note: t('frameBNote') },
+              onChange: (frame) => setLookTo({ ...own, frame }, t('sSetTo', t('sFrame'), frameName(frame))),
+            }}
+            winBg={{
+              value: own.winBg === 'custom' ? 'aurora' : own.winBg,
+              options: [
+                { id: 'none', name: t('bgNone'), bg: 'var(--title)' },
+                { id: 'aurora', name: t('bgAurora'), bg: `url("${aurora}") center/cover` },
+                { id: 'cave', name: t('bgCave'), bg: `url("${cave}") center/cover` },
+              ],
+              onChange: (winBg) => setLookTo({ ...own, winBg }, t('sSetTo', t('sWinBg'), bgName(winBg))),
+            }}
+            importTheme={{
+              label: t('sImportTheme'),
+              note: t('sImportThemeNote'),
+              run: async () => {
+                try {
+                  const r = await window.ct.importTheme()
+                  if (!r) return
+                  setLook(r.state)
+                  said.say(r.added.length > 1 ? t('sImportedMany', r.added.length, r.added.map((x) => x.name).join(lang === 'zh' ? '、' : ', ')) : t('sImportedOne', r.added[0]!.name))
+                } catch (e) {
+                  said.say(t('sImportFail', errText(e)))
+                }
+              },
+              removeLabel: (n) => t('sRemoveTheme', n),
+              removeTip: t('sRemoveThemeTip'),
+              remove: async (k) => {
+                setLook(await window.ct.removeTheme(k.id))
+                said.say(t('sRemovedTheme', k.name))
+              },
+            }}
+          />
+        </div>
       )}
     </>
   )
@@ -185,7 +261,6 @@ function VaultPage() {
             <span className="sa-path mono" title={v?.path}>
               {v?.path}
             </span>
-            <span className="sa-line">{t('sVaultSub')}</span>
           </>
         }
       >
@@ -319,9 +394,11 @@ function UpdateRow({ onFlip }: { onFlip: () => void }) {
     }
   }
   const canCheck = !checking && (st?.phase === 'idle' || st?.phase === 'latest' || st?.phase === 'error')
+  const dev = st?.phase === 'off'
   return (
     <Row
       id="update"
+      dim={dev}
       label={t('uAuto')}
       desc={
         <>
@@ -340,7 +417,7 @@ function UpdateRow({ onFlip }: { onFlip: () => void }) {
         </>
       }
     >
-      <Toggle on={s.autoUpdate} label={t('uAuto')} onChange={onFlip} />
+      <Toggle on={s.autoUpdate && !dev} label={t('uAuto')} disabled={dev} onChange={onFlip} />
     </Row>
   )
 }

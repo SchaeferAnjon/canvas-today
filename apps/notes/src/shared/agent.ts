@@ -66,6 +66,8 @@ export interface AgentContext {
   mentions?: string[]
   /** 左栏选了好几个交给 AI（task-0tgz2）：选了几个、展开成的文件（文件夹算里面的笔记） */
   picked?: { count: number; files: string[] }
+  /** 白板框选的几张、文档拖选的几块交给 AI（task-5ryf9，操作条的「问AI」）：几样的 md 原文，前面带 [1] [2] 编号 */
+  cards?: { where: 'board' | 'doc'; count: number; text: string }
 }
 
 export type AiEvent =

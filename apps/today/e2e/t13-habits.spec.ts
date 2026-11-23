@@ -52,7 +52,7 @@ test('习惯：最近七天、连续几次；今天打卡写一行、撤销回�
     await expect.poll(() => run.read(BEI)).toBe(before + '- 2026-11-22 ✓\n')
     await expect(bei.locator('.hcheck')).toHaveAttribute('aria-pressed', 'true')
     await expect(bei.locator('.hn span')).toHaveText('每天 · 连续3次 · 习惯/背 30 个单词.md')
-    expect(run.read('.gitattributes')).toBe('习惯/*.md merge=union\n')
+    await expect.poll(() => run.read('.gitattributes')).toBe('习惯/*.md merge=union\n')
     await expect.poll(() => commits(run.vault)[0]).toBe('画布今日：「背 30 个单词」打卡 2026-11-22')
     // git 认 union 合并
     expect(execFileSync('git', ['-C', run.vault, 'check-attr', 'merge', '--', BEI], { encoding: 'utf8' }).trim()).toBe(`${BEI}: merge: union`)

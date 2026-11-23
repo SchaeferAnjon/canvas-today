@@ -33,6 +33,26 @@ import {
   withMapLayout,
   withMindmap,
   type MapNode,
+  addFloating,
+  addSpan,
+  detachTopic,
+  mapPaletteOf,
+  mapRelsOf,
+  mapSegments,
+  mapShown,
+  mapSkeletonOf,
+  mindmapOpml,
+  nextMapId,
+  pathOfId,
+  setAttrs,
+  setNote,
+  settle,
+  spansOf,
+  withIds,
+  withMapPalette,
+  withMapRels,
+  withMapSkeleton,
+  moveMany,
 } from '../src'
 import { FIXTURES } from './fixtures'
 
@@ -82,9 +102,10 @@ describe('导图：读', () => {
     expect(d.roots[0]!.text).toBe('甲 <!-- 随手写的 -->')
   })
 
-  it('星号、加号、tab 缩进、续行都认', () => {
+  it('星号、加号、tab 缩进都认；续行是这个主题的备注（第二批：不再并进主题的字）', () => {
     const d = parseMindmap('* 根\n\t+ 子一\n\t  接着写\n\t+ 子二\n')
-    expect(texts(d.roots)).toEqual([['根', ['子一 接着写', '子二']]])
+    expect(texts(d.roots)).toEqual([['根', ['子一', '子二']]])
+    expect(d.roots[0]!.children[0]!.note).toBe('接着写')
   })
 })
 
@@ -305,11 +326,13 @@ describe('导图：收起写进文件（fold）', () => {
 })
 
 describe('导图：布局记在属性里', () => {
-  it('没写是向右；左右、向下认得；不认识的当向右', () => {
+  it('没写是向右；左右、向下、鱼骨、时间线认得；不认识的当向右', () => {
     expect(mapLayoutOf(B1)).toBe('right')
     expect(mapLayoutOf(B1.replace('白板样式: 导图\n', '白板样式: 导图\n导图布局: 左右\n'))).toBe('both')
     expect(mapLayoutOf(B1.replace('白板样式: 导图\n', '白板样式: 导图\n导图布局: 向下\n'))).toBe('down')
-    expect(mapLayoutOf(B1.replace('白板样式: 导图\n', '白板样式: 导图\n导图布局: 鱼骨\n'))).toBe('right')
+    expect(mapLayoutOf(B1.replace('白板样式: 导图\n', '白板样式: 导图\n导图布局: 鱼骨\n'))).toBe('fish')
+    expect(mapLayoutOf(B1.replace('白板样式: 导图\n', '白板样式: 导图\n导图布局: 时间线\n'))).toBe('time')
+    expect(mapLayoutOf(B1.replace('白板样式: 导图\n', '白板样式: 导图\n导图布局: 矩阵\n'))).toBe('right')
   })
 
   it('换布局只动那一行：紧跟在「白板样式: 导图」后面；换回向右就去掉，回到原样', () => {
@@ -388,11 +411,306 @@ describe('导图：第一批的加、挪、删只动那几行', () => {
     expect(withMindmap(B1, moveBeside(r1(), [0, 2, 1], [0, 2, 0], true)!.roots)).toBe(B1)
   })
 
-  it('续行跟着改缩进，读回来还是一个节点', () => {
+  it('续行（备注）跟着改缩进，读回来还是这个主题的备注', () => {
     const t = '- 根\n  - 甲\n    接着写\n  - 乙\n'
     const r = addParent(parseMindmap(t).roots, [0, 0], '新')!
     const out = withMindmap(t, r.roots)
     expect(out).toBe('- 根\n  - 新\n    - 甲\n      接着写\n  - 乙\n')
-    expect(texts(parseMindmap(out).roots)).toEqual([['根', [['新', ['甲 接着写']], '乙']]])
+    expect(texts(parseMindmap(out).roots)).toEqual([['根', [['新', ['甲']], '乙']]])
+    expect(nodeAt(parseMindmap(out).roots, [0, 0, 0])!.note).toBe('接着写')
+  })
+})
+
+// ---------- 第二批（task-wuv05，设计页 15-思维导图第二批） ----------
+
+/** 第二批原型那一份：备注、外框、概要、图、短编号、浮动主题、配色、骨架、联系线都有 */
+const B2 = `---
+type: board
+白板样式: 导图
+导图布局: 左右
+导图配色: 彩虹
+导图骨架: 线条
+导图联系线:
+  - k1 -> k2 "求导也能写成矩阵"
+  - k3 -> k1 bend=30
+类型: 导图
+---
+# 导图 11-22 17∶51
+
+![原照片](../附件/导图/2026-11-22-1751.jpg)
+
+- 线性映射 <!-- box=0.402,0.436,0.197,0.095 -->
+  - 定义 <!-- box=0.233,0.211,0.091,0.082 frame=2 frame-title="都能写成矩阵" -->
+    - T(u+v)=T(u)+T(v)
+  - 矩阵表示 <!-- fold id=k2 -->
+    - 列 = 基向量的像
+      第 j 列就是 T(e_j)：把每个基向量的像排成一列一列，矩阵就出来了。
+    - 复合 = 矩阵相乘 <!-- sum=2 sum-text="乘法对应复合" -->
+    - 详见 [[第3讲 矩阵乘法]]
+  - 核与像
+    - 秩-零化度定理 <!-- box=0.579,0.872,0.186,0.068 -->
+      dim V = dim ker T + dim im T。
+
+      老师说这是这一章最要紧的一条，期末必考。
+  - 例子
+    - 旋转 ![旋转](../附件/导图/旋转.png) <!-- img-w=88 -->
+    - 求导 d/dx <!-- id=k1 -->
+- 先记一笔 <!-- at=470,250 id=k3 -->
+`
+const r2 = () => parseMindmap(B2).roots
+
+describe('导图第二批：读', () => {
+  it('续行是备注（多段之间空一行），主题的字不带它；图、外框、概要、短编号、位置都认', () => {
+    const r = r2()
+    const at = (...p: number[]) => nodeAt(r, p)!
+    expect(at(0, 2, 0).text).toBe('秩-零化度定理')
+    expect(at(0, 2, 0).note).toBe('dim V = dim ker T + dim im T。\n\n老师说这是这一章最要紧的一条，期末必考。')
+    expect(at(0, 1, 0).note).toBe('第 j 列就是 T(e_j)：把每个基向量的像排成一列一列，矩阵就出来了。')
+    expect(at(0, 0).frame).toEqual({ n: 2, title: '都能写成矩阵' })
+    expect(at(0, 1, 1).sum).toEqual({ n: 2, text: '乘法对应复合' })
+    expect(at(0, 3, 0)).toMatchObject({ text: '旋转', img: { alt: '旋转', src: '../附件/导图/旋转.png' }, imgW: 88 })
+    expect(at(0, 3, 1).id).toBe('k1')
+    expect(at(1)).toMatchObject({ text: '先记一笔', at: [470, 250], id: 'k3' })
+    expect(mapPaletteOf(B2)).toBe('rainbow')
+    expect(mapSkeletonOf(B2)).toBe('line')
+    expect(mapLayoutOf(B2)).toBe('both')
+    expect(mapRelsOf(B2)).toEqual([
+      { a: 'k1', b: 'k2', label: '求导也能写成矩阵' },
+      { a: 'k3', b: 'k1', bend: 30 },
+    ])
+  })
+
+  it('没写配色、骨架是跟主题、卡片；不认识的也当默认', () => {
+    expect(mapPaletteOf(B1)).toBe('theme')
+    expect(mapSkeletonOf(B1)).toBe('card')
+    expect(mapPaletteOf(B1.replace('白板样式: 导图\n', '白板样式: 导图\n导图配色: 樱花\n'))).toBe('theme')
+  })
+
+  it('链接只露名字：[[双链]] 露别名或笔记名，[字](网址) 露字，图不算链接', () => {
+    expect(mapShown('详见 [[第3讲 矩阵乘法]]')).toBe('详见 第3讲 矩阵乘法')
+    expect(mapShown('看 [[课程/线代/第五讲|第五讲笔记]] 和 [官网](https://example.com/a)')).toBe('看 第五讲笔记 和 官网')
+    const segs = mapSegments('详见 [[第3讲 矩阵乘法]] 吧')
+    expect(segs.map((x) => [x.text, x.wiki ?? x.url ?? null])).toEqual([
+      ['详见 ', null],
+      ['第3讲 矩阵乘法', '第3讲 矩阵乘法'],
+      [' 吧', null],
+    ])
+    expect(mapSegments('![图](a.png) 字').every((x) => !x.url)).toBe(true)
+  })
+})
+
+describe('导图第二批：打开再保存一个字节都不变', () => {
+  const samples = [
+    B2,
+    // 以前的续行（第一批前写的）：现在读成备注，写回去照旧
+    '- 根\n  - 子一\n    接着写\n    再写一行\n\n    隔一段\n  - 子二\n',
+    // 备注里像列表的一行（写的时候前面加了 \）
+    '- 根\n  - 甲\n    \\- 这不是子主题\n',
+    // 注释里多空格、怪顺序、只有外框名字
+    '- 根\n  - 甲 <!--  at=1,2   id=k9 -->\n  - 乙 <!-- frame-title="只有名字" -->\n',
+  ]
+  for (const t of samples) {
+    it(JSON.stringify(t.slice(0, 40)), () => {
+      expect(serializeMindmap(parseMindmap(t))).toBe(t)
+      expect(withMindmap(t, parseMindmap(t).roots)).toBe(t)
+    })
+  }
+})
+
+describe('导图第二批：改了只动那几行', () => {
+  it('改备注只动那几行续行；去掉备注续行一起去掉；没有备注的加上缩进的一段', () => {
+    const r = r2()
+    const out = withMindmap(B2, setNote(r, [0, 2, 0], 'dim V = dim ker T + dim im T。\n\n\n期末必考。  '))
+    const a = B2.split('\n')
+    const b = out.split('\n')
+    const at = lineNo(B2, '秩-零化度定理')
+    expect(b.slice(0, at + 1)).toEqual(a.slice(0, at + 1))
+    expect(b.slice(at + 1, at + 4)).toEqual(['      dim V = dim ker T + dim im T。', '', '      期末必考。'])
+    expect(b.slice(at + 4)).toEqual(a.slice(at + 4))
+    // 去掉
+    const gone = withMindmap(B2, setNote(r, [0, 2, 0], '  \n'))
+    expect(gone).toBe(B2.replace('\n      dim V = dim ker T + dim im T。\n\n      老师说这是这一章最要紧的一条，期末必考。', ''))
+    // 加上：第二层的主题，备注缩进到第三层
+    const add = withMindmap(B1, setNote(r1(), [0, 2, 1], '所有能映到的'))
+    expect(add).toBe(B1.replace('    - im T 所有的像\n', '    - im T 所有的像\n      所有能映到的\n'))
+  })
+
+  it('备注里像列表的一行前面加 \\，读回来还是备注、不是子主题', () => {
+    const out = withMindmap(B1, setNote(r1(), [0, 3], '- 先这样\n  * 再那样'))
+    expect(out).toContain('  - 例子\n    \\- 先这样\n      \\* 再那样\n    - 旋转\n')
+    const n = nodeAt(parseMindmap(out).roots, [0, 3])!
+    expect(n.note).toBe('- 先这样\n  * 再那样')
+    expect(n.children.map((c) => c.text)).toEqual(['旋转', '投影', '求导 d/dx'])
+  })
+
+  it('挪一枝、换层级：备注跟着走，只改缩进；只删这一个时备注一起删', () => {
+    const r = r2()
+    // 「秩-零化度定理」（带两段备注）挪到「例子」下面最后
+    const m = moveTo(r, [0, 2, 0], [0, 3])!
+    const out = withMindmap(B2, m.roots)
+    expect(out).toContain('    - 求导 d/dx <!-- id=k1 -->\n    - 秩-零化度定理 <!-- box=0.579,0.872,0.186,0.068 -->\n      dim V = dim ker T + dim im T。\n\n      老师说这是这一章最要紧的一条，期末必考。\n')
+    // 套一层父主题：备注多缩进一层
+    const p = addParent(r, [0, 2, 0], '新')!
+    expect(withMindmap(B2, p.roots)).toContain('    - 新\n      - 秩-零化度定理 <!-- box=0.579,0.872,0.186,0.068 -->\n        dim V = dim ker T + dim im T。\n\n        老师说')
+    // 只删这一个：它的备注一起删，下面的往上提
+    const one = withMindmap(B2, removeOne(r, [0, 1, 0]))
+    expect(one).not.toContain('第 j 列就是')
+    expect(one).toContain('  - 矩阵表示 <!-- fold id=k2 -->\n    - 复合 = 矩阵相乘')
+  })
+
+  it('外框、概要、图的宽、位置只改那一行的注释，别的字节不动', () => {
+    const r = r1()
+    // 外框：选「T(cv)=cT(v)」和「T(u+v)=T(u)+T(v)」（顺序乱也行）→ 记在最前面那个上，从它起 2 个
+    const f = withMindmap(
+      B1,
+      addSpan(
+        r,
+        [
+          [0, 0, 1],
+          [0, 0, 0],
+        ],
+        'frame',
+        '线性的两条',
+      ),
+    )
+    expect(changedLines(B1, f)).toEqual([lineNo(B1, 'T(u+v)')])
+    expect(f).toContain('    - T(u+v)=T(u)+T(v) <!-- box=0.075,0.074,0.232,0.066 frame=2 frame-title="线性的两条" -->\n')
+    // 不同枝各一个，中心不框
+    const g = addSpan(r, [[0], [0, 0, 0], [0, 0, 2], [0, 3, 1]], 'sum', '一句话')
+    expect(nodeAt(g, [0])!.sum).toBeUndefined()
+    expect(nodeAt(g, [0, 0, 0])!.sum).toEqual({ n: 3, text: '一句话' })
+    expect(nodeAt(g, [0, 3, 1])!.sum).toEqual({ n: 1, text: '一句话' })
+    expect(
+      spansOf([
+        [0, 1, 1],
+        [0, 1, 0],
+        [0, 2, 2],
+      ]),
+    ).toEqual([
+      { parent: [0, 1], from: 0, n: 2 },
+      { parent: [0, 2], from: 2, n: 1 },
+    ])
+    // 去掉外框：回到原样
+    expect(withMindmap(f, setAttrs(parseMindmap(f).roots, [0, 0, 0], { frame: undefined }))).toBe(B1)
+    // 改图的宽：只换 img-w 那一截
+    const w = withMindmap(B2, setAttrs(r2(), [0, 3, 0], { imgW: 120 }))
+    expect(changedLines(B2, w)).toEqual([lineNo(B2, '旋转 ![')])
+    expect(w).toContain('    - 旋转 ![旋转](../附件/导图/旋转.png) <!-- img-w=120 -->\n')
+  })
+
+  it('挂图：图写在字后面，宽记在注释里；去掉图回到原样', () => {
+    const out = withMindmap(B1, setAttrs(r1(), [0, 3, 0], { img: { alt: '旋转', src: '../附件/导图/旋转.png' }, imgW: 88 }))
+    expect(out).toContain('    - 旋转 ![旋转](../附件/导图/旋转.png) <!-- img-w=88 -->\n')
+    const back = withMindmap(out, setAttrs(parseMindmap(out).roots, [0, 3, 0], { img: undefined, imgW: undefined }))
+    expect(back).toBe(B1)
+  })
+
+  it('浮动主题：写在大树后面、最外层，记位置；拆出来、挂回去', () => {
+    const add = addFloating(r1(), '先记一笔', [470.4, 250.6])
+    expect(add.path).toEqual([1])
+    expect(withMindmap(B1, add.roots)).toBe(B1 + '- 先记一笔 <!-- at=470,251 -->\n')
+    // 树上的拆出来（连同下面的）：放到最外层
+    const d = detachTopic(r1(), [0, 1], [300, -120])!
+    const dt = withMindmap(B1, d.roots)
+    expect(dt.endsWith('- 矩阵表示 <!-- box=0.655,0.189,0.159,0.082 at=300,-120 -->\n  - 列 = 基向量的像\n  - 复合 = 矩阵相乘\n')).toBe(true)
+    // 挂回「核与像」下面：位置不记了，缩进跟着
+    const back = settle(moveTo(d.roots, d.path, [0, 1]))!
+    expect(withMindmap(B1, back.roots)).toContain(
+      '  - 核与像\n    - ker T 映到 0\n    - im T 所有的像\n    - 秩-零化度定理 <!-- box=0.579,0.872,0.186,0.068 unsure guesses="秩-零化度定理|秩-零化渡定理" -->\n    - 矩阵表示 <!-- box=0.655,0.189,0.159,0.082 -->\n      - 列 = 基向量的像\n',
+    )
+    expect(detachTopic(r1(), [0], [0, 0])).toBeNull()
+  })
+})
+
+describe('导图第二批：属性（配色、骨架、联系线）', () => {
+  it('配色、骨架各一行，挨着布局写；默认的去掉，回到原样', () => {
+    const a = withMapPalette(B1, 'rainbow')
+    expect(a).toContain('白板样式: 导图\n导图配色: 彩虹\n类型: 导图\n')
+    const b = withMapLayout(a, 'down')
+    expect(b).toContain('白板样式: 导图\n导图布局: 向下\n导图配色: 彩虹\n类型: 导图\n')
+    const c = withMapSkeleton(b, 'box')
+    expect(c).toContain('导图布局: 向下\n导图配色: 彩虹\n导图骨架: 方框\n类型: 导图\n')
+    expect(withMapPalette(c, 'rainbow')).toBe(c)
+    expect(withMapLayout(withMapSkeleton(withMapPalette(c, 'theme'), 'card'), 'right')).toBe(B1)
+  })
+
+  it('联系线：一行一条写在属性里，没变不动；带「: 」的字整条用单引号包住', () => {
+    const rels = [{ a: 'k1', b: 'k2', label: '比例: 1' }]
+    const out = withMapRels(B1, rels)
+    expect(out).toContain(`白板样式: 导图\n导图联系线:\n  - 'k1 -> k2 "比例: 1"'\n类型: 导图\n`)
+    expect(mapRelsOf(out)).toEqual(rels)
+    expect(withMapRels(out, rels)).toBe(out)
+    expect(withMapRels(out, [])).toBe(B1)
+    // 改弯度只改那一条
+    const bent = withMapRels(B2, [mapRelsOf(B2)[0]!, { a: 'k3', b: 'k1', bend: -12 }])
+    expect(changedLines(B2, bent)).toEqual([lineNo(B2, 'k3 -> k1')])
+    expect(bent).toContain('  - k3 -> k1 bend=-12\n')
+  })
+
+  it('删掉一头的主题：那条联系线一起删，属性里那一行跟着去掉；别的不动', () => {
+    const p = pathOfId(r2(), 'k2')!
+    expect(p).toEqual([0, 1])
+    const out = withMindmap(B2, removeAt(r2(), p))
+    expect(mapRelsOf(out)).toEqual([{ a: 'k3', b: 'k1', bend: 30 }])
+    expect(out).toContain('导图联系线:\n  - k3 -> k1 bend=30\n类型: 导图\n')
+    // 两条都删光：属性去掉
+    const all = withMindmap(out, removeAt(parseMindmap(out).roots, [1]))
+    expect(all).not.toContain('导图联系线')
+  })
+
+  it('短编号：没用过的最小的；给几个主题编上（有的不动）', () => {
+    expect(nextMapId(r1())).toBe('k1')
+    expect(nextMapId(r2())).toBe('k4')
+    const w = withIds(r2(), [
+      [0, 3, 1],
+      [0, 2, 0],
+    ])
+    expect(w.ids).toEqual(['k1', 'k4'])
+    expect(nodeAt(w.roots, [0, 2, 0])!.id).toBe('k4')
+    expect(withMindmap(B2, w.roots)).toContain('    - 秩-零化度定理 <!-- box=0.579,0.872,0.186,0.068 id=k4 -->\n      dim V')
+  })
+})
+
+describe('导图第二批：导出 OPML', () => {
+  it('每个主题一行，链接只留字，备注写进 _note', () => {
+    const x = mindmapOpml('导图 11-22', r2())
+    expect(x).toContain('<title>导图 11-22</title>')
+    expect(x).toContain('<outline text="详见 第3讲 矩阵乘法"/>')
+    expect(x).toContain('<outline text="秩-零化度定理" _note="dim V = dim ker T + dim im T。&#10;&#10;老师说这是这一章最要紧的一条，期末必考。"/>')
+    expect(x).toContain('<outline text="先记一笔"/>')
+    expect(x.match(/<outline /g)!.length).toBe(13)
+  })
+})
+
+describe('导图第二批：选几个一起拖', () => {
+  it('几个一起挪到一个主题后面，按原来的先后排在一起；只动那几行', () => {
+    // 「T(cv)=cT(v)」和「复合 = 矩阵相乘」一起排到「ker T 映到 0」后面
+    const r = moveMany(r1(), [[0, 1, 1], [0, 0, 1]], [0, 2, 0], 'after')!
+    expect(r.paths).toEqual([
+      [0, 2, 1],
+      [0, 2, 2],
+    ])
+    const out = withMindmap(B1, r.roots)
+    expect(out).toContain('    - ker T 映到 0\n    - T(cv)=cT(v)\n    - 复合 = 矩阵相乘\n    - im T 所有的像\n')
+    expect(out).not.toContain('    - 先加再映射，和先映射再加，结果一样；数乘也一样\n    - T(cv)')
+  })
+
+  it('放进一个主题里排在最后；选中的套在另一个下面的跟着上面那个走；拖到自己下面不行', () => {
+    const r = moveMany(r1(), [[0, 1], [0, 1, 0], [0, 3, 2]], [0, 0], 'into')!
+    expect(r.paths).toEqual([
+      [0, 0, 3],
+      [0, 0, 4],
+    ])
+    const n = nodeAt(r.roots, [0, 0])!
+    expect(n.children.map((c) => c.text)).toEqual(['T(u+v)=T(u)+T(v)', 'T(cv)=cT(v)', '先加再映射，和先映射再加，结果一样；数乘也一样', '矩阵表示', '求导 d/dx'])
+    expect(n.children[3]!.children.map((c) => c.text)).toEqual(['列 = 基向量的像', '复合 = 矩阵相乘'])
+    expect(moveMany(r1(), [[0, 1]], [0, 1, 0], 'into')).toBeNull()
+    expect(moveMany(r1(), [[0, 1]], [0], 'after')).toBeNull()
+  })
+
+  it('浮动主题一起拖进树里：不再记位置', () => {
+    const t = B1 + '- 先记一笔 <!-- at=470,250 -->\n'
+    const r = moveMany(parseMindmap(t).roots, [[1]], [0, 3], 'into')!
+    expect(withMindmap(t, r.roots)).toBe(B1.replace('    - 求导 d/dx\n', '    - 求导 d/dx\n    - 先记一笔\n'))
   })
 })

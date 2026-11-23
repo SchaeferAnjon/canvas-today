@@ -147,7 +147,7 @@ test('详情：改日子、时间、提醒、重复、优先级、标题、加�
     await expect(d.locator('.nh')).toHaveText('小论文计划第11行')
     await d.getByRole('button', { name: '周二' }).click()
     await expect(md).toHaveText('- [ ] 交论文初稿 📅 2026-11-24 15:00 🔔 提前1小时 ⏫')
-    await d.getByLabel('时间').selectOption('18:30')
+    await d.getByLabel('钟点', { exact: true }).selectOption('18:30')
     await expect(md).toHaveText('- [ ] 交论文初稿 📅 2026-11-24 18:30 🔔 提前1小时 ⏫')
     await d.getByLabel('重复').selectOption('每周二')
     await expect(md).toHaveText('- [ ] 交论文初稿 📅 2026-11-24 18:30 🔔 提前1小时 🔁 每周二 ⏫')

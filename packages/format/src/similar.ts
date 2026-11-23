@@ -1,5 +1,7 @@
+import { dupTokens } from './terms'
+
 /**
- * 找讲同一件事的笔记：按字符 3-gram 切片，用 MinHash 签名加分段（LSH）先挑出候选对，
+ * 找讲同一件事的笔记：去掉停用词以后按 3 个记号切片（dupShingles），用 MinHash 签名加分段（LSH）先挑出候选对，
  * 再对候选对算真的 Jaccard 相似度。纯函数，不读文件，手机版也能用。
  */
 
@@ -57,6 +59,17 @@ export function shingles(text: string, n = N): Set<string> {
   const chars = Array.from(text)
   const out = new Set<string>()
   for (let i = 0; i + n <= chars.length; i++) out.add(chars.slice(i, i + n).join(''))
+  return out
+}
+
+/**
+ * 找重复用的切片（task-eler2）：停用词、序数词、数字去掉以后，连着三个记号一片；中文一个字一个记号（和以前按字切三个一片一样），
+ * 英文一个词一个记号（以前按字母切，什么英文都有「the」「ion」，不相干的两篇英文也能「像」）
+ */
+export function dupShingles(md: string, n = N): Set<string> {
+  const t = dupTokens(md)
+  const out = new Set<string>()
+  for (let i = 0; i + n <= t.length; i++) out.add(t.slice(i, i + n).join(' '))
   return out
 }
 
@@ -198,10 +211,8 @@ export function commonPassage(a: string, b: string, max = 40): string {
 
 /** 一对笔记有多像（不经过 MinHash，直接算） */
 export function similarity(a: string, b: string): { score: number; containment: number; passage: string } {
-  const pa = plainText(a)
-  const pb = plainText(b)
-  const sa = shingles(pa)
-  const sb = shingles(pb)
+  const sa = dupShingles(a)
+  const sb = dupShingles(b)
   return { score: round(jaccard(sa, sb)), containment: round(overlap(sa, sb)), passage: commonPassage(plainText(a, true), plainText(b, true)) }
 }
 
@@ -231,7 +242,7 @@ export function prepareSimilar(docs: SimilarDoc[], opts: SimilarOptions = {}): S
   const dict = new Map<string, number>()
   const kept: { id: string; text: string; set: Set<string>; grams: Int32Array }[] = []
   for (const d of docs) {
-    const set = shingles(plainText(d.text))
+    const set = dupShingles(d.text)
     if (set.size < minShingles) continue
     const grams = new Int32Array(set.size)
     let k = 0

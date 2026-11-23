@@ -399,15 +399,12 @@ function cut(l: Layout, i: number): { layout: Layout; piece: Piece } {
   return { layout: { ...l, pieces, gaps }, piece: piece! }
 }
 
-/** 把 piece 放到第 at 块前面（at = 块数时放最后）；返回放好后 piece 在新文字里从哪开始 */
-function put(l: Layout, at: number, piece: Piece): { text: string; at: number } {
+/** 把 piece 放到第 at 块前面（at = 块数时放最后），返回放好的样子 */
+function putIn(l: Layout, at: number, piece: Piece): Layout {
   const pieces = [...l.pieces]
   const gaps = [...l.gaps]
   const x = piece.block
-  if (pieces.length === 0) {
-    const text = l.prefix + piece.text + l.suffix
-    return { text, at: l.prefix.length }
-  }
+  if (pieces.length === 0) return { ...l, pieces: [piece], gaps: [] }
   if (at === 0) {
     const b = pieces[0]!.block
     pieces.unshift(piece)
@@ -424,7 +421,12 @@ function put(l: Layout, at: number, piece: Piece): { text: string; at: number } 
     pieces.splice(at, 0, piece)
     gaps.splice(at - 1, 1, seam(a, x, inList), seam(x, b, inList))
   }
-  const out = { ...l, pieces, gaps }
+  return { ...l, pieces, gaps }
+}
+
+/** 把 piece 放到第 at 块前面（at = 块数时放最后）；返回放好后 piece 在新文字里从哪开始 */
+function put(l: Layout, at: number, piece: Piece): { text: string; at: number } {
+  const out = putIn(l, at, piece)
   return { text: join(out), at: startOf(out, at) }
 }
 
@@ -480,7 +482,7 @@ export function duplicateMdBlock(text: string, i: number, blocks = findBlocks(te
 
 // ---------- 转换 ----------
 
-export type BlockTarget = 'paragraph' | 'h1' | 'h2' | 'h3' | 'todo' | 'quote' | 'code'
+export type BlockTarget = 'paragraph' | 'h1' | 'h2' | 'h3' | 'todo' | 'quote' | 'code' | 'bullet' | 'ordered'
 
 /** 能转换的块 */
 export const convertible = (b: MdBlock) => ['paragraph', 'heading', 'list', 'quote', 'code'].includes(b.kind)
@@ -536,6 +538,10 @@ export function markdownAs(target: BlockTarget, plain: string): string {
     }
     case 'todo':
       return lines.map((s, k) => (k === 0 ? '- [ ] ' + s : s.trim() === '' ? '' : '  ' + s)).join('\n')
+    case 'bullet':
+      return lines.map((s, k) => (k === 0 ? '- ' + s : s.trim() === '' ? '' : '  ' + s)).join('\n')
+    case 'ordered':
+      return lines.map((s, k) => (k === 0 ? '1. ' + s : s.trim() === '' ? '' : '   ' + s)).join('\n')
     case 'quote':
       return lines.map((s) => (s === '' ? '>' : '> ' + s)).join('\n')
     case 'code': {
@@ -551,8 +557,7 @@ export function convertMdBlock(text: string, i: number, target: BlockTarget, blo
   const b = blocks[i]
   if (!b || !convertible(b)) return null
   const md = markdownAs(target, plainOf(text, b))
-  const kind: MdBlockKind = target === 'todo' ? 'list' : target === 'quote' ? 'quote' : target === 'code' ? 'code' : target === 'paragraph' ? 'paragraph' : 'heading'
-  const nb: MdBlock = { ...b, kind }
+  const nb = convertedBlock(b, target)
   const l = layout(text, blocks)
   const pieces = [...l.pieces]
   pieces[i] = { block: nb, text: md }
@@ -565,6 +570,178 @@ export function convertMdBlock(text: string, i: number, target: BlockTarget, blo
   if (i < pieces.length - 1) widen(i, nb, pieces[i + 1]!.block)
   const out = { ...l, pieces, gaps }
   return { text: join(out), at: startOf(out, i) }
+}
+
+/** 转成 target 以后这一块是哪种块（接缝用它定松紧） */
+function convertedBlock(b: MdBlock, target: BlockTarget): MdBlock {
+  if (target === 'todo' || target === 'bullet' || target === 'ordered') return { ...b, kind: 'list', list: target === 'todo' ? 'task' : target }
+  const kind: MdBlockKind = target === 'quote' ? 'quote' : target === 'code' ? 'code' : target === 'paragraph' ? 'paragraph' : 'heading'
+  return { ...b, kind }
+}
+
+// ---------- 选中好几块一起改（task-5ryf9，文档拖选多块以后那一条操作条） ----------
+
+/** 选中的几块：去重、按先后、只留能挪的（frontmatter 不算） */
+function picked(indices: readonly number[], blocks: MdBlock[]): number[] {
+  return [...new Set(indices)].filter((i) => i >= 0 && i < blocks.length && movable(blocks[i]!)).sort((a, b) => a - b)
+}
+
+/** 拿掉选中的几块（从后往前拿，前面的下标不变），拿出来的按原来的先后 */
+function cutMany(l: Layout, sel: readonly number[]): { layout: Layout; pieces: Piece[] } {
+  let rest = l
+  const pieces: Piece[] = []
+  for (const i of [...sel].reverse()) {
+    const r = cut(rest, i)
+    rest = r.layout
+    pieces.unshift(r.piece)
+  }
+  return { layout: rest, pieces }
+}
+
+/**
+ * 几块挨着放到第 at 块前面；原来就挨着的两块中间照原来的空白（紧凑列表还是紧凑的），不挨着的按接缝规矩（一个空行）。
+ * gapsOf：原来那几块之间的空白（sel 下标对应的）
+ */
+function putMany(l: Layout, at: number, pieces: readonly Piece[], sel: readonly number[], orig: Layout): Layout {
+  let out = l
+  pieces.forEach((p, k) => {
+    out = putIn(out, at + k, p)
+    if (k > 0 && sel[k] === sel[k - 1]! + 1) {
+      const gaps = [...out.gaps]
+      gaps[at + k - 1] = orig.gaps[sel[k - 1]!]!
+      out = { ...out, gaps }
+    }
+  })
+  return out
+}
+
+/** 几块一起挪到第 to 块前面（to = 块数时挪到最后，下标是挪之前的）；挪完和原来一样（落在选中的几块中间）返回 null */
+export function moveMdBlocks(text: string, indices: readonly number[], to: number, blocks = findBlocks(text)): BlockEdit | null {
+  const sel = picked(indices, blocks)
+  if (!sel.length || to < 0 || to > blocks.length) return null
+  if (to === 0 && blocks[0]!.kind === 'frontmatter') return null
+  const orig = layout(text, blocks)
+  const { layout: rest, pieces } = cutMany(orig, sel)
+  const at = to - sel.filter((i) => i < to).length
+  const out = putMany(rest, at, pieces, sel, orig)
+  const next = join(out)
+  return next === text ? null : { text: next, at: startOf(out, at) }
+}
+
+/** 删掉几块：两边留一个空行，光标落在删掉的第一块那里 */
+export function removeMdBlocks(text: string, indices: readonly number[], blocks = findBlocks(text)): BlockEdit | null {
+  const sel = picked(indices, blocks)
+  if (!sel.length) return null
+  const { layout: rest } = cutMany(layout(text, blocks), sel)
+  const at = rest.pieces.length ? startOf(rest, Math.min(sel[0]!, rest.pieces.length - 1)) : rest.prefix.length
+  return { text: join(rest), at }
+}
+
+/** 复制一份：选中的最后一块下面多一样的几块（按原来的先后） */
+export function duplicateMdBlocks(text: string, indices: readonly number[], blocks = findBlocks(text)): BlockEdit | null {
+  const sel = picked(indices, blocks)
+  if (!sel.length) return null
+  const l = layout(text, blocks)
+  const at = sel[sel.length - 1]! + 1
+  const out = putMany(l, at, sel.map((i) => ({ ...l.pieces[i]! })), sel, l)
+  return { text: join(out), at: startOf(out, at) }
+}
+
+/** 选中的几块的 md 原文（复制、剪切、交给 AI）：原来挨着的照原来的空白，不挨着的隔一个空行 */
+export function selectedMarkdown(text: string, indices: readonly number[], blocks = findBlocks(text)): string {
+  const sel = picked(indices, blocks)
+  return sel.map((i, k) => (k === 0 ? '' : sel[k - 1] === i - 1 ? text.slice(blocks[i - 1]!.to, blocks[i]!.from) : '\n\n') + text.slice(blocks[i]!.from, blocks[i]!.to)).join('')
+}
+
+/**
+ * 几块一起转成（文档操作条「转成」）：只改每块开头的记号，字不变；不能转的（表格、分隔线、卡片……）跳过。
+ * callout：连着的几块包进一个「> [!note]」（块里原来的写法照留），不连着的各包一个
+ */
+export function convertMdBlocks(text: string, indices: readonly number[], target: BlockTarget | 'callout', blocks = findBlocks(text)): BlockEdit | null {
+  const sel = picked(indices, blocks)
+  if (!sel.length) return null
+  const l = layout(text, blocks)
+  const pieces = [...l.pieces]
+  const gaps = [...l.gaps]
+  const widen = (k: number) => {
+    if (k < 0 || k >= gaps.length) return
+    const a = pieces[k]!.block
+    const c = pieces[k + 1]!.block
+    if (a.kind === 'frontmatter' || bothList(a, c)) return
+    if (newlines(gaps[k]!) < 2) gaps[k] = '\n\n'
+  }
+  if (target === 'callout') {
+    // 一段一段地包：从后往前，前面的下标不变
+    const runs: [number, number][] = []
+    for (const i of sel) {
+      const last = runs[runs.length - 1]
+      if (last && last[1] === i - 1) last[1] = i
+      else runs.push([i, i])
+    }
+    for (const [a, z] of runs.reverse()) {
+      const raw = text.slice(blocks[a]!.from, blocks[z]!.to)
+      const md = '> [!note]\n' + raw.split('\n').map((s) => (s.trim() === '' ? '>' : '> ' + s)).join('\n')
+      pieces.splice(a, z - a + 1, { block: { kind: 'quote', from: blocks[a]!.from, to: blocks[z]!.to }, text: md })
+      gaps.splice(a, z - a)
+      widen(a - 1)
+      widen(a)
+    }
+  } else {
+    let any = false
+    for (const i of sel) {
+      const b = blocks[i]!
+      if (!convertible(b)) continue
+      any = true
+      pieces[i] = { block: convertedBlock(b, target), text: markdownAs(target, plainOf(text, b)) }
+    }
+    if (!any) return null
+    for (const i of sel) (widen(i - 1), widen(i))
+  }
+  const out = { ...l, pieces, gaps }
+  const next = join(out)
+  return next === text ? null : { text: next, at: startOf(out, sel[0]!) }
+}
+
+/**
+ * 缩进（Tab）、减少缩进（⇧Tab）：只有列表、待办能缩，每行多两个空格、少两个空格（少不了的那行不动）；
+ * 正文、标题不动（md 里缩进的正文会变成代码块），skipped 数出没动的几块
+ */
+export function indentMdBlocks(text: string, indices: readonly number[], dir: 1 | -1, blocks = findBlocks(text)): { edit: BlockEdit | null; changed: number; skipped: number } {
+  const sel = picked(indices, blocks)
+  const l = layout(text, blocks)
+  const pieces = [...l.pieces]
+  let changed = 0
+  let skipped = 0
+  for (const i of sel) {
+    const b = blocks[i]!
+    if (b.kind !== 'list') {
+      skipped++
+      continue
+    }
+    const before = pieces[i]!.text
+    const after = before
+      .split('\n')
+      .map((s) => (dir > 0 ? (s.trim() === '' ? s : '  ' + s) : s.replace(/^ {1,2}/, '')))
+      .join('\n')
+    if (after === before) continue
+    pieces[i] = { block: b, text: after }
+    changed++
+  }
+  if (!changed) return { edit: null, changed, skipped }
+  const out = { ...l, pieces }
+  return { edit: { text: join(out), at: startOf(out, sel[0]!) }, changed, skipped }
+}
+
+/** 选中的几块换成一段新的 md（AI 整理这几段）：删掉它们，在第一块那里放进去 */
+export function replaceMdBlocks(text: string, indices: readonly number[], md: string, blocks = findBlocks(text)): BlockEdit | null {
+  const sel = picked(indices, blocks)
+  const body = md.trim()
+  if (!sel.length || !body) return null
+  const { layout: rest } = cutMany(layout(text, blocks), sel)
+  const kind = findBlocks(body)[0]?.kind ?? 'paragraph'
+  const at = Math.min(sel[0]!, rest.pieces.length)
+  const out = putIn(rest, at, { block: { kind, from: 0, to: body.length }, text: body })
+  return { text: join(out), at: startOf(out, at) }
 }
 
 // ---------- 待办、表格、路径 ----------

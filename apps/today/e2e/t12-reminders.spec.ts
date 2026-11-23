@@ -90,7 +90,8 @@ for (const lang of ['zh', 'en'] as const) {
     const { page } = run
     try {
       const s = await connect(page, l)
-      await expect(page.locator('.toast')).toContainText(l.connectedToast)
+      // 设置开着：软件的话说在设置底下那一条
+      await expect(s.getByTestId('settings-toast')).toContainText(l.connectedToast)
       // 原来带 🔔 的四条：先给没 🆔 的加上编号，再镜像过去（一个列表「画布今日」，英文界面也认这个名字）
       await expect.poll(() => mem(run).items.length, { timeout: 10_000 }).toBe(4)
       expect(mem(run).lists.map((x) => x.title)).toEqual([lang === 'zh' ? '画布今日' : 'Canvas Today'])
@@ -269,7 +270,7 @@ for (const lang of ['zh', 'en'] as const) {
       // 撤回：两篇都没了，镜像过去的那两条也跟着删了，提醒事项里原来的一条没动
       await page.locator('.toast').getByRole('button', { name: t.undo }).click()
       await expect.poll(() => existsSync(join(run.vault, '收件箱/从提醒事项/购物.md'))).toBe(false)
-      expect(existsSync(join(run.vault, '收件箱/从提醒事项/工作.md'))).toBe(false)
+      await expect.poll(() => existsSync(join(run.vault, '收件箱/从提醒事项/工作.md'))).toBe(false)
       await expect.poll(() => mem(run).items.length - seeded(run).length, { timeout: 10_000 }).toBe(mirrorBefore)
       expect(seeded(run).length).toBe(5)
 
@@ -337,7 +338,7 @@ test('没给权限（系统问的时候点了「不允许」）：设置里说�
     const r = (await remPage(page)).locator('[data-row="rem"]')
     await r.getByRole('button', { name: '连接提醒事项' }).click()
     await expect(r).toContainText('没给画布今日访问提醒事项，现在是这台Mac自己响')
-    await expect(page.locator('.toast')).toContainText('没连上')
+    await expect(page.getByTestId('settings-toast')).toContainText('没连上')
     await r.getByRole('button', { name: '打开系统设置' }).click()
     const said = await run.app.evaluate(() => (globalThis as unknown as { cnScreen: string[] }).cnScreen)
     expect(said.join('\n')).toContain('x-apple.systempreferences:com.apple.preference.security?Privacy_Reminders')
@@ -356,7 +357,7 @@ test('关掉镜像：提醒事项里镜像的删掉、本机照响；再打开�
     await expect.poll(() => mem(run).items.length, { timeout: 10_000 }).toBe(4)
     await s.getByRole('switch', { name: '镜像进提醒事项' }).click()
     await expect.poll(() => mem(run).items.length, { timeout: 10_000 }).toBe(0)
-    await expect(page.locator('.toast')).toContainText('镜像关了：提醒事项里删掉了4条')
+    await expect(page.getByTestId('settings-toast')).toContainText('镜像关了：提醒事项里删掉了4条')
     await expect(s.locator('[data-row="rem"]')).toContainText('镜像关着')
     await expect(page.locator('.status')).not.toContainText('提醒事项已连接')
     // 本机照响：20:00 的那条
@@ -415,8 +416,8 @@ test('只读的那篇（换行不规整）里带提醒、没 🆔 的：加不�
     await connect(run.page, L.zh)
     await expect.poll(() => mem(run).items.map((i) => i.title), { timeout: 10_000 }).toEqual(['取快递'])
     // 「连上了」是点了按钮的结果，先出；同步时说的这一句排在它后面（不被盖掉）
-    await expect(run.page.locator('.toast')).toContainText('连上了提醒事项：1条')
-    await expect(run.page.locator('.toast')).toContainText('《只读》只读，提醒事项里改的没写回', { timeout: 10_000 })
+    await expect(run.page.getByTestId('settings-toast')).toContainText('连上了提醒事项：1条')
+    await expect(run.page.getByTestId('settings-toast')).toContainText('《只读》只读，提醒事项里改的没写回', { timeout: 10_000 })
     const n = mem(run).calls.filter((c) => c === 'fetch').length
     await run.page.waitForTimeout(3000)
     expect(mem(run).calls.filter((c) => c === 'fetch').length - n).toBeLessThan(3)

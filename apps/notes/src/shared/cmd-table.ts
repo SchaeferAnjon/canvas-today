@@ -126,8 +126,10 @@ export const KEYMAP: readonly KeyDef[] = [
   T('zoom-in', '放大', 'app', 'view', { keys: ['⌘=', '⇧⌘='], noForward: true, hint: '白板、PDF；别处放大整个窗口' }),
   T('zoom-out', '缩小', 'app', 'view', { keys: ['⌘-'], noForward: true, hint: '白板、PDF；别处缩小整个窗口' }),
   T('zoom-reset', '原大', 'app', 'view', { keys: ['⌘0'], noForward: true, hint: '白板 100%，PDF 适合宽度' }),
-  T('zoom-fit', '适合窗口', 'app', 'view', { keys: ['⇧⌘1'], noForward: true, hint: '白板整块放进窗口' }),
+  T('zoom-fit', '适合窗口', 'app', 'view', { keys: ['⇧⌘1'], noForward: true, hint: '白板整块放进窗口，PDF 适合整页' }),
   T('board-inbox', '打开 / 收起收件箱', 'app', 'view', { keys: ['⇧⌘I'], hint: '白板上：右上角「收件箱」那个弹窗' }),
+  // 在这一页里找（2026-11-22 用户定：⇧⌘F 在当前这一页里找，⌘F 照旧是全库搜索）：焦点在哪一栏就找哪一栏（renderer/find/find-hub.ts）
+  T('find-in-page', '在这一页里找', 'app', 'view', { keys: ['⇧⌘F'], home: 'go', hint: '文档、网页、PDF、白板、导图里找字；全库搜是 ⌘K / ⌘F' }),
   T('settings', '设置', 'app', 'view', { keys: ['⌘,'], home: 'app' }),
   T('keys-settings', '快捷键设置', 'app', 'view', { home: 'app', hint: '设置 › 快捷键' }),
   T('theme', '换主题…', 'app', 'view', { home: 'app', hint: '设置 · 外观' }),
@@ -174,6 +176,9 @@ export const KEYMAP: readonly KeyDef[] = [
   T('highlight', '高亮', 'editor', 'editor', { keys: ['⇧⌘M'], hint: '选中的字；在高亮里是取消' }),
   T('add-link', '加链接', 'editor', 'editor', { keys: ['⌘K'], shadows: ['search'], hint: '选了字时；没选字 ⌘K 照旧是搜索' }),
   T('dup-block', '复制这一块', 'editor', 'editor', { keys: ['⌘D'] }),
+  // 待办写时间（task-pd289）：文档、白板卡里光标在一行待办上，待办首页、左栏「待办」里选着一条时，弹定日子和时间的选择器。
+  // ⌘D 是「复制这一块」、⇧⌘D 是梦游报告、⌥⌘D 是系统的「隐藏程序坞」、⌃⌘D 是系统的查词典：用 ⌥⌘T（T 是 time）
+  T('todo-when', '定日子和时间…', 'app', 'editor', { keys: ['⌥⌘T'], hint: '待办这一行：小月历、钟点、提醒、重复；文档里打 @ 也行' }),
   T('block-up', '这一块上移', 'editor', 'editor', { keys: ['⌥⇧↑'] }),
   T('block-down', '这一块下移', 'editor', 'editor', { keys: ['⌥⇧↓'] }),
   T('save-now', '马上存盘', 'editor', 'editor', { keys: ['⌘S'], hint: '平时自动存' }),
@@ -211,6 +216,11 @@ export const KEYMAP: readonly KeyDef[] = [
   T('mm-edit', '导图：改字', 'mindmap', 'mindmap', { keys: ['F2'], shadows: ['rename'], hint: '双击也行' }),
   T('mm-del', '导图：删掉这一枝', 'mindmap', 'mindmap', { keys: ['⌫', '⌦'] }),
   T('mm-del-one', '导图：只删这一个', 'mindmap', 'mindmap', { keys: ['⌘⌫'], hint: '下面的往上提' }),
+  // 第二批（键照 XMind）：焦点在导图上时让给导图，别处照旧是新建白板、书签栏、左栏最近
+  T('mm-note', '导图：加备注 / 改备注', 'mindmap', 'mindmap', { keys: ['⇧⌘N'], shadows: ['new-board'], hint: '写在主题下面，缩进的一段' }),
+  T('mm-frame', '导图：加外框', 'mindmap', 'mindmap', { keys: ['⇧⌘B'], shadows: ['web-bookmarks-bar'], hint: '框住选中的几个' }),
+  T('mm-rel', '导图：连一条联系线', 'mindmap', 'mindmap', { keys: ['⇧⌘R'], shadows: ['left-recent'], hint: '选两个；选一个再点另一个也行' }),
+  T('mm-export', '导出导图…', 'mindmap', 'mindmap', { home: 'new', hint: '图片、SVG、PDF、OPML 大纲' }),
 
   // ---- 看视频（右栏开着 YouTube、B 站）：只能用 ⌥ 加字母，网站自己的键都不带 ⌥
   T('video-moment', '记下这一刻', 'video', 'video', { keys: ['⌥S'], store: 'video', alt: true }),
@@ -233,6 +243,8 @@ export const KEYMAP: readonly KeyDef[] = [
   T('up-down', '上下选', 'fixed', 'fixed', { keys: ['↑↓'], fixed: true }),
   T('delete', '删掉选中的', 'fixed', 'fixed', { keys: ['⌫'], fixed: true }),
   T('cmd-click', '⌘ 点', 'fixed', 'fixed', { keys: ['⌘点'], fixed: true, hint: '链接在右栏打开' }),
+  T('cmd-shift-click', '⇧⌘ 点', 'fixed', 'fixed', { keys: ['⇧⌘点'], fixed: true, hint: '链接开在后面的新标签' }),
+  T('cmd-alt-click', '⌥⌘ 点', 'fixed', 'fixed', { keys: ['⌥⌘点'], fixed: true, hint: '链接在中间栏打开' }),
   T('cmd-drag', '按住 ⌘ 拖', 'fixed', 'fixed', { keys: ['按住 ⌘ 拖'], fixed: true, hint: '框一块' }),
 ]
 
@@ -258,11 +270,17 @@ const shadowPair = (a: KeyDef, b: KeyDef) => !!(a.shadows?.includes(b.id) || b.s
 /** 命令表以外的命令（插件的、自己加的）当成「软件里」的 */
 const defOrApp = (id: string): KeyDef => keyDef(id) ?? { id, name: id, area: 'app', section: 'go' }
 
-/** 这两条能不能用同一个键：不会同时能按，或者本来就有意同键（加链接和搜索） */
-export function canShare(a: string, b: string): boolean {
+/**
+ * 导图里有意让同一个键的（⌘↵、F2、⇧⌘N、⇧⌘B、⇧⌘R，焦点在导图上先轮到导图）：它自己默认的那个键，「软件里」哪一条用着都不撞——
+ * 别处对调、换键把这个键换给了另一条（新建笔记拿了 ⇧⌘N），导图里的不跟着被清掉
+ */
+const keyShadow = (a: KeyDef, b: KeyDef, combo?: string) => !!combo && a.area === 'mindmap' && b.area === 'app' && !!a.shadows?.length && !!a.keys?.includes(combo)
+
+/** 这两条能不能用同一个键（combo：说的是哪个键）：不会同时能按，或者本来就有意同键（加链接和搜索） */
+export function canShare(a: string, b: string, combo?: string): boolean {
   const A = defOrApp(a)
   const B = defOrApp(b)
-  return !areasOverlap(A.area, B.area) || shadowPair(A, B)
+  return !areasOverlap(A.area, B.area) || shadowPair(A, B) || keyShadow(A, B, combo) || keyShadow(B, A, combo)
 }
 
 /**
@@ -272,7 +290,7 @@ export function canShare(a: string, b: string): boolean {
 export function clashOf(id: string, combo: string, keysOf: (id: string) => readonly string[], extra: readonly { id: string; name: string }[] = []): { id: string; name: string } | null {
   const me = defOrApp(id)
   for (const d of KEYMAP) {
-    if (d.id === id || !isRebindable(d) || canShare(id, d.id)) continue
+    if (d.id === id || !isRebindable(d) || canShare(id, d.id, combo)) continue
     if (keysOf(d.id).includes(combo)) return { id: d.id, name: d.name }
   }
   // 命令表以外的（插件的、自己加的）都在「软件里」
@@ -301,5 +319,7 @@ export function keyProblemFor(id: string, combo: string): string | null {
   // 梦游报告和对照里、导图里（焦点在那儿、不在输入框里才认）：J / K 这种单个字母不会在打字时按到
   const p = keyProblem(combo, !!d && BARE.has(d.area))
   if (p && d?.alt && /^⌥[A-Z0-9]$/.test(combo)) return null
+  // 自己的命令放上选中小条的（task-26nz7）：⌥ 加字母也行，小条出来时（网页、PDF 里选着字）才认，打字时按不到
+  if (p && !d && /^own-/.test(id) && /^⌥⇧?[A-Z0-9]$/.test(combo)) return null
   return p
 }

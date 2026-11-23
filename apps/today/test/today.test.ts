@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { Snapshot, TaskView } from '../src/shared/api'
 import { repeatLabel, TABLES, tr } from '../src/shared/i18n'
-import { normalizeToday } from '../src/shared/settings'
+import { lookFromNotes, normalizeToday } from '../src/shared/settings'
 import { cntInbox, cntToday, cntWeek, findAgain, groupsOf, notesWithTodo, quadOf } from '../src/shared/views'
 import { dayLabel, thirdPick, whenLabel } from '../src/shared/when'
 
@@ -144,5 +144,14 @@ describe('设置', () => {
     expect(normalizeToday({}, 'en')).toMatchObject({ lang: 'en', followNotes: true, tray: true, left: true, right: true })
     expect(normalizeToday({ lang: 'fr', appearance: { skin: 'nope', frame: 'x' } }).appearance.skin).toBe('mint')
     expect(normalizeToday({ appearance: { skin: 'petrol', frame: 'a' } }).appearance).toMatchObject({ skin: 'petrol', frame: 'a' })
+  })
+
+  it('导入的 VS Code 主题（task-wxr2a）：还在就认，删掉了回到默认；白天只认浅色、夜里只认深色；跟画布笔记时也认它导入的', () => {
+    const mono = { id: 'vsc-monokai', name: 'Monokai', tone: 'dark' as const, tab: 'bottom' as const, note: '', win: '#272822', imported: true }
+    const raw = { appearance: { followSystem: true, skin: 'vsc-monokai', day: 'vsc-monokai', night: 'vsc-monokai' } }
+    expect(normalizeToday(raw, 'zh', [mono]).appearance).toMatchObject({ skin: 'vsc-monokai', day: 'mint', night: 'vsc-monokai' })
+    expect(normalizeToday(raw, 'zh').appearance).toMatchObject({ skin: 'mint', night: 'pine' })
+    expect(lookFromNotes({ appearance: { followSystem: false, skin: 'vsc-monokai' } }, [mono]).skin).toBe('vsc-monokai')
+    expect(lookFromNotes({ appearance: { followSystem: false, skin: 'vsc-monokai' } }).skin).toBe('mint')
   })
 })

@@ -14,6 +14,9 @@
     "./codicon-svg": "./src/codicon-svg.ts",
     "./codicons-all": "./src/codicons-all.gen.ts"
   },
+  "dependencies": {
+    "@cn/family": "workspace:*"
+  },
   "peerDependencies": {
     "react": "^19.0.0"
   },

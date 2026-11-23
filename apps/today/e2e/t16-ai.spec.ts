@@ -112,14 +112,14 @@ test('帮我排进空着的时间：避开日程和有钟点的、虚线框、�
     await expect(page.locator('.toast')).toContainText('这几行的 📅 日子后面加上了钟点')
     await expect(ghosts).toHaveCount(0)
     await expect.poll(() => run.read('写作/小论文计划.md')).toContain('- [ ] 读完三篇相关论文 📅 2026-11-22 12:00 🔼')
-    expect(run.read('项目/画布今日.md')).toContain('- [ ] 和设计对一遍截图 📅 2026-11-23 10:30 🔼')
+    await expect.poll(() => run.read('项目/画布今日.md')).toContain('- [ ] 和设计对一遍截图 📅 2026-11-23 10:30 🔼')
     const project = run.read('项目/画布今日.md')
     await expect(page.locator('.cal-col[data-drop="day:2026-11-22"] .cal-blk:not(.ghost):not(.ev)', { hasText: '读完三篇相关论文' })).toBeVisible()
     // 撤销：几篇一起退回
     await page.locator('.toast').getByRole('button', { name: '撤销' }).click()
     await expect.poll(() => run.read('写作/小论文计划.md')).toBe(paper)
-    expect(run.read('收件箱/待办.md')).toBe(inbox)
-    expect(run.read('项目/画布今日.md')).toBe(project.replace('📅 2026-11-23 10:30', '📅 2026-11-23'))
+    await expect.poll(() => run.read('收件箱/待办.md')).toBe(inbox)
+    await expect.poll(() => run.read('项目/画布今日.md')).toBe(project.replace('📅 2026-11-23 10:30', '📅 2026-11-23'))
     // 不要：虚线框收起，不写
     await page.getByRole('button', { name: '帮我排进空着的时间' }).click()
     await expect(ghosts).toHaveCount(4)

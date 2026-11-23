@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import { type CalEvent, type CalItem, CalStrip, MiniMonth, MonthGrid, WeekGrid } from '../src'
+import { type CalEvent, type CalItem, CalStrip, MiniMonth, MonthGrid, remindText, repeatText, WeekGrid, WhenPicker } from '../src'
 
 const today = '2026-11-22'
 const items: CalItem[] = [
@@ -55,6 +55,12 @@ describe('月看法', () => {
     expect(cell).toContain('还有4条')
     expect(html).toContain('<span class="tm late">23:59</span>')
   })
+  it('一条带 dot（画布笔记数据库的日历：状态在哪一组的颜色）：名字前一个小圆点；不带的照旧没有', () => {
+    const html = renderToStaticMarkup(<MonthGrid lang="zh" month="2026-11-01" today={today} weekStart={1} items={[{ key: 'd1', title: '第3讲 生产', date: '2026-11-17', dot: 'var(--yellow)' }, items[1]!]} />)
+    expect(html).toContain('<div class="cal-chip mad" data-drag="d1" title="第3讲 生产"><i class="cal-dot" style="background:var(--yellow)"></i><span class="nm">第3讲 生产</span>')
+    expect(html).toContain('<div class="cal-chip mad" data-drag="k2" title="取快递"><span class="nm">取快递</span>')
+    expect(html.indexOf('周一')).toBeLessThan(html.indexOf('周日'))
+  })
 })
 
 describe('小月历', () => {
@@ -99,5 +105,49 @@ describe('待办首页的日历（CalStrip）', () => {
     const d23 = html.slice(html.indexOf('data-day="2026-11-23"'), html.indexOf('data-day="2026-11-24"'))
     expect(d23).toMatch(/<i class=""><\/i><i class="ev" style="--ec:#B0805A"><\/i>/)
     expect(d23).toContain('11月23日 · 1条没做 · 日程2个')
+  })
+})
+
+describe('定日子和时间的选择器（WhenPicker，task-pd289）', () => {
+  const v = { date: '2026-11-27', time: '15:00', remind: '提前1小时', repeat: null }
+  it('顶上今天 / 明天 / 后天（明天是周一）带哪天；选着的那天实心、今天强调色字、键盘那一格同选着的', () => {
+    const html = renderToStaticMarkup(<WhenPicker lang="zh" today={today} value={v} weekStart={1} onChange={noop} onClose={noop} />)
+    expect(html).toContain('aria-label="定日子和时间"')
+    expect(html).toMatch(/role="menuitem" class="cal-when-qi">今天<span class="k">11月22日<\/span>/)
+    expect(html).toMatch(/>明天<span class="k">11月23日<\/span>/)
+    expect(html).toMatch(/>周二<span class="k">11月24日<\/span>/)
+    expect(html).toMatch(/data-day="2026-11-27" aria-pressed="true" aria-label="11月27日 周五" tabindex="-1" class="on kf"/)
+    expect(html).toMatch(/data-day="2026-11-22" aria-pressed="false" aria-label="11月22日 周日" tabindex="-1" class="now"/)
+    // 周一开头：表头第一个是「一」
+    expect(html).toContain('<span class="w">一</span>')
+  })
+  it('钟点、提醒、重复三个下拉：照 @cn/tasks 的选项，选着的是那一行写着的；没写的是「不定时间」那几项', () => {
+    const html = renderToStaticMarkup(<WhenPicker lang="zh" today={today} value={v} onChange={noop} onClose={noop} />)
+    expect(html).toMatch(/<select aria-label="钟点"><option value="">不定时间<\/option><option value="07:00">07:00<\/option>/)
+    expect(html).toContain('<option value="15:00" selected="">15:00</option>')
+    expect(html).toContain('<option value="提前1小时" selected="">提前1小时</option>')
+    expect(html).toContain('<option value="每周五">每周五</option>')
+    expect(html).toMatch(/<select aria-label="重复"><option value="" selected="">不重复<\/option>/)
+  })
+  it('没日子：提醒那一行灰着、说先定日子；「清掉」灰着', () => {
+    const html = renderToStaticMarkup(<WhenPicker lang="zh" today={today} value={{ date: null, time: null, remind: null, repeat: null }} onChange={noop} onClose={noop} keyboard />)
+    expect(html).toContain('class="cal-when-row off" title="先定日子才能提醒"')
+    expect(html).toMatch(/class="cal-when-qi cal-when-clear" title="拿掉日子、钟点、提醒和重复" disabled=""/)
+    expect(html).toContain('方向键挑一天 · ↵ 选定 · esc 关上')
+  })
+  it('手写的提醒、重复不在常用几项里：加在最后；英文界面写英文', () => {
+    const html = renderToStaticMarkup(<WhenPicker lang="en" today={today} value={{ date: '2026-11-25', time: '15:45', remind: '提前3天', repeat: '每周一、三' }} onChange={noop} onClose={noop} />)
+    expect(html).toContain('<option value="15:45" selected="">15:45</option>')
+    expect(html).toContain('<option value="提前3天" selected="">3 days before</option>')
+    expect(html).toContain('<option value="每周一、三" selected="">Every Mon, Wed</option>')
+    expect(html).toContain('>Tue<span class="k">Nov 24</span>')
+    expect(html).toMatch(/data-day="2026-11-25" aria-pressed="true" aria-label="Nov 25 Wed" tabindex="-1" class="on kf"/)
+  })
+  it('提醒、重复的英文说法', () => {
+    expect(remindText('en', '前一天20:00')).toBe('Day before at 20:00')
+    expect(remindText('en', '提前10分钟')).toBe('10 min before')
+    expect(repeatText('en', '每2个月')).toBe('Every 2 months')
+    expect(repeatText('en', '每月5日')).toBe('Monthly on day 5')
+    expect(repeatText('zh', '每周五')).toBe('每周五')
   })
 })

@@ -1,7 +1,7 @@
 {
   "name": "@cn/today",
   "productName": "Canvas Today",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "main": "out/main/index.js",
   "scripts": {
@@ -14,6 +14,7 @@
   "devDependencies": {
     "@cn/calendar": "workspace:*",
     "@cn/design": "workspace:*",
+    "@cn/family": "workspace:*",
     "@cn/format": "workspace:*",
     "@cn/git": "workspace:*",
     "@cn/tasks": "workspace:*",

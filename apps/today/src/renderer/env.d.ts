@@ -1,4 +1,8 @@
 declare module '*.css'
+declare module '*.png' {
+  const url: string
+  export default url
+}
 /** 和画布笔记共用的图（electron.vite.config.ts 的 @notes-assets） */
 declare module '@notes-assets/*' {
   const url: string

@@ -4,6 +4,13 @@
   "description": "Canvas Today 借用的 Canvas Notes 文件，路径和 SchaeferAnjon/canvas-notes 里一样",
   "license": "GPL-3.0-or-later",
   "dependencies": {
-    "@cn/format": "workspace:*"
+    "@cn/family": "workspace:*",
+    "@cn/format": "workspace:*",
+    "@cn/tasks": "workspace:*",
+    "electron": "^45.3.2",
+    "react": "^19.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0"
   }
 }

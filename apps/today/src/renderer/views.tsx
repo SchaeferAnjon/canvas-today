@@ -3,7 +3,7 @@
  * 清单（今天、明天、收件箱、最近七天、一篇笔记）、详情、日历（周、月）、四象限。
  */
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
-import { CalBar, type CalMode, daysFrom, hasEvents, MiniMonth, MonthGrid, monthWeeks, shiftMonth, WeekGrid } from '@cn/calendar'
+import { CalBar, type CalMode, daysFrom, hasEvents, MiniMonth, MonthGrid, monthWeeks, shiftMonth, useWhenInput, WeekGrid } from '@cn/calendar'
 import { parseQuick, weekday } from '@cn/tasks'
 import type { AddCtx, AiSlot, Snapshot, TaskView } from '../shared/api'
 import { INBOX_NOTE } from '../shared/brand'
@@ -11,7 +11,7 @@ import { repeatLabel, tr } from '../shared/i18n'
 import { calItems, cntToday, type Group, groupsOf, type Nav, open, quadOf } from '../shared/views'
 import { dayLabel, isoPlus, mdLabel, thirdPick, whenLabel } from '../shared/when'
 import { useActions } from './actions'
-import { refreshAi, useCalEvents, useData, useLang } from './store'
+import { nowLocal, refreshAi, useCalEvents, useData, useLang } from './store'
 import { Check, EngineLogo, Ic, useT } from './ui'
 
 /** 一篇笔记在界面上叫什么：收件箱那篇叫「收件箱/待办」（照原型），别的是文件名 */
@@ -40,7 +40,17 @@ export function Row({ t, today, sel, flash, timeOnly, showNote = true }: { t: Ta
           </span>
         )}
         {(t.date || t.time) && (
-          <span className={`acc${od ? ' red' : ''}`}>
+          // 点日子这一格：弹定日子和时间的选择器（task-pd289），不选中这一行
+          <span
+            className={`acc when${od ? ' red' : ''}`}
+            role="button"
+            data-part="日子"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation()
+              a.pickWhen(t, e.currentTarget)
+            }}
+          >
             {t.repeat && <Ic n="sync" s={12} />}
             {t.remind && <Ic n="bell" s={12} />}
             {timeOnly ? (t.time ?? '') : whenLabel(lang, t, today)}
@@ -81,7 +91,21 @@ export function QuickAdd({ ctx, nav, today }: { ctx: AddCtx; nav: Nav; today: st
   const t = useT()
   const [v, setV] = useState('')
   const busy = useRef(false)
-  const q = useMemo(() => (v.trim() ? parseQuick(v.trim(), today) : null), [v, today])
+  const input = useRef<HTMLInputElement>(null)
+  const { ai } = useData()
+  // 打 @、按 ⌥⌘T 弹定日子和时间的选择器，本地认不出的问 AI（task-pd289，和画布笔记同一个 @cn/calendar 的 useWhenInput）
+  const when = useWhenInput(v, setV, input, {
+    lang,
+    now: nowLocal,
+    ask: (title, now) => window.ct.whenAi(title, now).catch(() => null),
+    isPickKey: (e) => e.metaKey && e.altKey && !e.ctrlKey && !e.shiftKey && e.code === 'KeyT',
+    weekStart: 0,
+  })
+  const q = useMemo(() => {
+    if (!v.trim()) return null
+    const p = parseQuick(v.trim(), nowLocal())
+    return when.ai ? { ...p, title: when.ai.title, date: when.ai.date, time: when.ai.time, repeat: when.ai.repeat, remind: when.ai.date ? when.ai.remind : null } : p
+  }, [v, today, when.ai])
   const ph = nav === 'inbox' ? t('addInboxPh') : t('addPh')
   return (
     <>
@@ -89,16 +113,18 @@ export function QuickAdd({ ctx, nav, today }: { ctx: AddCtx; nav: Nav; today: st
         <Ic n="add" />
         <input
           id="qa"
+          ref={input}
           value={v}
           placeholder={ph}
           aria-label={t('addAria')}
           autoComplete="off"
           spellCheck={false}
-          onChange={(e) => setV(e.target.value)}
+          onChange={when.onChange}
           onKeyDown={async (e) => {
+            if (when.onKeyDown(e)) return
             if (e.key !== 'Enter' || e.nativeEvent.isComposing || !v.trim() || busy.current) return
             busy.current = true
-            const ok = await a.add(v, ctx)
+            const ok = await a.add(v, ctx, when.ai)
             busy.current = false
             if (ok) setV('')
           }}
@@ -106,10 +132,11 @@ export function QuickAdd({ ctx, nav, today }: { ctx: AddCtx; nav: Nav; today: st
       </div>
       <div className="chips" id="qachips">
         {!q ? (
-          <span>{nav === 'today' ? t('defaultToday') : nav === 'tomorrow' ? t('defaultTomorrow') : t('recog')}</span>
+          <span>{nav === 'today' ? t('defaultToday') : nav === 'tomorrow' ? t('defaultTomorrow') : t('recogAt')}</span>
         ) : (
           <>
-            {q.date || q.repeat || q.prio || q.list ? <span>{t('understood')}</span> : <span>{t('noDateFound')}</span>}
+            {when.ai && <EngineLogo id={ai?.engine} s={12} />}
+            {q.date || q.repeat || q.prio || q.list ? <span>{when.ai ? t('aiUnderstood') : t('understood')}</span> : <span>{t('noDateFound')}</span>}
             {q.date && (
               <span className="chip">
                 <Ic n="calendar" s={12} />
@@ -120,6 +147,12 @@ export function QuickAdd({ ctx, nav, today }: { ctx: AddCtx; nav: Nav; today: st
               <span className="chip">
                 <Ic n="sync" s={12} />
                 {repeatLabel(lang, q.repeat)}
+              </span>
+            )}
+            {q.remind && (
+              <span className="chip">
+                <Ic n="bell" s={12} />
+                {tr(lang, 'remindLabel', q.remind)}
               </span>
             )}
             {q.prio > 0 && (
@@ -266,7 +299,8 @@ export function Detail({ x, snap, today }: { x: TaskView | null; snap: Snapshot;
     [isoPlus(today, 1), t('tomorrow')],
     [third.date, third.label ? t('nextMon') : dayLabel(lang, third.date, today)],
   ]
-  if (x.date && !picks.some(([d]) => d === x.date)) picks.push([x.date, dayLabel(lang, x.date, today)])
+  // 现在的日子不在这几块里：不再多加一块（一排放不下会折行，设计复审），最后那一颗「其他…」写那一天、选中的样子
+  const other = !!x.date && !picks.some(([d]) => d === x.date)
   picks.push([null, t('undated')])
   const times = x.time && !TIMES.includes(x.time) ? [...TIMES, x.time] : TIMES
   const rems = x.remind && !REMS.includes(x.remind) ? [...REMS, x.remind] : REMS
@@ -310,6 +344,10 @@ export function Detail({ x, snap, today }: { x: TaskView | null; snap: Snapshot;
                 {l}
               </button>
             ))}
+            {/* 别的日子、钟点、提醒、重复一起选（task-pd289） */}
+            <button className={`pick${other ? ' on' : ''}`} data-part="其他日子" aria-label={t('whenPick')} title={t('whenPick')} onClick={(e) => a.pickWhen(x, e.currentTarget)}>
+              {other ? dayLabel(lang, x.date!, today) : t('whenOther')}
+            </button>
           </span>
         </div>
         <div className="f">
