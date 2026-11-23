@@ -108,6 +108,7 @@ export const KEYMAP: readonly KeyDef[] = [
   T('archive', '归档', 'app', 'go', { home: 'go', hint: '很久没改过的' }),
   T('open-web', '打开网页', 'app', 'go', { keys: ['⌥⌘W'], home: 'go', hint: '右栏' }),
   T('outline', '大纲', 'app', 'go', { keys: ['⌥⌘O'], home: 'more', hint: '右栏' }),
+  T('related', '相关', 'app', 'go', { keys: ['⌥⌘R'], home: 'more', hint: '右栏：提到这篇的、梦游连上的、像但还没连的' }),
   T('notes', '读PDF时的笔记', 'app', 'go', { home: 'more', hint: '右栏' }),
   T('close', '关掉', 'app', 'go', { keys: ['⌘W'], home: 'more', hint: '关当前标签，右栏里是收起那一格' }),
   T('rename', '改名', 'app', 'go', { keys: ['F2'], home: 'more', hint: '当前这篇；目录树里是选着的那一行' }),
@@ -139,6 +140,9 @@ export const KEYMAP: readonly KeyDef[] = [
   T('ask-ai', '问AI', 'app', 'ai', { keys: ['⌘J'], home: 'ai', hint: '文档里选了字就带着这段问' }),
   T('ai-new-chat', '新对话', 'app', 'ai', { home: 'more', hint: 'AI 那一格换一段新的对话' }),
   T('quote', '引用进输入框', 'app', 'ai', { keys: ['⇧⌘L'], hint: 'AI 回答里选了字、PDF 上框着一块时' }),
+  // 从 AI 回答里的引用 ⌘点开一篇以后右栏留在原来那段对话（task-3e53q 已定 3）：按它右栏换成中间那一篇的 AI。
+  // ⌘J 是开关 AI，⌥⌘J 没人用（系统、显示菜单里的「开发者工具」是 ⌥⌘I）
+  T('ai-follow', '右栏切到这篇的 AI', 'app', 'ai', { keys: ['⌥⌘J'], hint: '从 AI 回答里 ⌘点开一篇以后，右栏还在原来那段对话' }),
   T('tidy-inbox', '整理收件箱', 'app', 'ai', { home: 'ai', hint: '分进课程、周记、剪藏，点同意才挪' }),
   T('sum-board', '总结这块白板', 'app', 'ai', { home: 'ai', hint: '写成几句话' }),
   T('article', '写成文章', 'app', 'ai', { home: 'ai', hint: '按白板写一篇草稿' }),

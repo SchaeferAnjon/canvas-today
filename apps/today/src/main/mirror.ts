@@ -368,7 +368,8 @@ export class RemMirror {
     }
     const snap = v.snapshot()
     const done = new Set(snap.tasks.filter((t) => t.done || t.cancelled).map((t) => t.key))
-    const tasks = snap.tasks.filter((t) => t.id || t.remind).map((t) => mirrorSource(t, (k) => done.has(k), v.mtime(t.path)))
+    // 抄了好几遍的同一条只镜像显示的那一份
+    const tasks = snap.tasks.filter((t) => (t.id || t.remind) && !t.dupOf).map((t) => mirrorSource(t, (k) => done.has(k), v.mtime(t.path)))
     const now = Date.now()
     const plan = planMirror({ tasks, items, base: vs.base, now, pendingGone: vs.pendingGone, noteUrl })
 

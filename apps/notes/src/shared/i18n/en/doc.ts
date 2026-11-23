@@ -139,8 +139,6 @@ export const DOC: Table = {
   提到这篇的: 'Backlinks',
   嵌了这块白板: 'embeds this board',
   嵌了这一篇: 'embeds this note',
-  '引用了{sections}这一节': 'quotes section {sections}',
-  链接到这篇: 'links here',
 
   // ---------- 文档里的数据库（renderer/base/BaseTable.tsx） ----------
   // 列的类型、筛选条件、计算（packages/format/src/base.ts 的 COL_TYPES、BASE_OPS、SUMMARIES，带「数据库」）

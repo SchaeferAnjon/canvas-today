@@ -237,7 +237,12 @@
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-/* 还没定下来的（AI 排的）：虚线框 */
+/* 还没定下来的（AI 排的）：虚线框；只改了日子的在「全天」那一行 */
+.cal-chip.ghost {
+  background: var(--acc-soft);
+  border: 1px dashed var(--acc-ring);
+  line-height: 18px;
+}
 .cal-blk.ghost {
   background: var(--acc-soft);
   border: 1.5px dashed var(--acc-ring);

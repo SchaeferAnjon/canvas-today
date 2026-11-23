@@ -8,7 +8,7 @@ import { type FSWatcher, watch } from 'node:fs'
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, join, relative, resolve, sep } from 'node:path'
 import { merge3 } from '@cn/format'
-import { type FileTask, type Habit, isHabitPath, keyOf, parseHabit, type RingBy, scanTasks } from '@cn/tasks'
+import { type FileTask, type Habit, isHabitPath, keyOf, parseHabit, type RingBy, sameTasks, scanTasks } from '@cn/tasks'
 import type { HabitView, NoteView, Snapshot, TaskView } from '../shared/api'
 
 const SKIP_DIRS = new Set(['.git', 'node_modules', '.trash', '.obsidian'])
@@ -142,6 +142,9 @@ export class TaskVault {
           title: t.task.title,
           done: t.task.done,
           cancelled: t.task.cancelled,
+          doing: t.task.doing,
+          dupOf: null,
+          dups: [],
           date: t.task.date,
           time: t.task.time,
           remind: t.task.remind,
@@ -160,6 +163,16 @@ export class TaskVault {
       }
     }
     habits.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'))
+    // 抄了好几遍的同一条：只显示一份（文件不动）
+    const blocks = new Map<string, string | null>()
+    for (const f of this.files.values()) for (const t of f.tasks) blocks.set(`${f.path}#${t.line}`, t.task.block)
+    const groups = sameTasks(tasks.map((t) => ({ key: t.key, path: t.path, line: t.line, title: t.title, date: t.date, block: blocks.get(t.key) ?? null, done: t.done, cancelled: t.cancelled })))
+    for (const t of tasks) {
+      const g = groups.get(t.key)
+      if (!g) continue
+      if (g.rep === t.key) t.dups = g.all.filter((k) => k !== t.key)
+      else t.dupOf = g.rep
+    }
     return { version: this.version, tasks, notes, habits }
   }
 

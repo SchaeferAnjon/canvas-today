@@ -44,9 +44,9 @@ describe('乱序的行，每种改法都只动一段、改完读回来对', () =
       // 每种改法动哪种记号（别的记号原文都在、先后不变）
       const ops: [string, string, string[], (t: NonNullable<ReturnType<typeof parseTaskLine>>) => void][] = [
         ['勾掉', setDone(line, true, '2026-11-22'), [], (t) => (expect(t.done).toBe(true), expect(t.doneDate).toBe('2026-11-22'))],
-        ['改日子', setDate(line, '2026-12-01'), [' 📅'], (t) => expect(t.date).toBe('2026-12-01')],
-        ['拿掉日子', setDate(line, null), [' 📅'], (t) => (expect(t.date).toBeNull(), expect(t.time).toBeNull())],
-        ['改钟点', setTime(line, '18:45', '2026-11-22'), [' 📅'], (t) => expect(t.time).toBe('18:45')],
+        ['改日子', setDate(line, '2026-12-01'), [' 📅', ' ⏳'], (t) => expect(t.date).toBe('2026-12-01')],
+        ['拿掉日子', setDate(line, null), [' 📅', ' ⏳'], (t) => (expect(t.date).toBeNull(), expect(t.time).toBeNull())],
+        ['改钟点', setTime(line, '18:45', '2026-11-22'), [' 📅', ' ⏳'], (t) => expect(t.time).toBe('18:45')],
         ['改提醒', setRemind(line, '提前10分钟'), [' 🔔'], (t) => expect(t.remind).toBe('提前10分钟')],
         ['改重复', setRepeat(line, '每月1日'), [' 🔁'], (t) => expect(t.repeat).toBe('每月1日')],
         ['改优先级', setPrio(line, 2), [' ⏫', ' 🔽'], (t) => expect(t.prio).toBe(2)],

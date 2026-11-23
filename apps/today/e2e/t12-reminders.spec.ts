@@ -68,7 +68,8 @@ const L = {
 /** 打开设置、翻到「日历和提醒事项」那一页（设置照画布笔记分了页） */
 async function remPage(page: Page, l: (typeof L)['zh'] = L.zh) {
   await page.locator('.ab[data-k="settings"]').click()
-  const s = page.getByRole('dialog', { name: l.settings })
+  // B 里是弹窗、A 里是中间一个标签（task-ykkoz）
+  const s = page.locator('.set')
   await s.getByRole('navigation').getByRole('button', { name: l.calRem }).click()
   return s
 }

@@ -5,6 +5,7 @@ import {
   DEFAULT_EDITOR,
   DEFAULT_FILES,
   DEFAULT_GENERAL,
+  DEFAULT_CITE,
   DEFAULT_PDF,
   DEFAULT_SYNC,
   DEFAULT_WEB,
@@ -14,9 +15,11 @@ import {
   normalizeEditor,
   normalizeFiles,
   normalizeGeneral,
+  normalizeCite,
   normalizePdf,
   normalizeSync,
   normalizeWeb,
+  type CitePrefs,
   type PdfPrefs,
   type SyncPrefs,
   type WebPrefs,
@@ -120,6 +123,8 @@ export interface AppSettings {
   pdf: PdfPrefs
   web: WebPrefs
   sync: SyncPrefs
+  /** 设置 › AI：回答里提到的笔记名自动认成链接（task-3e53q） */
+  cite: CitePrefs
 }
 
 /** 界面改设置时给的一处：外观、梦游和新的几组只给改了的那几项 */
@@ -136,6 +141,7 @@ export interface SettingsPatch {
   pdf?: Partial<PdfPrefs>
   web?: Partial<WebPrefs>
   sync?: Partial<SyncPrefs>
+  cite?: Partial<CitePrefs>
 }
 
 export const AUTO_COMMIT_CHOICES = [0, 5, 10, 30, 60] as const
@@ -164,6 +170,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   pdf: DEFAULT_PDF,
   web: DEFAULT_WEB,
   sync: DEFAULT_SYNC,
+  cite: DEFAULT_CITE,
 }
 
 /**
@@ -206,6 +213,7 @@ export function normalizeSettings(raw: unknown, user: readonly SkinInfo[] = []):
     pdf: normalizePdf(r.pdf),
     web: normalizeWeb(r.web),
     sync: normalizeSync(r.sync),
+    cite: normalizeCite(r.cite),
   }
 }
 

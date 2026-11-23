@@ -1,6 +1,8 @@
 /** 主进程和界面之间说的话（window.ct）。界面只拿到索引的样子，改文件一律交给主进程。 */
 import type { CalEvent } from '@cn/calendar'
 import type { EngineId } from '../../../notes/src/shared/agent'
+import type { AiPick, ModelOption } from '../../../notes/src/shared/ai-features'
+import type { ChatInfo, TodayMsg } from './ai-chat'
 import type { FocusRecord, Habit, Prio, RingBy, When, WhenFields } from '@cn/tasks'
 import type { Lang } from './i18n'
 import type { TodayAppearance, TodaySettings } from './settings'
@@ -26,12 +28,20 @@ export interface TaskView {
   title: string
   done: boolean
   cancelled: boolean
+  /** [/] 做了一半：还算没做完，显示成「进行中」 */
+  doing: boolean
   date: string | null
   time: string | null
   remind: string | null
   repeat: string | null
   prio: Prio
   doneDate: string | null
+  /**
+   * 抄了好几遍的同一条（滴答同步抄进每天的日记，@cn/tasks dupes.ts）：只显示一份，文件不动。
+   * 不显示的那几份这里是显示的那份的 key；显示的那份是 null，它的 dups 是另外几份的 key
+   */
+  dupOf: string | null
+  dups: string[]
   /** 上一层待办的 key（子任务才有） */
   parent: string | null
   subs: string[]
@@ -130,6 +140,8 @@ export type EditResult =
       next?: { line: number; date: string }
       /** 挪进了哪篇 */
       movedTo?: string
+      /** 抄了好几遍的同一条：另外几份一起改了几份 */
+      copies?: number
     }
   | { ok: false; reason: 'gone' | 'readonly' | 'failed'; message?: string }
 
@@ -201,6 +213,33 @@ export type AiSchedResult = { ok: true; slots: AiSlot[]; candidates: number; eve
 
 export type AiSchedAccept = { ok: true; undo: string; n: number } | { ok: false; reason: 'gone' | 'readonly' | 'failed'; message?: string }
 
+// ---------- 右栏 AI 对话（main/ai-chat.ts、shared/ai-chat.ts） ----------
+
+/** 输入框底行谁来答那一列的一家 */
+export interface ChatEngineInfo {
+  id: EngineId
+  label: string
+  ok: boolean
+  /** 「~/.local/bin」；没装是空的 */
+  where: string
+  models: ModelOption[]
+}
+
+export interface ChatInfoState {
+  engines: ChatEngineInfo[]
+  /** 这一段这一问用的（自己选过的，或跟画布笔记「AI 对话」那一行） */
+  pick: AiPick
+  /** 这一段自己选过 */
+  own: boolean
+  /** 「Claude Code · Opus 5.5 · High」 */
+  label: string
+  /** 看得到：待办几条、收件箱几条、日程几个；cal 系统日历连着没有 */
+  seen: { tasks: number; inbox: number; events: number; eventNames: string[]; cal: boolean }
+}
+
+export type ChatAskResult = { ok: true; msgs: TodayMsg[] } | { ok: false; aborted: boolean; msgs: TodayMsg[] }
+export type ChatAcceptResult = { ok: true; undo: string; n: number; msgs: TodayMsg[] } | { ok: false; reason: 'gone' | 'readonly' | 'failed'; message?: string }
+
 // ---------- 习惯（习惯/<名字>.md，@cn/tasks habit.ts） ----------
 
 export type HabitOp =
@@ -263,7 +302,8 @@ export interface CalState {
   show: boolean
   /** 真在画：开着、给了权限 */
   active: boolean
-  calendars: { id: string; title: string; color: string; source: string }[]
+  /** hidden：左栏右键「不在这里显示」了（和画布笔记共用一份，task-ov5bb）；它的日程不画、不占时间 */
+  calendars: { id: string; title: string; color: string; source: string; hidden: boolean }[]
   error: string | null
 }
 
@@ -312,6 +352,21 @@ export interface LookState {
   themes: ThemeFile[]
 }
 
+/** 全局快速加一条的键：设置里的那组、注册上了没有（被别的软件占了是 false） */
+export interface QuickKeyState {
+  key: string
+  registered: boolean
+}
+
+/** 全局小框里的一条（贴进几行就是几条）：dest 是 ⌘↵ 自己换的那篇；when 是 AI 认出来的（本地认不出时） */
+export interface QuickItem {
+  text: string
+  dest: string | null
+  when: When | null
+}
+
+export type QuickAddResult = { ok: true; n: number } | { ok: false; message: string }
+
 export interface CtApi {
   state(): Promise<AppState>
   chooseVault(): Promise<AppState>
@@ -349,6 +404,16 @@ export interface CtApi {
   aiSchedule(job: string): Promise<AiSchedResult>
   aiScheduleAccept(slots: AiSlot[]): Promise<AiSchedAccept>
   aiCancel(job: string): Promise<void>
+  /** 右栏 AI 对话：用哪家、看得到什么；对话列表；读一段；问一句（job 给 aiCancel 停下）；改动卡收下 / 不要 / 撤销了；这一段换家、模型、想多久（null 回到跟设置） */
+  chatInfo(id: string): Promise<ChatInfoState>
+  /** 画布笔记设置里「AI 对话」那一家（右图标栏 AI 一格画它的标志） */
+  chatDefault(): Promise<AiInfo>
+  chatList(): Promise<ChatInfo[]>
+  chatLoad(id: string): Promise<{ msgs: TodayMsg[]; title: string }>
+  chatAsk(id: string, text: string, job: string): Promise<ChatAskResult>
+  chatAccept(id: string, msgId: number, on: number[]): Promise<ChatAcceptResult>
+  chatPlanState(id: string, msgId: number, state: 'dropped' | 'undone'): Promise<TodayMsg[]>
+  chatPick(id: string, pick: AiPick | null): Promise<{ pick: AiPick; own: boolean; label: string }>
   /** 专注：开始、暂停、放弃、换一条 */
   focus(op: FocusOp): Promise<FocusInfo>
   focusInfo(): Promise<FocusInfo>
@@ -360,6 +425,20 @@ export interface CtApi {
   onSay(cb: (text: string) => void): () => void
   /** 菜单栏小窗：打开主窗口 */
   showMain(sel?: { key: string }): Promise<void>
+  /** 全局快速加一条：弹出小框（菜单栏小窗底下那一格点了） */
+  quickShow(): Promise<void>
+  /** 小框收起（Esc）：焦点还给原来的软件 */
+  quickClose(): Promise<void>
+  /** 小框里回车：一条条写进库，收起、还焦点、弹通知；open：⇧↵ 加上并在画布今日里打开 */
+  quickAdd(items: QuickItem[], open: boolean): Promise<QuickAddResult>
+  quickState(): Promise<QuickKeyState>
+  /** 菜单栏小窗「去设置换」：打开主窗口的设置 › 一般 */
+  openSettings(): Promise<void>
+  onQuickState(cb: (s: QuickKeyState) => void): () => void
+  /** 小框弹出来了（fresh：刚弹出来，清空重写；false：已经开着又按了一次） */
+  onQuickOpen(cb: (fresh: boolean) => void): () => void
+  /** 小窗、小框量好自己多高，窗口跟着变 */
+  fit(height: number): Promise<void>
   /** 软件菜单栏里点了「设置…」「搜索、加一条…」 */
   onMenu(cb: (what: 'settings' | 'search') => void): () => void
   /** 界面准备好了（之前来的 canvas-today:// 链接这时才交给界面） */
@@ -409,6 +488,10 @@ export interface CtApi {
   /** 日历 App 里改了：重读 */
   onCalChanged(cb: () => void): () => void
   calOpenPrivacy(): Promise<void>
+  /** 左栏一个日历：藏起 / 再显示（点色块） */
+  calHide(id: string, hide: boolean): Promise<CalState>
+  /** 左栏一个日历的右键：不在这里显示 / 在这里显示 · 全部显示（主进程弹系统菜单、点了就改） */
+  calMenu(id: string): Promise<CalState>
 }
 
 declare global {

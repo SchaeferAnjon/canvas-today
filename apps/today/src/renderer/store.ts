@@ -32,11 +32,13 @@ export interface Data {
   calVersion: number
   /** AI 用哪一家（画布笔记设置里「小活」那一家；问之前再读一次） */
   ai: AiInfo | null
+  /** 右栏 AI 对话默认用哪一家（画布笔记设置里「AI 对话」那一行） */
+  chatAi: AiInfo | null
 }
 
 const media = () => window.matchMedia('(prefers-color-scheme: dark)')
 
-let data: Data = { state: null, snap: { version: 0, tasks: [], notes: [], habits: [] }, git: null, offset: 0, dark: media().matches, update: null, rem: null, focus: null, cal: null, calVersion: 0, ai: null }
+let data: Data = { state: null, snap: { version: 0, tasks: [], notes: [], habits: [] }, git: null, offset: 0, dark: media().matches, update: null, rem: null, focus: null, cal: null, calVersion: 0, ai: null, chatAi: null }
 const subs = new Set<() => void>()
 const set = (p: Partial<Data>) => {
   data = { ...data, ...p }
@@ -156,7 +158,7 @@ export function useCalEvents(from: string, to: string): CalEvent[] {
 
 /** 再读一次 AI 用哪一家（画布笔记那边设置可能换过） */
 export async function refreshAi(): Promise<AiInfo> {
-  const ai = await window.ct.aiInfo()
-  set({ ai })
+  const [ai, chatAi] = await Promise.all([window.ct.aiInfo(), window.ct.chatDefault()])
+  set({ ai, chatAi })
   return ai
 }

@@ -1,0 +1,137 @@
+/** 英文表：费曼学习 · 白板上讲（② feynman-board，task-yvabi）：工具板、操作条、那一列、盖住和看一眼、判定卡、讲哪个点的小框 */
+import { count, type Table } from '../core'
+
+const cards = (n: unknown) => count(n, 'card')
+const times = (n: unknown) => count(n, 'time')
+
+export const FEYNMAN_BOARD: Table = {
+  // ---------- 入口 ----------
+  '费曼学习：先点导图的一支（能 ⌘ 点几张卡一起），再点这里；什么都没选，写一个词或从白板上挑':
+    'Feynman: click a branch of the map first (⌘-click to add cards), then this; with nothing selected, type a word or pick from the board',
+  '费曼学习：先选几张卡再点，就讲这几张；什么都没选，写一个词或从白板上挑': 'Feynman: select some cards first to explain them; with nothing selected, type a word or pick from the board',
+  '工具板::费曼学习': 'Feynman',
+  费曼讲这几张: 'Explain these',
+  '费曼学习：讲给 AI 学生听，讲的时候这几张先盖住': 'Feynman: explain them to an AI student; these cards are covered while you talk',
+  费曼学习: 'Feynman',
+  '费曼学习 · 讲哪个点': 'Feynman · What to explain',
+  '一个知识点 · 3到5分钟': 'One point · 3 to 5 minutes',
+  '先点导图的一支或框选几张卡，再点这里；也能直接写：': 'Click a branch of the map or select a few cards first, then click here; or just type:',
+  直接写一个词: 'Type a word',
+  '直接写一个词，比如：范数': 'Type a word, e.g. norm',
+  '或者从这块白板上挑：': 'Or pick from this board:',
+
+  // ---------- 列头 ----------
+  '费曼 · {topic}': 'Feynman · {topic}',
+  不讲了: 'Drop it',
+  '不讲了：这一列拿掉': 'Drop it: remove this column',
+  '暂停：讲过的都留着；材料先露出来（也可以按 esc）': 'Pause: everything said is kept; the material is shown again (or press esc)',
+  暂停: 'Pause',
+  '现在结束，看判定': 'Finish now and see the verdict',
+  删掉这一轮: 'Delete this round',
+  '{was} · 当场补讲清了': '{was} · fixed on the spot',
+  '看过材料{n}次': (p) => `Looked at the material ${times(p.n)}`,
+  '核心{n}条：讲的时候讲到了变灰；判过以后绿 讲清 · 黄 含糊 · 红 讲错 · 虚线 没讲到': (p) =>
+    `${count(p.n, 'core point')}: grey once you touch it; after the verdict green clear · yellow vague · red wrong · dashed not covered`,
+  '这一节第{i}个 · 共{n}个': (p) => `Point ${p.i} of ${p.n} in this section`,
+  '这一节共{n}个': (p) => `${count(p.n, 'point')} in this section`,
+  '照导图「{name}」这一支和配对的网页核对': 'Checked against the map branch “{name}” and the paired web page',
+  '照导图「{name}」这一支核对': 'Checked against the map branch “{name}”',
+  '照这{n}张卡和配对的网页核对': (p) => `Checked against these ${cards(p.n)} and the paired web page`,
+  '照这{n}张卡核对': (p) => `Checked against these ${cards(p.n)}`,
+  '照《{name}》核对': 'Checked against “{name}”',
+  '没有材料，AI 自己定的要点': 'No material: the AI chose the points',
+  照库里的笔记核对: 'Checked against notes in the vault',
+
+  // ---------- 这次要讲到 ----------
+  这次要讲到: 'This time, cover',
+  '核心{n}条，讲清就过': (p) => `${count(p.n, 'core point')}; explain them clearly to pass`,
+  '核心{n}条 · 了解即可{k}条': (p) => `${count(p.n, 'core point')} · ${p.k} nice to know`,
+  '了解即可 {n}条': (p) => `Nice to know · ${p.n}`,
+  讲不到不影响过: "doesn't affect passing",
+  '核心超过{n}条：拆成两个点讲？': (p) => `More than ${p.n} core points: split into two?`,
+  移到了解即可: 'Move to nice to know',
+  移到核心: 'Move to core',
+  这次不讲这一条: 'Skip this one this time',
+  加一条要讲的事: 'Add a point to cover',
+  '写一句要讲的事（不写答案），回车放进核心': 'Write what to cover (not the answer); Enter adds it to core',
+  开始讲: 'Start',
+
+  // ---------- 讲、追问 ----------
+  学生: 'Student',
+  '我没学过{topic}。你用自己的话给我讲讲：它是什么，拿来干嘛？': "I've never learned {topic}. Explain it in your own words: what is it, and what is it for?",
+  '第2轮 · 只讲这几处': 'Round 2 · just these',
+  '你说「{q}」': 'You said “{q}”',
+  说穿了: 'The answer',
+  '出处：{src}': 'Source: {src}',
+  完整版: 'Full version',
+  '我讲的 · 第2轮': 'You · round 2',
+  我讲的: 'You',
+  我答: 'You answered',
+  '只讲上面这几处。点麦克风说，或者直接打字。': 'Explain just the points above. Click the mic to talk, or type.',
+  '用自己的话讲，像讲给没学过的同学听。点麦克风说，或者直接打字。': "Explain in your own words, as if to a classmate who hasn't learned it. Click the mic to talk, or type.",
+  '回答它… 点麦克风说也行': 'Answer… or click the mic to talk',
+  拿掉这张图: 'Remove this picture',
+  '拍一张手画的图放进来（AI 看图）': 'Add a photo of a hand drawing (the AI looks at it)',
+  填一段示例: 'Fill in an example',
+  回: 'Reply',
+  讲完了: 'Done',
+  '问了{n}轮。了解即可的不追问。': (p) => `Asked ${count(p.n, 'round')}. Nice-to-know points aren't asked about.`,
+  '讲完了，看判定': 'Done, see the verdict',
+  '学生在想…': 'The student is thinking…',
+  '在评分：每条核心一个状态…': 'Judging: one state per core point…',
+  '停下了：再按一次 esc 暂停': 'Stopped: press esc again to pause',
+  '暂停在第{n}轮。讲过的、问过的都存在这一节里；材料先露出来，接着讲时再盖上，这次暂停记成看过一次材料。': (p) =>
+    `Paused at round ${p.n}. What you said and were asked is kept in this section; the material is shown again and covered when you resume, and this pause counts as one look at the material.`,
+  接着讲: 'Resume',
+  '在列这一讲的知识点…': 'Listing the points of this lecture…',
+  '在列这次要讲到的…': 'Listing what to cover…',
+  '这块白板是只读的，没法在上面讲': 'This board is read-only; you can’t explain on it',
+
+  // ---------- 判定 ----------
+  讲清: 'Clear',
+  追问后补上: 'Filled in when asked',
+  说错后改对: 'Corrected after a mistake',
+  含糊: 'Vague',
+  没讲到: 'Not covered',
+  讲错: 'Wrong',
+  '· 当场补讲': '· fixed on the spot',
+  '第{n}次 · 问了{k}轮': (p) => `Attempt ${p.n} · ${count(p.k, 'round')} of questions`,
+  '下一步：': 'Next: ',
+  '怎么判：有一条核心讲错就没过；没有讲错时，含糊和没讲到合起来 0条过、1条差一点、2条以上没过。追问后补上、说错后改对都算讲清；了解即可不算。':
+    'How it’s judged: any core point wrong means not passed; otherwise vague plus not covered: 0 pass, 1 almost, 2 or more not passed. Filled in when asked and corrected after a mistake count as clear; nice-to-know points don’t count.',
+  '讲的时候看过一眼材料：判定照常，下次再讲的日子提前。': 'You looked at the material while talking: the verdict stands, the next session comes sooner.',
+  '这几处还没讲清，缺口照旧；可以出卡，明天再讲。': 'These still aren’t clear; the gaps stay. Make cards and explain again tomorrow.',
+
+  // ---------- 缺口 ----------
+  了解即可: 'Nice to know',
+  过了也出一张: 'A card even though you passed',
+  '用两三句讲清{topic}': 'Explain {topic} in two or three sentences',
+  '缺口 {n}处': (p) => `${count(p.n, 'gap')}`,
+  '了解即可{n}条不算': (p) => `${p.n} nice to know, not counted`,
+  '✓ 已送进Anki': '✓ Sent to Anki',
+  '✓ 当场补讲清了': '✓ Fixed on the spot',
+  '说法提醒（不算错）': 'Wording notes (not mistakes)',
+  '再讲这{n}处': (p) => `Explain these ${p.n} again`,
+  拍成导图: 'Make a map',
+  '出卡 · {n}张': (p) => `Make cards · ${p.n}`,
+  '进度记在这一轮，课程首页排「下次先讲」': 'Progress is kept in this round; the course home picks “next up”',
+  记进笔记: 'Add to note',
+
+  // ---------- 先挑一个点 ----------
+  这一讲的知识点: 'Points in this lecture',
+  '「{name}」这一支分成几个点': '“{name}” split into points',
+  '核心超过5条，分成了几个点': 'More than 5 core points, split into several',
+  '挑一个先讲；一次讲一个点，3 到 5 分钟': 'Pick one to start; one point at a time, 3 to 5 minutes',
+  '第{a}–{b}页': 'Pages {a}–{b}',
+  上次过: 'Passed last time',
+  上次差一点: 'Almost last time',
+  上次没过: 'Not passed last time',
+  '核心{n}条': (p) => count(p.n, 'core point'),
+
+  // ---------- 盖住 ----------
+  讲完再看: 'Look after you explain',
+  按住看一眼: 'Hold to peek',
+  '现在看会变成照着念。讲完、问完，这一页自己露出来，和你讲的对一对。': "Looking now turns explaining into reading aloud. When you're done, this page comes back so you can compare.",
+  '松手又盖上；看一次记一次': 'Covered again when you let go; each look is counted',
+  '白板上「费曼 · {topic}」讲着。这里照常能问，问什么都不记。': '“Feynman · {topic}” is running on the board. You can ask here as usual; nothing is counted.',
+}

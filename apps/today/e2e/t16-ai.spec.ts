@@ -80,11 +80,8 @@ test('帮我排进空着的时间：避开日程和有钟点的、虚线框、�
   })
   const { page } = run
   try {
-    // 右图标栏：AI · Codex，点了说 AI 在哪两处用
-    const aiBtn = page.locator('.abar.r .ab[data-k="ai"]')
-    await expect(aiBtn).toHaveAttribute('aria-label', 'AI · Codex')
-    await aiBtn.click()
-    await expect(page.locator('.ab-say')).toHaveText('Codex：详情里「拆成小步」，日历里「帮我排进空着的时间」')
+    // 右图标栏 AI 一格是右栏 AI 对话（task-ykkoz），画「AI 对话」那一家；这两颗按钮用「小活」那一家（Codex）
+    await expect(page.locator('.abar.r .ab[data-k="ai"]')).toHaveAttribute('aria-label', 'AI · Claude Code')
 
     await page.locator('.ab[data-k="calendar"]').click()
     await expect(page.locator('.cal-blk.ev', { hasText: '和爸妈视频' })).toBeVisible()

@@ -9,16 +9,21 @@ import { open } from '../shared/views'
 import { whenLabel } from '../shared/when'
 import { useActions } from './actions'
 import { getData, saveSettings, useData, useLang } from './store'
-import { Ic, useT } from './ui'
+import { EngineLogo, Ic, useT } from './ui'
+import { looksLikePlan } from '../shared/ai-chat'
 import { noteLabel } from './views'
 
-type Row = { key: string; icon: Parameters<typeof Ic>[0]['n']; name: string; desc?: string; group: 'add' | 'tasks' | 'go'; run: () => void }
+type Row = { key: string; icon: Parameters<typeof Ic>[0]['n'] | 'ai'; name: string; desc?: string; group: 'add' | 'tasks' | 'ask' | 'go'; run: () => void }
 
-export function Palette({ today, onClose, onGo, onSettings, onImport }: { today: string; onClose: () => void; onGo: (a: 'lists' | 'calendar' | 'quad' | 'focus' | 'habit', n?: Nav) => void; onSettings: () => void; onImport?: () => void }) {
+/**
+ * 打了字：「加一条」和「问 AI：…」（task-ykkoz，开右栏 AI 对话问这一句）；像要排日程的话（「把…排好」「明天太满了」）「问 AI」在第一行，回车直接问；
+ * 别的话「问 AI」在搜到的待办后面，回车照旧加一条
+ */
+export function Palette({ today, onClose, onGo, onSettings, onImport, onAskAi }: { today: string; onClose: () => void; onGo: (a: 'lists' | 'calendar' | 'quad' | 'focus' | 'habit', n?: Nav) => void; onSettings: () => void; onImport?: () => void; onAskAi: (text: string) => void }) {
   const t = useT()
   const lang = useLang()
   const a = useActions()
-  const { snap } = useData()
+  const { snap, ai } = useData()
   const [q, setQ] = useState('')
   const [i, setI] = useState(0)
   const list = useRef<HTMLDivElement>(null)
@@ -28,6 +33,8 @@ export function Palette({ today, onClose, onGo, onSettings, onImport }: { today:
     const low = text.toLowerCase()
     if (text) {
       const p = parseQuick(text, today)
+      const askRow: Row = { key: 'ask', icon: 'ai', name: t('palAsk', text), group: 'add', run: () => onAskAi(text) }
+      if (looksLikePlan(text)) out.push(askRow)
       out.push({
         key: 'add',
         icon: 'add',
@@ -49,6 +56,8 @@ export function Palette({ today, onClose, onGo, onSettings, onImport }: { today:
           group: 'tasks',
           run: () => (onClose(), a.goTask(x)),
         })
+      // 不像排日程的话：「问 AI」排在搜到的待办后面（回车照旧是加一条、↓ 先到搜到的那几条）
+      if (!looksLikePlan(text)) out.push({ ...askRow, group: 'ask' })
     }
     const go: Row[] = [
       { key: 'g-today', icon: 'star-empty', name: t('today'), group: 'go', run: () => onGo('lists', 'today') },
@@ -71,7 +80,7 @@ export function Palette({ today, onClose, onGo, onSettings, onImport }: { today:
     ]
     out.push(...go.filter((r) => !low || r.name.toLowerCase().includes(low)))
     return out
-  }, [text, today, snap, lang, t, a, onClose, onGo, onSettings, onImport])
+  }, [text, today, snap, lang, t, a, onClose, onGo, onSettings, onImport, onAskAi])
 
   useEffect(() => setI(0), [text])
   // scrollIntoView 在这一版 Chromium 里返回 Promise：写成块，不能当清理函数交回给 React
@@ -79,7 +88,7 @@ export function Palette({ today, onClose, onGo, onSettings, onImport }: { today:
     list.current?.querySelector('.pr.on')?.scrollIntoView({ block: 'nearest' })
   }, [i])
 
-  const head = (g: Row['group']) => (g === 'add' ? null : g === 'tasks' ? t('palTasks') : t('palGo'))
+  const head = (g: Row['group']) => (g === 'add' || g === 'ask' ? null : g === 'tasks' ? t('palTasks') : t('palGo'))
   return (
     <>
       <div className="scrim" onClick={onClose} />
@@ -107,7 +116,7 @@ export function Palette({ today, onClose, onGo, onSettings, onImport }: { today:
             <div key={r.key}>
               {(k === 0 || rows[k - 1]!.group !== r.group) && head(r.group) && <div className="pg">{head(r.group)}</div>}
               <button className={`pr${k === i ? ' on' : ''}`} onMouseMove={() => setI(k)} onClick={r.run}>
-                <Ic n={r.icon} />
+                {r.icon === 'ai' ? <EngineLogo id={ai?.engine} s={16} /> : <Ic n={r.icon} />}
                 <span className="nm">{r.name}</span>
                 {r.desc && <span className="ds">{r.desc}</span>}
               </button>

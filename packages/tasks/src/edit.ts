@@ -2,9 +2,11 @@
  * 改一行待办：只换要改的那几个字，这一行别的字节一个不动（「打开再保存文件不变」那条规矩落到每一行上）。
  * 有这个记号：只换它的内容；没有：按定稿的先后插进去（放在第一个比它靠后的记号前面，都没有就放行尾、行尾空白之前）；
  * 拿掉：连前面那个空格一起删。传进来的行不带换行符（\r 由 file.ts 管）。不是待办的行原样返回。
+ * 行尾的 #标签、<!-- 注释 -->、^块编号 排在最后：新记号插在它们前面，块编号一直在行尾（别处的块链接不断）。
+ * 日子从哪来就改哪（📅、⏳、Dataview 的 due::）；拿掉日子时这几样都拿掉（不然拿掉 📅 以后 ⏳ 又顶上来）。
  */
 import { type ISODate } from './dates'
-import { EMOJI, type Field, type FieldKind, ORDER, parseTaskLine, type Prio, PRIO_EMOJI, type TaskLine } from './line'
+import { EMOJI, type Field, type FieldKind, isDvDue, ORDER, parseTaskLine, type Prio, PRIO_EMOJI, type TaskLine } from './line'
 
 const splice = (s: string, from: number, to: number, put: string) => s.slice(0, from) + put + s.slice(to)
 
@@ -34,7 +36,7 @@ function dropAll(line: string, t: TaskLine, kind: FieldKind): string {
 }
 
 /** 设一个有内容的记号；value 是 null 就拿掉 */
-function setField(line: string, kind: Exclude<FieldKind, 'prio'>, value: string | null): string {
+function setField(line: string, kind: keyof typeof EMOJI, value: string | null): string {
   const t = parseTaskLine(line)
   if (!t) return line
   const f = field(t, kind)
@@ -45,6 +47,19 @@ function setField(line: string, kind: Exclude<FieldKind, 'prio'>, value: string 
   }
   const at = insertAt(t, kind)
   return splice(line, at, at, ` ${EMOJI[kind]} ${value}`)
+}
+
+/** 日子写在哪个记号里（📅、没有 📅 时的 ⏳ 或 Dataview 的 due） */
+function dateField(t: TaskLine): Field | undefined {
+  if (t.dateFrom === 'dv') return t.fields.findLast(isDvDue)
+  return t.dateFrom ? field(t, t.dateFrom) : undefined
+}
+
+/** 拿掉几个记号（从右往左删，前面的位置不变） */
+function dropFields(line: string, fs: Field[]): string {
+  let out = line
+  for (const f of [...fs].sort((a, b) => b.start - a.start)) out = splice(out, f.start, f.end, '')
+  return out
 }
 
 export function setDone(line: string, done: boolean, today: ISODate): string {
@@ -59,7 +74,15 @@ export function setDone(line: string, done: boolean, today: ISODate): string {
   return setField(splice(line, t.markAt, t.markAt + 1, ' '), 'done', null)
 }
 
-export const setDate = (line: string, date: ISODate | null): string => setField(line, 'date', date)
+/** 改日子：日子从哪个记号来就改哪个；没有就加 📅；null 拿掉 📅、⏳ 和 Dataview 的 due */
+export function setDate(line: string, date: ISODate | null): string {
+  const t = parseTaskLine(line)
+  if (!t) return line
+  if (date === null) return dropFields(line, t.fields.filter((f) => f.kind === 'date' || f.kind === 'sched' || isDvDue(f)))
+  const f = dateField(t)
+  if (!f) return setField(line, 'date', date)
+  return f.value === date ? line : splice(line, f.valueStart, f.valueEnd, date)
+}
 
 /** 拿掉一种记号（连前面那个空格） */
 export function removeField(line: string, kind: FieldKind): string {
@@ -67,18 +90,18 @@ export function removeField(line: string, kind: FieldKind): string {
   return t ? dropAll(line, t, kind) : line
 }
 
-/** 钟点跟在 📅 日子后面；没有日子时加钟点，日子是 today */
+/** 钟点跟在日子后面（📅 ⏳ 空一格，Dataview 的 due 用 T 连着）；没有日子时加钟点，日子是 today */
 export function setTime(line: string, time: string | null, today?: ISODate): string {
   const t = parseTaskLine(line)
   if (!t) return line
-  const f = field(t, 'date')
+  const f = dateField(t)
   if (!f) {
     if (time === null || !today) return line
     return setField(line, 'date', `${today} ${time}`)
   }
   if (time === null) return f.time ? splice(line, f.valueEnd, f.timeEnd!, '') : line
   if (f.time) return f.time === time ? line : splice(line, f.timeStart!, f.timeEnd!, time)
-  return splice(line, f.valueEnd, f.valueEnd, ` ${time}`)
+  return splice(line, f.valueEnd, f.valueEnd, `${f.kind === 'dv' ? 'T' : ' '}${time}`)
 }
 
 export const setRemind = (line: string, v: string | null): string => setField(line, 'remind', v === null ? null : oneLine(v) || null)

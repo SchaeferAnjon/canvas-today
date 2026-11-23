@@ -12,7 +12,7 @@ export default defineConfig({
   renderer: {
     plugins: [react()],
     resolve: { alias: { '@notes-assets': notesAssets } },
-    // 主窗口和菜单栏小窗
-    build: { rollupOptions: { input: { index: resolve(__dirname, 'src/renderer/index.html'), tray: resolve(__dirname, 'src/renderer/tray.html') } } },
+    // 主窗口、菜单栏小窗、全局快速加一条的小框
+    build: { rollupOptions: { input: { index: resolve(__dirname, 'src/renderer/index.html'), tray: resolve(__dirname, 'src/renderer/tray.html'), quick: resolve(__dirname, 'src/renderer/quick.html') } } },
   },
 })

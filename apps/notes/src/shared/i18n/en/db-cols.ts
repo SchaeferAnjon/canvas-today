@@ -59,4 +59,11 @@ export const DB_COLS: Table = {
   拿掉: 'Remove',
   补上: 'Fix',
   '还有 {n} 处对不上，补上这几处再看': '{n} more out of sync; fix these first',
+  // 数字格打的不是数（task-cle3x）
+  '「{col}」只收数字，「{text}」没写进去': '“{col}” only takes numbers; “{text}” was not saved',
+  // 格子焦点：粘贴、日期格的浮层（task-cle3x）
+  '「{col}」这一列收不了「{text}」': '“{col}” can’t take “{text}”',
+  '有 {n} 格没贴上（超出表格、名字列或这一列收不了）': '{n} cells were not pasted (past the table, the name column, or a column that can’t take them)',
+  '打一个日子，比如 4/20、明天': 'Type a date, like 4/20 or tomorrow',
+  认不出这个日子: 'Can’t read that date',
 }

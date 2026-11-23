@@ -4,13 +4,15 @@
  */
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { CalBar, type CalMode, daysFrom, hasEvents, MiniMonth, MonthGrid, monthWeeks, shiftMonth, useWhenInput, WeekGrid } from '@cn/calendar'
-import { parseQuick, weekday } from '@cn/tasks'
+import { parseQuick, type Quick, weekday } from '@cn/tasks'
 import type { AddCtx, AiSlot, Snapshot, TaskView } from '../shared/api'
 import { INBOX_NOTE } from '../shared/brand'
 import { repeatLabel, tr } from '../shared/i18n'
 import { calItems, cntToday, type Group, groupsOf, type Nav, open, quadOf } from '../shared/views'
 import { dayLabel, isoPlus, mdLabel, thirdPick, whenLabel } from '../shared/when'
 import { useActions } from './actions'
+import { prioText, usePreview } from './ai-preview'
+import type { PlanChange } from '../shared/ai-chat'
 import { nowLocal, refreshAi, useCalEvents, useData, useLang } from './store'
 import { Check, EngineLogo, Ic, useT } from './ui'
 
@@ -22,17 +24,26 @@ export function noteLabel(path: string): string {
 
 // ---------- 一行（原型 row()） ----------
 
-export function Row({ t, today, sel, flash, timeOnly, showNote = true }: { t: TaskView; today: string; sel: boolean; flash: boolean; timeOnly?: boolean; showNote?: boolean }) {
+export function Row({ t, today, sel, flash, timeOnly, showNote = true, quad = false }: { t: TaskView; today: string; sel: boolean; flash: boolean; timeOnly?: boolean; showNote?: boolean; quad?: boolean }) {
   const a = useActions()
   const lang = useLang()
+  const pv = usePreview().get(t.key)
   const od = !!t.date && t.date < today && !t.done
   const subs = t.subs.length
   return (
-    <div className={`row${sel ? ' on' : ''}${t.done ? ' done' : ''}${flash ? ' flash' : ''}`} data-drag={t.key} data-part="任务行">
+    <div className={`row${sel ? ' on' : ''}${t.done ? ' done' : ''}${t.cancelled ? ' cancel' : ''}${flash ? ' flash' : ''}${pv ? ' aim-hit' : ''}`} data-drag={t.key} data-part="任务行">
       <Check t={t} onToggle={() => a.tick(t)} />
       <span className="rt">{t.title}</span>
+      {pv && <PreviewMark c={pv} today={today} quad={quad} />}
       <span className="accs">
         {subs > 0 && <SubCount t={t} />}
+        {t.dups.length > 0 && (
+          // 抄了好几遍的同一条（滴答同步进日记的）：这里只显示一份，写着一共几处
+          <span className="acc dup" title={tr(lang, 'copiesTip', t.dups.length + 1)} data-part="抄了几处">
+            <Ic n="layers" s={12} />
+            {tr(lang, 'copies', t.dups.length + 1)}
+          </span>
+        )}
         {t.path !== INBOX_NOTE && showNote && (
           <span className="acc note">
             <Ic n="file" s={12} />
@@ -58,6 +69,23 @@ export function Row({ t, today, sel, flash, timeOnly, showNote = true }: { t: Ta
         )}
       </span>
     </div>
+  )
+}
+
+/** AI 对话里还没定的改动：这一行会改成什么（「→ 周四」「→ 周二 10:00」「→ ⏫ 高」，四象限上「→ 1」，「+3步」） */
+function PreviewMark({ c, today, quad }: { c: PlanChange; today: string; quad: boolean }) {
+  const lang = useLang()
+  const t = useT()
+  const bits: string[] = []
+  if (c.date !== undefined || c.time !== undefined) bits.push(whenLabel(lang, { date: c.date ?? c.from.date, time: c.time === undefined ? c.from.time : c.time }, today))
+  if (c.prio !== undefined) bits.push(quad ? String(4 - c.prio) : prioText(lang, c.prio))
+  const steps = c.steps ? t('chatBadgeSteps', c.steps.length) : null
+  return (
+    <span className="aim-mv" data-part="AI 预览">
+      {bits.length > 0 && `→ ${bits.join(' · ')}`}
+      {bits.length > 0 && steps && ' · '}
+      {steps}
+    </span>
   )
 }
 
@@ -134,38 +162,50 @@ export function QuickAdd({ ctx, nav, today }: { ctx: AddCtx; nav: Nav; today: st
         {!q ? (
           <span>{nav === 'today' ? t('defaultToday') : nav === 'tomorrow' ? t('defaultTomorrow') : t('recogAt')}</span>
         ) : (
-          <>
-            {when.ai && <EngineLogo id={ai?.engine} s={12} />}
-            {q.date || q.repeat || q.prio || q.list ? <span>{when.ai ? t('aiUnderstood') : t('understood')}</span> : <span>{t('noDateFound')}</span>}
-            {q.date && (
-              <span className="chip">
-                <Ic n="calendar" s={12} />
-                {dayLabel(lang, q.date, today) + (q.time ? ' ' + q.time : '')}
-              </span>
-            )}
-            {q.repeat && (
-              <span className="chip">
-                <Ic n="sync" s={12} />
-                {repeatLabel(lang, q.repeat)}
-              </span>
-            )}
-            {q.remind && (
-              <span className="chip">
-                <Ic n="bell" s={12} />
-                {tr(lang, 'remindLabel', q.remind)}
-              </span>
-            )}
-            {q.prio > 0 && (
-              <span className="chip">
-                <Ic n="target" s={12} />
-                {t(q.prio === 3 ? 'hi' : q.prio === 2 ? 'mid' : 'lo')}
-              </span>
-            )}
-            {q.list && <span className="chip g">{'#' + q.list}</span>}
-            <span>{`· 「${q.title}」`}</span>
-          </>
+          <QuickChips q={q} today={today} ai={when.ai ? (ai?.engine ?? null) : undefined} />
         )}
       </div>
+    </>
+  )
+}
+
+/**
+ * 「认出来：」那一行的小块：日子钟点、重复、提醒、优先级、#清单，最后是剩下的标题。主窗口的快速加一条和全局小框（quick.tsx）共用。
+ * ai：AI 认出来的时候是那一家（画它的标志，写「AI 认出来：」）；bare：只要那几块（全局小框一次几条时每行后面），不写「认出来：」和标题
+ */
+export function QuickChips({ q, today, ai, bare }: { q: Quick; today: string; ai?: string | null; bare?: boolean }) {
+  const lang = useLang()
+  const t = useT()
+  return (
+    <>
+      {ai !== undefined && <EngineLogo id={ai ?? undefined} s={12} />}
+      {bare ? null : q.date || q.repeat || q.prio || q.list ? <span>{ai !== undefined ? t('aiUnderstood') : t('understood')}</span> : <span>{t('noDateFound')}</span>}
+      {q.date && (
+        <span className="chip">
+          <Ic n="calendar" s={12} />
+          {dayLabel(lang, q.date, today) + (q.time ? ' ' + q.time : '')}
+        </span>
+      )}
+      {q.repeat && (
+        <span className="chip">
+          <Ic n="sync" s={12} />
+          {repeatLabel(lang, q.repeat)}
+        </span>
+      )}
+      {q.remind && (
+        <span className="chip">
+          <Ic n="bell" s={12} />
+          {tr(lang, 'remindLabel', q.remind)}
+        </span>
+      )}
+      {q.prio > 0 && (
+        <span className="chip">
+          <Ic n="target" s={12} />
+          {t(q.prio === 3 ? 'hi' : q.prio === 2 ? 'mid' : 'lo')}
+        </span>
+      )}
+      {q.list && <span className="chip g">{'#' + q.list}</span>}
+      {!bare && <span>{`· 「${q.title}」`}</span>}
     </>
   )
 }
@@ -590,7 +630,7 @@ export function QuadView({ snap, today, sel, flash }: { snap: Snapshot; today: s
               <span className="t3 sm">{`${t(s)} · ${q[p].length}`}</span>
             </div>
             <div className="ql">
-              {q[p].length ? q[p].map((x) => <Row key={x.key} t={x} today={today} sel={sel === x.key} flash={flash === x.key} />) : <div className="more">{t('dropHere')}</div>}
+              {q[p].length ? q[p].map((x) => <Row key={x.key} t={x} today={today} sel={sel === x.key} flash={flash === x.key} quad />) : <div className="more">{t('dropHere')}</div>}
             </div>
           </div>
         ))}
@@ -617,7 +657,18 @@ export function CalendarView({ snap, today, sel, mode, anchor, nowMin, onMode, o
       : `${tr(lang, 'monthTitle', Number(anchor.slice(0, 4)), Number(anchor.slice(5, 7)))} · ${on ? t('calSubOnMonth') : cal?.available ? t('calSubOff') : t('calSubMonth')}`
   const step = (n: number) => onAnchor(mode === 'week' ? isoPlus(anchor, 7 * n) : shiftMonth(anchor, n))
   const sched = useAiSchedule()
-  const ghosts = (sched.st?.phase === 'done' ? sched.st.slots : []).map((g) => ({ ...g, note: t('aiGhostNote', g.time, sched.label) }))
+  // AI 对话里还没定的改动（ai-preview.ts）：改了日子或钟点的画成虚线框，只改日子没钟点的在「全天」那一行
+  const preview = usePreview()
+  const ghosts = [
+    ...(sched.st?.phase === 'done' ? sched.st.slots : []).map((g) => ({ ...g, note: t('aiGhostNote', g.time, sched.label) })),
+    ...[...preview.values()]
+      .filter((c) => c.date !== undefined || c.time !== undefined)
+      .map((c) => {
+        const time = c.time === undefined ? c.from.time : c.time
+        return { key: `ai:${c.key}`, title: c.title, date: (c.date ?? c.from.date)!, time: time ?? '', note: time ? t('aiGhostNote', time, 'AI') : t('chatGhostDay') }
+      })
+      .filter((g) => g.date),
+  ]
   return (
     <>
       <div className="vhead">
@@ -753,7 +804,7 @@ export function LeftMonth({ snap, today, month, onMonth, onPick, week }: { snap:
 
 /**
  * 日历左栏小月历下面（原型 calPanel）：没连时一张「连接系统日历和提醒事项」卡（提醒事项连过了只写日历），
- * 连上了列系统日历（带锁，只读）和提醒事项里镜像的那个列表；没有小助手的版本什么都不放
+ * 连上了列系统日历（带锁，只读；右键、点色块能「不在这里显示」）和提醒事项里镜像的那个列表；没有小助手的版本什么都不放
  */
 export function CalPanel() {
   const t = useT()
@@ -795,8 +846,18 @@ export function CalPanel() {
         {sources.length === 1 && <span className="t3 srcname">{sources[0]}</span>}
       </div>
       {cal.calendars.map((c) => (
-        <div className="calrow" key={c.id} style={{ '--c': c.color } as React.CSSProperties}>
-          <i />
+        // 右键：不在这里显示 / 在这里显示 · 全部显示（系统菜单）；点色块也能切换（task-ov5bb），藏起的行留着：空心色框、名字变淡
+        <div
+          className={`calrow${c.hidden ? ' off' : ''}`}
+          key={c.id}
+          data-cal={c.id}
+          style={{ '--c': c.color } as React.CSSProperties}
+          onContextMenu={(e) => {
+            e.preventDefault()
+            void window.ct.calMenu(c.id)
+          }}
+        >
+          <button className="calsw" aria-pressed={!c.hidden} aria-label={c.hidden ? t('calSwShow', c.title) : t('calSwHide', c.title)} title={c.hidden ? t('calSwShow', c.title) : t('calSwHide', c.title)} onClick={() => void window.ct.calHide(c.id, !c.hidden)} />
           <span className="nm">{c.title}</span>
           <span className="sp" />
           <Ic n="lock" s={12} />

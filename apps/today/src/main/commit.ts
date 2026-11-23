@@ -18,11 +18,25 @@ export class Committer {
     private delay = Number(process.env.CT_COMMIT_MS) || 1500,
   ) {}
 
+  /** 拿着的时候只攒不提交（全局小框一次加几条：几篇一起一次提交） */
+  private held = 0
+
   add(paths: string[], say: string) {
     paths.forEach((p) => this.paths.add(p))
     this.says.push(say)
     if (this.timer) clearTimeout(this.timer)
-    this.timer = setTimeout(() => void this.flush(), this.delay)
+    if (!this.held) this.timer = setTimeout(() => void this.flush(), this.delay)
+  }
+
+  /** 先攒着，run 做完再照常等一会儿提交 */
+  async batch<T>(run: () => Promise<T>): Promise<T> {
+    this.held++
+    try {
+      return await run()
+    } finally {
+      this.held--
+      if (!this.held && this.paths.size) this.timer = setTimeout(() => void this.flush(), this.delay)
+    }
   }
 
   /** 现在就提交排着的（退出前、测试里） */

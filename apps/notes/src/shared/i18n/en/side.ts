@@ -44,4 +44,12 @@ export const SIDE: Table = {
   这个问框的旁支: 'Side threads in this question box',
   只问不记的旁支不能改名: 'Side threads that aren’t saved can’t be renamed',
   '{title}（小标 {n}）': '{title} (badge {n})',
+  // ---------- 旁支头上的「全能 / 只在库里」（side/SideInline.tsx，task-3e53q） ----------
+  全能: 'Full access',
+  只在库里: 'Vault only',
+  '全能：能读写这台 Mac 上的文件、跑命令、上网。': 'Full access: can read and write files on this Mac, run commands and go online.',
+  '只在库里：能读库里的笔记，能在库里新建、改名、挪动、删笔记；不碰库外的文件、不跑命令、不上网。': 'Vault only: can read notes and create, rename, move and delete them in the vault; no files outside it, no commands, no web.',
+  '和主对话同一个开关；{where}。': 'Same switch as the main chat; {where}.',
+  '在右栏 AI 输入框下面那行改，设置 › AI 里也能改': 'change it under the AI input in the right panel, or in Settings › AI',
+  '收起旁支后，在输入框下面那行改': 'close the side thread and change it under the input',
 }

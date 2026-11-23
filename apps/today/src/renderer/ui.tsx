@@ -30,13 +30,14 @@ export function useT() {
   return <K extends Key>(k: K, ...a: Args<K>) => tr(lang, k, ...a)
 }
 
-/** 勾选框（原型 .cb）：高优先级的没勾时是黄框 */
-export function Check({ t, size = 12, onToggle }: { t: Pick<TaskView, 'done' | 'prio' | 'title'>; size?: number; onToggle: () => void }) {
+/** 勾选框（原型 .cb）：高优先级的没勾时是黄框；[/] 进行中填一半，[-] 取消了画一道横线（点了改回没做完） */
+export function Check({ t, size = 12, onToggle }: { t: Pick<TaskView, 'done' | 'prio' | 'title'> & Partial<Pick<TaskView, 'doing' | 'cancelled'>>; size?: number; onToggle: () => void }) {
   const lang = useLang()
+  const open = !t.done && !t.cancelled
   return (
     <button
-      className={`cb${t.done ? ' on' : ''}${t.prio === 3 && !t.done ? ' hi' : ''}`}
-      aria-label={t.done ? tr(lang, 'untickAria', t.title) : tr(lang, 'tickAria', t.title)}
+      className={`cb${t.done ? ' on' : ''}${t.doing && open ? ' half' : ''}${t.cancelled ? ' off' : ''}${t.prio === 3 && open ? ' hi' : ''}`}
+      aria-label={t.done ? tr(lang, 'untickAria', t.title) : t.cancelled ? tr(lang, 'uncancelAria', t.title) : t.doing ? tr(lang, 'doingAria', t.title) : tr(lang, 'tickAria', t.title)}
       onPointerDown={(e) => e.stopPropagation()}
       onClick={(e) => {
         e.stopPropagation()
@@ -44,6 +45,7 @@ export function Check({ t, size = 12, onToggle }: { t: Pick<TaskView, 'done' | '
       }}
     >
       {t.done && <Ic n="check" s={size} />}
+      {t.cancelled && <Ic n="dash" s={size} />}
     </button>
   )
 }

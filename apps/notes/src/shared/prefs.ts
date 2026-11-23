@@ -89,6 +89,14 @@ export interface SyncPrefs {
   backupDir: string | null
 }
 
+/** 设置 › AI 的「回答里提到的笔记名自动认成链接」（task-3e53q，用户 2026-11-23 定：先做、能关、反对就拿掉） */
+export interface CitePrefs {
+  /** 回答里光写了笔记名 / PDF 名（没写成链接）也认成链接；关了路径照样认 */
+  names: boolean
+  /** 不认的名字（用户自己加的，接在软件自带的常见名后面） */
+  skip: string[]
+}
+
 export const AUTO_SYNC_CHOICES = [0, 30, 60, 1440] as const
 export const FONT_SIZES = [14, 15, 16, 17, 18] as const
 
@@ -98,6 +106,7 @@ export const DEFAULT_FILES: FilesPrefs = { newWhere: 'picked', delAsk: 'images',
 export const DEFAULT_PDF: PdfPrefs = { zoom: 'width', openAi: false, recap: true, ankiSides: true }
 export const DEFAULT_WEB: WebPrefs = { engine: 'google', newTab: 'bookmarks', downloads: 'downloads' }
 export const DEFAULT_SYNC: SyncPrefs = { autoMinutes: 0, pullOnOpen: false, pushOnQuit: false, backup: 'off', backupDir: null }
+export const DEFAULT_CITE: CitePrefs = { names: true, skip: [] }
 
 type Raw = Record<string, unknown>
 const obj = (v: unknown): Raw => (v && typeof v === 'object' ? (v as Raw) : {})
@@ -160,6 +169,13 @@ export function normalizeWeb(v: unknown): WebPrefs {
     newTab: oneOf(r.newTab, ['bookmarks', 'blank'], DEFAULT_WEB.newTab),
     downloads: oneOf(r.downloads, ['downloads', 'vault', 'ask'], DEFAULT_WEB.downloads),
   }
+}
+
+/** 不认的名字：去掉空白、重复，每个最多 80 字，最多 300 个 */
+export function normalizeCite(v: unknown): CitePrefs {
+  const r = obj(v)
+  const skip = Array.isArray(r.skip) ? [...new Set(r.skip.filter((x): x is string => typeof x === 'string').map((x) => x.trim()).filter((x) => x && x.length <= 80))].slice(0, 300) : []
+  return { names: bool(r.names, DEFAULT_CITE.names), skip }
 }
 
 export function normalizeSync(v: unknown): SyncPrefs {

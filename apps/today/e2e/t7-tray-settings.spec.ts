@@ -1,5 +1,5 @@
 /**
- * 菜单栏小窗（第一批最简：今天几条 + 快速加 + 勾掉 + 点一条打开主窗口到那一条）和设置（外观、语言、菜单栏开关）。
+ * 菜单栏小窗（今天几条、勾掉、底下快速加一条弹全局小框、点一条打开主窗口到那一条）和设置（外观、语言、菜单栏开关）。
  * 测试模式不建真的菜单栏图标，用 globalThis.ctTrayOpen() 建出小窗（照样不上屏），再在里面真点真打字。
  */
 import { expect, test } from '@playwright/test'
@@ -7,23 +7,28 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { launch, LOOK, row } from './app'
 
-test('菜单栏小窗：今天几条、勾掉、快速加（默认今天）、点一条打开主窗口选中它', async () => {
+test('菜单栏小窗：今天几条、勾掉、快速加一条（弹全局小框）、点一条打开主窗口选中它', async () => {
   const run = await launch()
   const { page } = run
   try {
     await run.app.evaluate(() => (globalThis as unknown as { ctTrayOpen: () => number }).ctTrayOpen())
     await expect.poll(() => run.app.windows().length).toBe(2)
     const tray = run.app.windows().find((w) => w !== page)!
-    await expect(tray.locator('.trh b')).toHaveText(/^今天\d+条$/)
-    const n0 = Number((await tray.locator('.trh b').innerText()).match(/\d+/)![0])
+    await expect(tray.locator('.trh b')).toHaveText('今天')
+    await expect(tray.locator('.trn')).toHaveText(/^还有\d+条$/)
+    const n0 = Number((await tray.locator('.trn').innerText()).match(/\d+/)![0])
     await expect(tray.locator('.row', { hasText: '交 ecp 作业 2' })).toBeVisible()
     await tray.locator('.row', { hasText: '取快递' }).locator('.cb').click()
     await expect.poll(() => run.read('收件箱/待办.md')).toContain('- [x] 取快递 📅 2026-11-22 ✅ 2026-11-22')
-    await expect(tray.locator('.trh b')).toHaveText(`今天${n0 - 1}条`)
-    await tray.getByLabel('快速加一条').fill('下午四点 打电话给房东')
-    await tray.getByLabel('快速加一条').press('Enter')
+    await expect(tray.locator('.trn')).toHaveText(`还有${n0 - 1}条`)
+    // 底下「加一条」弹全局快速加一条的小框（t21-quickadd 细测）
+    await tray.locator('.tradd').click()
+    await expect.poll(() => run.app.windows().some((w) => w.url().endsWith('/quick.html'))).toBe(true)
+    const qp = run.app.windows().find((w) => w.url().endsWith('/quick.html'))!
+    await qp.getByLabel('快速加一条').fill('下午四点 打电话给房东')
+    await qp.getByLabel('快速加一条').press('Enter')
     await expect.poll(() => run.read('收件箱/待办.md')).toContain('- [ ] 打电话给房东 📅 2026-11-22 16:00\n')
-    await expect(tray.locator('.trh b')).toHaveText(`今天${n0}条`)
+    await expect(tray.locator('.trn')).toHaveText(`还有${n0}条`)
     // 主窗口也跟着变了
     await expect(row(page, '打电话给房东')).toBeVisible()
     await tray.locator('.row', { hasText: '交 ecp 作业 2' }).locator('.rt').click()
@@ -40,8 +45,9 @@ test('设置（照画布笔记分页）：不跟画布笔记时换 A 风格、�
     // 画布笔记的设置目录是临时的、空的：用画布今日自己的（B、天青）
     await expect(page.locator('.win')).toHaveClass(/fb/)
     await page.locator('.ab[data-k="settings"]').click()
-    const s = page.getByRole('dialog', { name: '设置' })
-    await expect(s).toBeVisible()
+    // B 里是弹窗；中途换成 A 以后是中间一个标签（task-ykkoz），同一个 .set
+    await expect(page.getByRole('dialog', { name: '设置' })).toBeVisible()
+    const s = page.locator('.set')
     const nav = s.getByRole('navigation', { name: '设置分页' })
     // 左边五页（第五页软件家族，task-59o3v），开在「一般」
     await expect(nav.getByRole('button')).toHaveText(['一般', '外观', '日历和提醒事项', '库', '软件家族'])
@@ -53,12 +59,14 @@ test('设置（照画布笔记分页）：不跟画布笔记时换 A 风格、�
     await expect(s.getByTestId('settings-toast')).toHaveText(/已存 · 「和画布笔记一样」关了\s*撤回/)
     await s.getByRole('radio', { name: /^A · 照VS Code/ }).click()
     await expect(page.locator('.win')).toHaveClass(/fa/)
-    await expect(page.locator('.crumb')).toContainText('测试库')
-    // 提示条上「撤回」：回到 B
+    // A 里设置换成中间一个标签，开着的还是「外观」这一页（面包屑在设置标签前面时不出，同画布笔记）
+    await expect(page.locator('.center .tabs .tab[data-k="settings"]')).toHaveClass(/on/)
+    await expect(s.getByRole('heading', { name: '外观' })).toBeVisible()
+    // 提示条上「撤回」：回到原来的主题（弹窗换成标签是另一块，换风格那一下的提示条不跟过去，用换主题试）
+    await s.getByRole('radio', { name: '深湖' }).click()
+    await expect(page.locator('html')).toHaveAttribute('data-skin', 'petrol')
     await s.getByTestId('settings-toast').getByRole('button', { name: '撤回' }).click()
-    await expect(page.locator('.win')).toHaveClass(/fb/)
-    await s.getByRole('radio', { name: /^A · 照VS Code/ }).click()
-    await expect(page.locator('.win')).toHaveClass(/fa/)
+    await expect(page.locator('html')).toHaveAttribute('data-skin', 'sky')
     await s.getByRole('radio', { name: '深湖' }).click()
     await expect(page.locator('html')).toHaveAttribute('data-skin', 'petrol')
     await expect(page.locator('html')).toHaveAttribute('data-tone', 'dark')
@@ -66,12 +74,13 @@ test('设置（照画布笔记分页）：不跟画布笔记时换 A 风格、�
     await nav.getByRole('button', { name: '一般' }).click()
     await s.getByRole('switch', { name: '开着时常驻菜单栏' }).click()
     await s.getByLabel('界面语言').selectOption({ label: 'English' })
-    await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible()
+    await expect(page.getByRole('region', { name: 'Settings' })).toBeVisible()
     await expect(page.getByRole('navigation', { name: 'Settings pages' }).getByRole('button')).toHaveText(['General', 'Appearance', 'Calendar & Reminders', 'Vault', 'App family'])
     const saved = JSON.parse(readFileSync(join(run.userData, 'settings.json'), 'utf8'))
     expect(saved).toMatchObject({ lang: 'en', followNotes: false, tray: false, appearance: { frame: 'a', skin: 'petrol', winBg: 'cave' } })
     await page.keyboard.press('Escape')
-    await expect(page.getByRole('dialog', { name: 'Settings' })).toHaveCount(0)
+    await expect(page.locator('.set')).toHaveCount(0)
+    await expect(page.locator('.crumb')).toContainText('测试库')
     // 底栏「日历、提醒事项已连接」那种入口开在「日历和提醒事项」：这里从库那一页看换库的按钮
     await page.keyboard.press('Meta+,')
     await page.getByRole('navigation', { name: 'Settings pages' }).getByRole('button', { name: 'Vault' }).click()
@@ -88,7 +97,8 @@ test('设置（照画布笔记分页）：不跟画布笔记时换 A 风格、�
  */
 test('设置弹窗在 1420 × 800 里：一般、日历和提醒事项、库中英文都不用滚，外观的十个主题一屏看全、名字不截断', async () => {
   for (const lang of ['zh', 'en'] as const) {
-    const run = await launch({ settings: { ...LOOK('sky', 'a', lang), followNotes: false }, reminders: {} })
+    // 弹窗是 B 的（A 里设置是中间一个标签，t20 测）
+    const run = await launch({ settings: { ...LOOK('sky', 'b', lang), followNotes: false }, reminders: {} })
     const { page } = run
     try {
       await run.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setContentSize(1420, 800))
@@ -136,7 +146,7 @@ test('设置弹窗在 1420 × 800 里：一般、日历和提醒事项、库中�
   }
 })
 
-test('还没有的格子（数据库）：变淡、悬停说是什么，点了旁边说一句，不开栏；专注、习惯开整页；AI 一格说用的是哪一家、用在哪两处', async () => {
+test('还没有的格子（数据库）：变淡、悬停说是什么，点了旁边说一句，不开栏；专注、习惯开整页；AI 一格开右栏 AI 对话、再点收起', async () => {
   const run = await launch()
   const { page } = run
   try {
@@ -159,9 +169,12 @@ test('还没有的格子（数据库）：变淡、悬停说是什么，点了�
     const ai = page.locator('.ab[data-k="ai"]')
     await expect(ai).not.toHaveClass(/dis/)
     await expect(ai).toHaveAttribute('aria-label', 'AI · Claude Code')
+    await page.locator('.ab[data-k="lists"]').click()
     await ai.click()
-    await expect(page.locator('.ab-say')).toHaveText('Claude Code · Haiku：详情里「拆成小步」，日历里「帮我排进空着的时间」')
-    await expect(page.locator('.ab-say')).toHaveCount(0, { timeout: 4000 })
+    await expect(page.locator('[data-part="AI 对话"]')).toBeVisible()
+    await expect(ai).toHaveAttribute('aria-pressed', 'true')
+    await ai.click()
+    await expect(page.locator('.right')).toHaveCount(0)
   } finally {
     await run.close()
   }

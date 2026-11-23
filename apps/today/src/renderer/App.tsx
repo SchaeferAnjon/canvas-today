@@ -13,10 +13,12 @@ import { cntInbox, cntNote, cntToday, cntTomorrow, cntWeek, findAgain, type Nav,
 import { barKind } from '../shared/update'
 import { dayLabel, isoPlus, mdLabel, whenLabel } from '../shared/when'
 import { type Actions, ActionsCtx } from './actions'
+import { AiChat } from './AiChat'
+import { UNDONE_EVENT } from './ai-preview'
 import { DeleteAsk, ImportDialog } from './ImportDialog'
 import { Palette } from './Palette'
 import { SettingsDialog, type SettingsPage } from './Settings'
-import { getData, nowMs, reloadState, saveSettings, useData, useLang, useToday } from './store'
+import { getData, nowMs, refreshAi, reloadState, saveSettings, useData, useLang, useToday } from './store'
 import { EngineLogo, Ic, type ToastData, Toast, useT } from './ui'
 import { FocusView, mmss, useFocusLeft } from './focus'
 import { HabitsView } from './habits'
@@ -49,7 +51,7 @@ function ChooseVault() {
 }
 
 function Desk() {
-  const { state, snap, git, rem, cal, ai } = useData()
+  const { state, snap, git, rem, cal, chatAi } = useData()
   const lang = useLang()
   const t = useT()
   const today = useToday()
@@ -63,7 +65,13 @@ function Desk() {
   const [flash, setFlash] = useState<string | null>(null)
   const [pal, setPal] = useState(false)
   /** 设置开着时开在哪一页（底栏「日历、提醒事项已连接」开在「日历和提醒事项」） */
-  const [setOpen, setSetOpen] = useState<SettingsPage | null>(null)
+  const [setOpen, setSetOpenRaw] = useState<SettingsPage | null>(null)
+  /** A 里设置是中间一个标签：在前面没有（点了原来那一页的标签、左边换了一页就退到后面，标签还在） */
+  const [setFront, setSetFront] = useState(false)
+  const setSetOpen = useCallback((p: SettingsPage | null) => {
+    setSetOpenRaw(p)
+    setSetFront(p !== null)
+  }, [])
   const [calMode, setCalMode] = useState<CalMode>('week')
   const [anchor, setAnchor] = useState(today)
   const [mini, setMini] = useState(today.slice(0, 7))
@@ -72,6 +80,11 @@ function Desk() {
   /** 导入提醒事项的弹窗、搬完删原条目前再问一次（要删的那几条） */
   const [imp, setImp] = useState(false)
   const [delAsk, setDelAsk] = useState<string[] | null>(null)
+  /** 右栏开着哪一格：详情、AI 对话（task-ykkoz）；AI 开过一次以后一直挂着（换到详情时藏起，正在问的那一问不断） */
+  const [rtab, setRtab] = useState<'detail' | 'ai'>('detail')
+  const [aiOpened, setAiOpened] = useState(false)
+  /** ⌘K「问 AI：…」交给右栏对话的那一句 */
+  const [aiAsk, setAiAsk] = useState<{ text: string; seq: number } | null>(null)
   const lastUndo = useRef<string | null>(null)
 
   // 选中的那一条：索引换了（外面改了、自己改了）照 🆔、原文、标题找回来
@@ -118,6 +131,7 @@ function Desk() {
   const go = useCallback(
     (a: Act, n?: Nav) => {
       setHist((h) => ({ back: [...h.back, [act, nav] as [Act, Nav]].slice(-50), fwd: [] }))
+      setSetFront(false)
       setAct(a)
       if (n) setNav(n)
     },
@@ -156,12 +170,14 @@ function Desk() {
         go('lists', n)
         if (!s.right) void saveSettings({ right: true })
         flashKey(x.key)
+        setRtab('detail')
       },
+      // 取消了的 [-] 点一下改回没做完
       tick: (x) =>
-        void edit(x, { op: 'done', done: !x.done }, (r) => {
-          if (x.done) return [t('unticked', x.title), t('untickedSub', note(x.path), x.line + 1)]
+        void edit(x, { op: 'done', done: !x.done && !x.cancelled }, (r) => {
+          if (x.done || x.cancelled) return [t('unticked', x.title), r.copies ? t('untickedCopies', r.copies + 1) : t('untickedSub', note(x.path), x.line + 1)]
           if (r.next) return [t('ticked', x.title), t('tickedNext', mdLabel(lang, r.next.date), note(x.path))]
-          return [t('ticked', x.title), t('tickedSub', note(x.path), x.line + 1)]
+          return [t('ticked', x.title), r.copies ? t('tickedCopies', r.copies + 1) : t('tickedSub', note(x.path), x.line + 1)]
         }),
       setDate: (x, date, time, how) =>
         void edit(x, { op: 'date', date, ...(time !== undefined ? { time } : {}) }, () => {
@@ -265,6 +281,7 @@ function Desk() {
           }
           if (lastUndo.current === id) lastUndo.current = null
           show(ok ? t('undone') : t('undoChanged'))
+          if (ok) window.dispatchEvent(new CustomEvent(UNDONE_EVENT, { detail: id }))
         })(),
       pickWhen: (x, el, keys = false) => {
         let cur = x
@@ -306,10 +323,26 @@ function Desk() {
   useEffect(
     () =>
       window.ct.onOpenTask((q) => {
-        const tasks = getData().snap.tasks
-        const x = q.id ? tasks.find((y) => y.id === q.id) : tasks.find((y) => y.key === q.key)
-        if (x) actions.goTask(x)
-        else show(t('taskNotFound'))
+        const find = () => {
+          const tasks = getData().snap.tasks
+          return q.id ? tasks.find((y) => y.id === q.id) : tasks.find((y) => y.key === q.key)
+        }
+        const x = find()
+        if (x) return actions.goTask(x)
+        // 刚加的那一条（全局小框里 ⇧↵ 加上并打开）：索引还没推过来，等下一份再找一次
+        const off = window.ct.onSnapshot(() => {
+          off()
+          clearTimeout(timer)
+          requestAnimationFrame(() => {
+            const y = find()
+            if (y) actions.goTask(y)
+            else show(t('taskNotFound'))
+          })
+        })
+        const timer = setTimeout(() => {
+          off()
+          show(t('taskNotFound'))
+        }, 1500)
       }),
     [actions, show, t],
   )
@@ -342,7 +375,11 @@ function Desk() {
       } else if (e.metaKey && !e.shiftKey && e.key.toLowerCase() === 'z' && !inField && lastUndo.current) {
         e.preventDefault()
         actions.undo(lastUndo.current)
-      } else if (e.key === 'Escape' && (document.activeElement === document.body || !document.activeElement) && (delAsk || imp || setOpen)) {
+      } else if (e.key === 'Escape' && fa && setOpen && setFront && !delAsk && !imp && !pal && !whenHostOpen() && !(e.target as HTMLElement)?.closest?.('input, textarea')) {
+        // A 里设置是中间一个标签：esc 和弹窗一样关掉（菜单、输入框里的 esc 不算）
+        e.preventDefault()
+        setSetOpen(null)
+      } else if (e.key === 'Escape' && (document.activeElement === document.body || !document.activeElement) && (delAsk || imp || (setOpen && !fa))) {
         // 弹窗里点过的按钮换掉了（连上提醒事项后「连接」换成开关），焦点掉到页面上：esc 照样关最上面那个弹窗
         if (delAsk) setDelAsk(null)
         else if (imp) setImp(false)
@@ -351,7 +388,7 @@ function Desk() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [actions, pal, setOpen, imp, delAsk, sel, show, t])
+  }, [actions, pal, setOpen, imp, delAsk, sel, show, t, fa, setFront])
 
   // ---------- 拖动（@cn/calendar 的 useDragDrop：按住挪过 5 才算拖，指到 data-drop 上亮一下，日历的格子里出钟点预览） ----------
   useDragDrop({
@@ -396,11 +433,28 @@ function Desk() {
   }
   const ab = (o: { k: string; icon?: Parameters<typeof Ic>[0]['n']; label: string; on?: boolean; dis?: boolean; badge?: number; logo?: boolean; onClick: (e: React.MouseEvent) => void }) => (
     <button key={o.k} className={`ab${o.on ? ' on' : ''}${o.dis ? ' dis' : ''}`} data-k={o.k} aria-label={o.label} aria-pressed={o.on ? true : undefined} onClick={o.onClick}>
-      {o.logo ? <EngineLogo id={ai?.engine} s={fa ? 20 : 18} /> : <Ic n={o.icon!} s={fa ? 24 : 20} />}
+      {o.logo ? <EngineLogo id={chatAi?.engine} s={fa ? 20 : 18} /> : <Ic n={o.icon!} s={fa ? 24 : 20} />}
       {o.badge ? <span className="bd">{o.badge}</span> : null}
       <span className="tip">{o.label}</span>
     </button>
   )
+
+  /** 右图标栏：详情、AI 一格：点了右栏开这一格；正开着这一格再点收起右栏 */
+  const tapRight = (k: 'detail' | 'ai') => {
+    if (s.right && rtab === k) return void saveSettings({ right: false })
+    setRtab(k)
+    if (k === 'ai') (setAiOpened(true), void refreshAi())
+    if (!s.right) void saveSettings({ right: true })
+  }
+  /** ⌘K「问 AI：…」：右栏开 AI 对话问这一句 */
+  const askAi = (text: string) => {
+    setRtab('ai')
+    setAiOpened(true)
+    if (!s.right) void saveSettings({ right: true })
+    setAiAsk({ text, seq: Date.now() })
+  }
+  /** VS Code 风格（A）：设置开成中间一个标签；浮岛书桌（B）照旧是弹窗 */
+  const setTab = fa && setFront ? setOpen : null
 
   const notes = notesWithTodo(snap, nav.startsWith('list:') ? nav.slice(5) : undefined)
   if (nav.startsWith('list:') && !notes.some((n) => n.path === nav.slice(5))) {
@@ -585,13 +639,23 @@ function Desk() {
           )}
           <main className="center">
             <div className="tabs">
-              <button className="tab on" aria-selected>
+              <button className={`tab${setTab ? '' : ' on'}`} aria-selected={!setTab} onClick={() => setSetFront(false)}>
                 <Ic n={tab.icon} s={14} />
                 <span className="nm">{tab.label}</span>
               </button>
+              {fa && setOpen && (
+                // VS Code 风格（A）：设置是中间一个标签（同画布笔记 A），点原来那一页的标签退到后面，× 关掉
+                <span className={`tab${setTab ? ' on' : ''}`} role="tab" aria-selected={!!setTab} data-k="settings" onClick={() => setSetFront(true)}>
+                  <Ic n="settings-gear" s={14} />
+                  <span className="nm">{t('settings')}</span>
+                  <button className="tx" aria-label={t('close')} title={t('close')} onClick={(e) => (e.stopPropagation(), setSetOpen(null))}>
+                    <Ic n="close" s={14} />
+                  </button>
+                </span>
+              )}
               <span className="sp" />
             </div>
-            {fa && (
+            {fa && !setTab && (
               <div className="crumb">
                 <Ic n="library" s={12} />
                 {state!.vault!.name}
@@ -599,33 +663,53 @@ function Desk() {
                 {tab.label}
               </div>
             )}
-            <div className="content">
-              <ICloudBanner show={rem?.banner === 'noICloud'} />
-              {center}
-            </div>
+            {setTab ? (
+              <div className="content setc">
+                <SettingsDialog asTab page={setTab} onPage={setSetOpenRaw} appNotice={toast?.msg ?? null} onClose={() => setSetOpen(null)} onImport={() => (setSetOpen(null), setImp(true))} />
+              </div>
+            ) : (
+              <div className="content">
+                <ICloudBanner show={rem?.banner === 'noICloud'} />
+                {center}
+              </div>
+            )}
           </main>
-          {s.right && withDetail && (
+          {s.right && (withDetail || rtab === 'ai') && (
             <aside className="right" data-part="右栏">
               <div className="tabs">
-                <button className="tab on" aria-selected>
-                  <Ic n="list-flat" s={14} />
-                  <span className="nm">{t('detail')}</span>
-                </button>
+                {rtab === 'ai' ? (
+                  <button className="tab on" aria-selected data-k="ai">
+                    <EngineLogo id={chatAi?.engine} s={14} />
+                    <span className="nm">{t('aiTab')}</span>
+                  </button>
+                ) : (
+                  <button className="tab on" aria-selected>
+                    <Ic n="list-flat" s={14} />
+                    <span className="nm">{t('detail')}</span>
+                  </button>
+                )}
                 <span className="sp" />
-                {sel && (
+                {rtab === 'detail' && sel && (
                   <button className="ib" aria-label={t('closeDetail')} onClick={() => setSelRef(null)}>
                     <Ic n="close" s={14} />
                   </button>
                 )}
               </div>
-              <div className="rbody">
-                <Detail x={sel} snap={snap} today={today} />
-              </div>
+              {rtab === 'detail' && (
+                <div className="rbody">
+                  <Detail x={sel} snap={snap} today={today} />
+                </div>
+              )}
+              {(aiOpened || rtab === 'ai') && (
+                <div className="rai" hidden={rtab !== 'ai'}>
+                  <AiChat shown={rtab === 'ai'} today={today} ask={aiAsk} onToast={(m, sub, undo) => show(m, sub, undo)} onUndo={(id) => actions.undo(id)} />
+                </div>
+              )}
             </aside>
           )}
           <nav className="abar r" aria-label={t('detail')}>
-            {ab({ k: 'detail', icon: 'list-flat', label: t('detail'), on: s.right, onClick: () => void saveSettings({ right: !s.right }) })}
-            {ab({ k: 'ai', logo: true, label: t('aiBar', ai?.label ?? 'Claude Code'), onClick: (e) => later(e, t('aiBarSay', ai?.full ?? 'Claude Code')) })}
+            {ab({ k: 'detail', icon: 'list-flat', label: t('detail'), on: s.right && rtab === 'detail', onClick: () => tapRight('detail') })}
+            {ab({ k: 'ai', logo: true, label: t('aiBar', chatAi?.label ?? 'Claude Code'), on: s.right && rtab === 'ai', onClick: () => tapRight('ai') })}
           </nav>
         </div>
         <div className="status" data-part="底栏">
@@ -672,9 +756,10 @@ function Desk() {
           onGo={(a, n) => (setPal(false), go(a, n))}
           onSettings={() => (setPal(false), setSetOpen('general'))}
           onImport={rem?.connected && rem.auth === 'full' ? () => (setPal(false), setImp(true)) : undefined}
+          onAskAi={(text) => (setPal(false), askAi(text))}
         />
       )}
-      {setOpen && <SettingsDialog page={setOpen} appNotice={toast?.msg ?? null} onClose={() => setSetOpen(null)} onImport={() => (setSetOpen(null), setImp(true))} />}
+      {setOpen && !fa && <SettingsDialog page={setOpen} onPage={setSetOpenRaw} appNotice={toast?.msg ?? null} onClose={() => setSetOpen(null)} onImport={() => (setSetOpen(null), setImp(true))} />}
       {imp && (
         <ImportDialog
           onClose={() => setImp(false)}
@@ -686,7 +771,7 @@ function Desk() {
         />
       )}
       {/* 提示条在弹窗上面（设置里连提醒事项、导入以后的话也看得到） */}
-      <Toast toast={setOpen ? null : toast} onUndo={(id) => actions.undo(id)} />
+      <Toast toast={setOpen && (!fa || setFront) ? null : toast} onUndo={(id) => actions.undo(id)} />
       {delAsk && (
         <DeleteAsk
           n={delAsk.length}

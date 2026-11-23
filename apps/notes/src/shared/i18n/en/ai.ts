@@ -157,4 +157,17 @@ export const AI: Table = {
   '插到《{name}》光标处\n写成 AI 块，块头链回这段对话': 'Insert at the cursor in “{name}”\nAs an AI block that links back to this chat',
   '插到《{name}》末尾\n写成 AI 块，块头链回这段对话': 'Insert at the end of “{name}”\nAs an AI block that links back to this chat',
   '插进了《{name}》': 'Inserted into “{name}”',
+  // ---------- 回答里软件按名字认的链接（renderer/cite-names.tsx，task-3e53q） ----------
+  '「{name}」在这段对话里不再认成链接': '“{name}” won’t be linked again in this chat',
+  '软件按名字认的：AI读过这篇': 'Linked by name: the AI read this note',
+  '软件按名字认的：名字加了书名号': 'Linked by name: the name is in quotes',
+  不是这篇: 'Not this one',
+
+  // ---------- 对话目录（renderer/chat-toc.tsx，task-3e53q） ----------
+  这段对话的目录: 'Chat contents',
+  '这段对话 · {n} 问': (p) => `This chat · ${count(p.n, 'question')}`,
+  '↑↓ 选 · ↵ 跳过去': '↑↓ pick · ↵ go',
+  '（图和材料）': '(images and materials)',
+  '第{page}页 · {text}': 'Page {page} · {text}',
+  框的那块: 'The boxed area',
 }

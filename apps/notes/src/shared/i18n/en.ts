@@ -28,11 +28,18 @@ import { AI_COL } from './en/ai-col'
 import { DB_COLS } from './en/db-cols'
 import { MINDMAP } from './en/mindmap'
 import { AUTO } from './en/auto'
+import { DREAM_JUDGE } from './en/dream-judge'
 import { FIND } from './en/find'
 import { MINDMAP2 } from './en/mindmap2'
 import { BASE_SUMS } from './en/base-sums'
 import { SELBAR } from './en/selbar'
 import { BOARD_SELECT } from './en/board-select'
+import { FEYNMAN_AFTER } from './en/feynman-after'
+import { VOICE } from './en/voice'
+import { CITE } from './en/cite'
+import { LLM } from './en/llm'
+import { RELATED } from './en/related'
+import { FEYNMAN_BOARD } from './en/feynman-board'
 
 /** 每张分表（测试按文件查重、查占位） */
 export const EN_PARTS: Readonly<Record<string, Table>> = {
@@ -71,6 +78,19 @@ export const EN_PARTS: Readonly<Record<string, Table>> = {
   selbar: SELBAR,
   // 白板框选、文档选多块的操作条（task-5ryf9）
   'board-select': BOARD_SELECT,
+  // 费曼「讲完以后」（task-yvabi ③）
+  'feynman-after': FEYNMAN_AFTER,
+  // 费曼的语音输入（task-yvabi）
+  voice: VOICE,
+  cite: CITE,
+  // 梦游的 AI 判断（task-h7oy8）
+  'dream-judge': DREAM_JUDGE,
+  // 本地模型（task-h7oy8）
+  llm: LLM,
+  // 费曼学习 · 白板上讲（task-yvabi ②）
+  'feynman-board': FEYNMAN_BOARD,
+  // 右栏「相关」栏（task-h7oy8）
+  related: RELATED,
 }
 
 export const EN: Table = Object.assign({}, ...Object.values(EN_PARTS)) as Table

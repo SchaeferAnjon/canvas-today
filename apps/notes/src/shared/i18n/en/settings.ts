@@ -297,7 +297,7 @@ export const SETTINGS: Table = {
   '导入哪个 Chrome 用户的登录？': 'Import sign-ins from which Chrome profile?',
   '已存 · Soniox密钥': 'Saved · Soniox key',
   'Soniox密钥删掉了': 'Soniox key deleted',
-  '没字幕的视频「生成字幕」时用': 'Used by “Make subtitles” for videos without subtitles',
+  '生成字幕和费曼的语音输入都用它': 'Used by “Make subtitles” and Feynman voice input',
   '已填 ••••{tail}，加密存在这台Mac上': 'Set ••••{tail}, stored encrypted on this Mac',
   '用的是环境变量SONIOX_API_KEY': 'Using the SONIOX_API_KEY environment variable',
   '还没填：到soniox.com注册后在控制台拿一个API Key': 'Not set: sign up at soniox.com and get an API key from the console',
@@ -452,6 +452,22 @@ export const SETTINGS: Table = {
   '它自己的默认模型': 'Its default model',
   '去AI页换': 'Change in AI',
 
+  // ---------- 找候选用的本机模型（renderer/embed-model.tsx，放在设置 › 梦游） ----------
+  '找候选用的本机模型': 'Local model for finding candidates',
+  '设置 › 文档和白板里开了「按意思找」才会下载': 'Downloads only after “Search by meaning” is turned on in Settings › Docs & boards',
+  '去打开': 'Turn on',
+  '搜索和梦游都在用它': 'Search and Dreaming use it',
+  'bge-m3 · 已就绪': 'bge-m3 · Ready',
+  'bge-m3没弄好，先接着用{model}': 'bge-m3 is not ready; still using {model}',
+  '重试': 'Retry',
+  '在下载bge-m3：已下{got} MB / {size} MB · {pct}%': 'Downloading bge-m3: {got} MB / {size} MB · {pct}%',
+  'bge-m3下好了，在校验': 'bge-m3 downloaded, verifying',
+  'bge-m3建索引{done} / {total}段，建好以前先用右边这个': 'bge-m3 indexing {done} / {total} passages; the one on the right is used until then',
+  'bge-m3下好了，在准备建索引': 'bge-m3 downloaded, preparing the index',
+  '一会儿在后台下bge-m3（约{size} MB）': 'bge-m3 (about {size} MB) downloads in the background soon',
+  '现在用{model}': 'Using {model}',
+  '看原话 ›': 'Details ›',
+
   // ---------- 插件页的框（renderer/plugins/index.tsx；插件名、说明、权限在插件那边） ----------
   '内置插件': 'Built-in plugins',
   '要用：{perms}': 'Uses: {perms}',
@@ -551,7 +567,7 @@ export const SETTINGS: Table = {
   // 英文写美元：Soniox 官网的文件转写价 $0.10 / 小时（soniox.com/pricing，2026-11-22 查）；中文照旧「约¥0.7」
   '要先填听写密钥；一小时约¥0.7': 'Needs a transcription key first; about $0.10 an hour',
   '听写（Soniox）密钥': 'Transcription (Soniox) key',
-  '没字幕的视频「生成字幕」时用；加密存在这台Mac上': 'Used by “Make subtitles” for videos without subtitles; stored encrypted on this Mac',
+  '生成字幕和费曼的语音输入都用它；加密存在这台Mac上': 'Used by “Make subtitles” and Feynman voice input; stored encrypted on this Mac',
   '字幕怎么显示、记到哪': 'Subtitle display and notes',
   '在视频条的字幕菜单里，看视频时改最顺手': 'In the subtitle menu on the video bar, easiest to change while watching',
   '用这台Mac上已经登录的命令行，不另存密钥': 'Uses command-line tools already signed in on this Mac; no keys stored',
@@ -770,4 +786,14 @@ export const SETTINGS: Table = {
   '框住外语词，马上出这句里的意思': 'Box a foreign word to see what it means in this sentence',
   'Mac上的英文打字助手': 'An English typing helper for the Mac',
   '给Claude Code、Codex套的Mac窗口': 'A Mac window around Claude Code and Codex',
+  // ---------- AI › 回答里的链接（task-3e53q） ----------
+  回答里的链接: 'Links in answers',
+  回答里提到的笔记名自动认成链接: 'Link note names mentioned in answers',
+  '只认库里只有一篇、AI这一轮读过或加了书名号的名字': 'Only names that exactly one note has, which the AI read this turn or put in quotes',
+  这些名字不认: 'Never link these names',
+  '一行一个。「笔记」「计划」「待办」「未命名」「第一条」这类常见名本来就不认': 'One per line. Common names like “Notes”, “Plan”, “To-do” and “Untitled” are never linked anyway',
+  '已存 · 这些名字不再认成链接': 'Saved · these names won’t be linked',
+  '回答里光写了笔记名的，软件也认成链接': 'Note names in answers are linked too',
+  只认AI写成链接的和写了路径的: 'Only links the AI wrote and paths are linked',
+  '比如：周报': 'e.g. Weekly report',
 }

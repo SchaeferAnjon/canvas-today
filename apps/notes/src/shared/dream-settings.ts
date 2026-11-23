@@ -5,6 +5,8 @@
  */
 import { CATEGORY_IDS, type CatId, catName } from './categories'
 import { type Lang, list, tIn, uiLang } from './i18n'
+import type { EngineId } from './agent'
+import { JUDGE_DEFAULT } from './dream-judge'
 
 /** 梦游能做的事，一样一个开关 */
 export type DreamStep = 'file' | 'rename' | 'link' | 'week' | 'viz' | 'attach' | 'dup' | 'video'
@@ -29,6 +31,29 @@ export interface DreamSettings {
   folders: CatId[]
   /** 改完直接收下（一次提交进当前分支，报告里能撤回）；默认先预览、收下才进库 */
   autoTake: boolean
+  /** 补双链、可能重复、复查旧「相关：」由谁判（task-h7oy8，用户定「两种都做，让人来选」） */
+  judge: DreamJudge
+  /** 一晚最多判几篇（一篇问一次 AI）；第一次整库补全分几晚做完 */
+  nightCap: number
+  /**
+   * 库最外层不叫分类名的文件夹（从 Obsidian 搬来的「00-Inbox」「40-Clippings」）：也在这几个里补双链（task-h7oy8）。
+   * autoFolders 开着时看名字认（Inbox、Clippings、Reading、收集箱…，前面的编号不算），认出来的那一类勾着才算；
+   * 用户在设置里点过以后 autoFolders 关掉，只照 extraFolders
+   */
+  extraFolders: string[]
+  autoFolders: boolean
+}
+
+/**
+ * AI 判断走哪条路：cli 是这台 Mac 上登录的命令行（Claude Code、Codex…，用订阅额度）；local 是软件自己在本机跑的模型（不花额度，第一次用时下载）。
+ * engine、model、effort 只管 cli；local 是本地模型的 id（空串是默认那个）
+ */
+export interface DreamJudge {
+  via: 'cli' | 'local'
+  engine: EngineId
+  model: string
+  effort: string
+  local: string
 }
 
 export const DREAM_STEPS: DreamStep[] = ['file', 'rename', 'link', 'week', 'viz', 'attach', 'dup', 'video']
@@ -38,6 +63,8 @@ export const GAP_CHOICES = [6, 12, 20, 24, 48] as const
 export const LINK_CHOICES = [10, 30, 50, 100] as const
 export const VIZ_CHOICES = [1, 2, 3, 5] as const
 export const DUP_CHOICES = [10, 20, 50] as const
+export const CAP_CHOICES = [20, 50, 100, 200, 500, 1000] as const
+export const JUDGE_ENGINES: EngineId[] = ['claude', 'codex', 'gemini', 'opencode']
 
 export const DEFAULT_DREAM: DreamSettings = {
   auto: true,
@@ -51,9 +78,14 @@ export const DEFAULT_DREAM: DreamSettings = {
   // 收件箱、阅读（微信读书同步的书摘 2026-11-18 起在这里）、剪藏、周记；按分类表的先后
   folders: ['收件箱', '阅读', '剪藏', '周记'],
   autoTake: false,
+  // 默认照真库评测的推荐（shared/dream-judge.ts 的 JUDGE_DEFAULT：Sonnet 5.5 · Medium，准确率 97.5%）
+  judge: { via: 'cli', engine: JUDGE_DEFAULT.engine, model: JUDGE_DEFAULT.model, effort: JUDGE_DEFAULT.effort, local: '' },
+  nightCap: 500,
+  extraFolders: [],
+  autoFolders: true,
 }
 
-export type DreamPatch = Partial<Omit<DreamSettings, 'steps'>> & { steps?: Partial<Record<DreamStep, boolean>> }
+export type DreamPatch = Partial<Omit<DreamSettings, 'steps' | 'judge'>> & { steps?: Partial<Record<DreamStep, boolean>>; judge?: Partial<DreamJudge> }
 
 const pick = <T extends number>(v: unknown, choices: readonly T[], d: T): T => (choices.includes(v as T) ? (v as T) : d)
 const bool = (v: unknown, d: boolean) => (typeof v === 'boolean' ? v : d)
@@ -77,12 +109,55 @@ export function normalizeDream(raw: unknown): DreamSettings {
     dupMax: pick(r.dupMax, DUP_CHOICES, d.dupMax as (typeof DUP_CHOICES)[number]),
     folders,
     autoTake: bool(r.autoTake, d.autoTake),
+    judge: normalizeJudge(r.judge),
+    nightCap: pick(r.nightCap, CAP_CHOICES, d.nightCap as (typeof CAP_CHOICES)[number]),
+    extraFolders: Array.isArray(r.extraFolders) ? [...new Set((r.extraFolders as unknown[]).filter((f): f is string => typeof f === 'string' && !!f.trim() && !/[/\\]/.test(f) && f.length <= 120 && !f.startsWith('.')))].slice(0, 30) : [],
+    autoFolders: bool(r.autoFolders, d.autoFolders),
+  }
+}
+
+/** 看名字认分类：去掉前面的编号、符号（「40-Clippings」「00_Inbox」「📥 收集箱」），像哪一类给哪一类（只认补双链用得上的三类） */
+const GUESS: [CatId, RegExp][] = [
+  ['收件箱', /^(inbox|in-?tray|收件箱|收集箱|待整理|未整理)$/i],
+  ['剪藏', /^(clippings?|clips?|web[ -]?clips?|web|articles?|剪藏|剪报|摘录|网页|文章|稍后读|read ?later)$/i],
+  ['阅读', /^(reading|books?|读书|阅读|书摘|书籍|kindle|微信读书)$/i],
+]
+export function guessCat(folder: string): CatId | undefined {
+  const bare = folder.replace(/^[\p{N}\p{P}\p{S}\s]+/u, '').trim()
+  return GUESS.find(([, re]) => re.test(bare))?.[0]
+}
+
+/** 库最外层的文件夹（路径的第一段，隐藏的不算） */
+export const topFolders = (paths: string[]) => [...new Set(paths.filter((p) => p.includes('/')).map((p) => p.slice(0, p.indexOf('/'))))].filter((f) => !f.startsWith('.')).sort()
+
+/** 这个库里除了分类文件夹，还在哪几个最外层文件夹补双链（tops 是库最外层的文件夹） */
+export function extraLinkFolders(s: DreamSettings, tops: string[]): string[] {
+  const cats = new Set(CATEGORY_IDS.map(catName))
+  const out = new Set(s.extraFolders.filter((f) => tops.includes(f) && !cats.has(f)))
+  if (s.autoFolders) for (const f of tops) {
+    const c = cats.has(f) ? undefined : guessCat(f)
+    if (c && s.folders.includes(c)) out.add(f)
+  }
+  return [...out].sort()
+}
+
+const word = (v: unknown, d: string) => (typeof v === 'string' && /^[\w.\-/:@]{0,80}$/.test(v) ? v : d)
+
+function normalizeJudge(raw: unknown): DreamJudge {
+  const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
+  const d = DEFAULT_DREAM.judge
+  return {
+    via: r.via === 'local' ? 'local' : 'cli',
+    engine: JUDGE_ENGINES.includes(r.engine as EngineId) ? (r.engine as EngineId) : d.engine,
+    model: word(r.model, d.model),
+    effort: word(r.effort, d.effort),
+    local: word(r.local, d.local),
   }
 }
 
 /** 改一处：开关合进 steps，别的直接换，再检查一遍 */
 export function patchDream(cur: DreamSettings, p: DreamPatch): DreamSettings {
-  return normalizeDream({ ...cur, ...p, steps: { ...cur.steps, ...(p.steps ?? {}) } })
+  return normalizeDream({ ...cur, ...p, steps: { ...cur.steps, ...(p.steps ?? {}) }, judge: { ...cur.judge, ...(p.judge ?? {}) } })
 }
 
 /** 梦游能在这个路径上改字、建文件吗（在勾上的顶级分类里，文件夹名照这个库的） */

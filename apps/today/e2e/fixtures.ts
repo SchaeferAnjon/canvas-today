@@ -53,3 +53,28 @@ export const CAL_SEED = {
     { id: 'ev-6', title: '交房租', calendar: 'C-home', allDay: true, start: '2026-11-23', end: '2026-11-23' },
   ],
 }
+
+/**
+ * 系统日历里多一个「提醒事项」（task-ov5bb，用户截图里的样子）：系统把排了时间的提醒画成日程，
+ * 画布今日镜像进提醒事项的待办在这里又出来一遍（和白块重复），再加几条别的提醒；30 号只有提醒（小月历的点）
+ */
+export const REM_CAL = { id: 'C-rem', title: '提醒事项', color: '#FF3B30', source: 'iCloud' }
+export const CAL_REM_SEED = {
+  ...CAL_SEED,
+  calAuth: 'full',
+  calendars: [REM_CAL, ...CAL_SEED.calendars],
+  events: [
+    ...CAL_SEED.events,
+    { id: 'r-1', title: '复习 Lecture05 的神经元结构图', calendar: 'C-rem', allDay: false, start: '2026-11-22T11:00', end: '2026-11-22T12:00' },
+    { id: 'r-2', title: '写第一批交回', calendar: 'C-rem', allDay: false, start: '2026-11-22T18:00', end: '2026-11-22T19:00' },
+    { id: 'r-3', title: '发给导师', calendar: 'C-rem', allDay: false, start: '2026-11-23T09:00', end: '2026-11-23T10:00' },
+    { id: 'r-4', title: '交论文初稿', calendar: 'C-rem', allDay: false, start: '2026-11-23T15:00', end: '2026-11-23T16:00' },
+    { id: 'r-5', title: '交实验报告', calendar: 'C-rem', allDay: false, start: '2026-11-24T10:00', end: '2026-11-24T12:00' },
+    { id: 'r-6', title: '订冰岛租车', calendar: 'C-rem', allDay: false, start: '2026-11-24T20:00', end: '2026-11-24T21:00' },
+    { id: 'r-7', title: '取干洗的衣服', calendar: 'C-rem', allDay: false, start: '2026-11-25T13:00', end: '2026-11-25T14:00' },
+    { id: 'r-8', title: '给房东回邮件', calendar: 'C-rem', allDay: false, start: '2026-11-26T09:00', end: '2026-11-26T11:00' },
+    { id: 'r-9', title: '续签证材料', calendar: 'C-rem', allDay: true, start: '2026-11-26', end: '2026-11-26' },
+    { id: 'r-10', title: '打电话给银行', calendar: 'C-rem', allDay: false, start: '2026-11-27T14:00', end: '2026-11-27T15:00' },
+    { id: 'r-11', title: '买牛奶', calendar: 'C-rem', allDay: false, start: '2026-11-30T18:00', end: '2026-11-30T18:30' },
+  ],
+}

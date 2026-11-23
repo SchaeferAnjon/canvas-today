@@ -601,7 +601,7 @@ strong {
   backdrop-filter: var(--isle-blur);
   --t2: var(--isle-t2);
   --t3: var(--isle-t3);
-  /* 岛里的卡片、勾选框、按钮、下拉、存在哪那张卡也半透明（设计复审：不然是岛上一块块白底） */
+  /* 岛里的卡片、按钮、下拉、存在哪那张卡也半透明（设计复审：不然是岛上一块块白底）；勾选框没勾的本来就不铺底（task-gr4sx） */
   --card: var(--isle-card);
   --clip: var(--isle-card);
 }
@@ -866,7 +866,8 @@ strong {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.row.done .rt {
+.row.done .rt,
+.row.cancel .rt {
   color: var(--t3);
   text-decoration: line-through;
 }
@@ -922,12 +923,13 @@ strong {
   width: 14px;
   height: 14px;
   border-radius: 4px;
-  border: 1.5px solid var(--line2);
+  /* 没勾的不铺底、透出面板，边是 @cn/design 的 --cb-line（task-gr4sx，和画布笔记待办、文档里的勾选框同一套） */
+  border: 1.5px solid var(--cb-line);
   display: grid;
   place-items: center;
   flex: none;
   color: var(--acc-on);
-  background: var(--card);
+  background: transparent;
 }
 .row .cb,
 .dtitle .cb {
@@ -935,14 +937,29 @@ strong {
   height: 16px;
 }
 .cb:hover {
-  border-color: var(--t3);
+  border-color: var(--t2);
 }
 .cb.hi {
-  border-color: var(--yellow);
+  border-color: var(--cb-hi);
 }
 .cb.on {
   background: var(--acc-bg);
   border-color: var(--acc-bg);
+}
+/* [/] 进行中：下半格填上主色（Obsidian 主题里常见的半格），还能点着勾掉 */
+.cb.half {
+  border-color: var(--acc-bg);
+  background: linear-gradient(to top, var(--acc-bg) 50%, transparent 50%);
+}
+/* ⏫ 的进行中照样黄框 */
+.cb.half.hi {
+  border-color: var(--yellow);
+}
+/* [-] 取消了：淡框里一道横线 */
+.cb.off {
+  color: var(--t3);
+  border-color: var(--line2);
+  background: transparent;
 }
 .more {
   font-size: 12px;
@@ -1246,12 +1263,54 @@ select.sel {
   padding: 0 8px;
   font-size: 13px;
 }
+/* 下面「系统提醒事项」那一行（镜像的列表，点不了）：10 的圆点，和上面能点的方色块分开；左右各让 1，名字和上面对齐 */
 .calrow i {
-  width: 12px;
-  height: 12px;
-  border-radius: 3px;
+  width: 10px;
+  height: 10px;
+  margin: 0 1px;
+  border-radius: 999px;
   background: var(--c);
   flex: none;
+}
+/*
+ * 系统日历的色块是一颗按钮（task-ov5bb）：点了「不在这里显示」，藏起的是空心色框、名字变淡，行还在。
+ * 按钮 28 × 26（点得到的最小 28），左右 -8 压回 12 色块的位置；悬停的淡底画在色块外圈 4（看起来是 20 方）
+ */
+.calrow .calsw {
+  flex: none;
+  width: 28px;
+  height: 26px;
+  margin: 0 -8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  display: grid;
+  place-items: center;
+  cursor: default;
+}
+.calrow .calsw::before {
+  content: '';
+  width: 12px;
+  height: 12px;
+  box-sizing: border-box;
+  border-radius: 3px;
+  background: var(--c);
+}
+.calrow .calsw:hover::before {
+  box-shadow: 0 0 0 4px var(--fill);
+}
+.calrow .calsw:focus-visible {
+  outline: none;
+}
+.calrow .calsw:focus-visible::before {
+  box-shadow: 0 0 0 2px var(--acc-ring);
+}
+.calrow.off .calsw::before {
+  background: transparent;
+  border: 1.5px solid var(--c);
+}
+.calrow.off .nm {
+  color: var(--t3);
 }
 .calrow .nm {
   min-width: 0;
@@ -2052,6 +2111,44 @@ select.sel {
   position: static;
   margin-top: 6px;
 }
+/* 全局快速加一条的键（画布今日特色）：键位按钮、录键、被占了那一句和几组换的，样子同画布笔记设置的 .sa-keyb / .sa-kwarn */
+.sa-keyb {
+  height: 28px;
+  min-width: 120px;
+  text-align: center;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: 1px solid var(--line2);
+  background: var(--fill);
+  font: 12px var(--sans);
+  color: var(--t1);
+  white-space: nowrap;
+}
+.sa-keyb.rec {
+  border-color: var(--acc);
+  box-shadow: 0 0 0 3px var(--acc-soft);
+  color: var(--acc-t);
+}
+.sa-keyb.bad {
+  border-color: var(--yellow);
+}
+.sa-kwarn {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--t1);
+  margin-top: 4px;
+}
+.sa-kwarn .ci {
+  color: var(--yellow);
+}
+.sa-ksug {
+  display: inline-flex;
+  gap: 6px;
+  margin-left: 4px;
+}
 
 /* 导入提醒事项：样子同设置弹窗（.setw），一组一块；顶边固定在 120（两步之间标题和 × 不挪），内容多了往下长、在弹窗里滚 */
 .setw.impw {
@@ -2186,4 +2283,477 @@ select.sel {
   margin: 8px 0 0;
   font-size: 13px;
   color: var(--t2);
+}
+
+/* ---------- 右栏 AI 对话（task-ykkoz，设计稿 32-今日AI排日程；样子照画布笔记的 AI 对话框） ---------- */
+.rai {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.rai[hidden] {
+  display: none;
+}
+.aim {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--t1);
+}
+.aim-h {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 38px;
+  padding: 0 10px 0 8px;
+  flex: none;
+  position: relative;
+}
+.aim-h .ttl {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 6px;
+  border-radius: 6px;
+  min-width: 0;
+  color: var(--t1);
+}
+.aim-h .ttl:hover,
+.aim-h .ttl[aria-expanded='true'] {
+  background: var(--fill);
+}
+.aim-h .ttl b {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.aim-h .ttl > .ci:last-child {
+  color: var(--t3);
+}
+.aim-h .sp {
+  flex: 1;
+}
+.aim-see {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px;
+  font-size: 12px;
+  color: var(--t3);
+  flex: none;
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+.aim-see .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 6px;
+  background: var(--fill);
+  color: var(--t2);
+}
+.aim-see .chip i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--acc);
+}
+.aim-can {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  margin: 8px 14px 0;
+  padding: 0 9px;
+  border-radius: 8px;
+  box-shadow: inset 0 0 0 1px var(--line2);
+  font-size: 12px;
+  color: var(--t2);
+  align-self: flex-start;
+  flex: none;
+}
+.aim-line {
+  height: 1px;
+  background: var(--line);
+  margin: 10px 0 0;
+  flex: none;
+}
+.aim-msgs {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  position: relative;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.aim-u {
+  align-self: flex-end;
+  max-width: 86%;
+  padding: 7px 11px;
+  border-radius: 12px;
+  background: var(--fill2);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.aim-a {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.aim-a .who {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--t3);
+}
+.aim-a .step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 22px;
+  font-size: 12px;
+  color: var(--t2);
+}
+.aim-a .step .ci {
+  color: var(--green, var(--acc));
+  flex: none;
+}
+.aim-a .txt {
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.aim-a .aerr {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--red-t);
+  font-size: 12px;
+}
+.aim-a .aerr span {
+  flex: 1;
+  min-width: 0;
+}
+.aim .ai {
+  margin: 2px 0 0;
+}
+.aim .ai .mv {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  column-gap: 8px;
+  align-items: start;
+  padding: 6px 0;
+  cursor: default;
+}
+.aim .ai .mv + .mv {
+  border-top: 1px solid var(--line);
+}
+.aim .ai .cbx {
+  width: 14px;
+  height: 14px;
+  margin: 3px 0 0;
+  accent-color: var(--acc);
+}
+.aim .ai .mv b {
+  font-weight: 500;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.aim .ai .mv small {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  font-size: 12px;
+  color: var(--t3);
+}
+.aim .ai .mv .seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.aim .ai .mv small em {
+  font-style: normal;
+  color: var(--acc-t);
+  font-weight: 500;
+}
+.aim .ai .steps {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  font-size: 12px;
+  color: var(--t2);
+}
+.aim .ai .foot {
+  font-size: 12px;
+  color: var(--t3);
+  margin-top: 6px;
+}
+.aim .ai .foot.drop {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.aim .ai .row2 {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.aim .ai.took,
+.aim .ai.gone {
+  border-style: solid;
+  background: var(--fill);
+}
+.aim .ai.took .ah .ci {
+  color: var(--green, var(--acc));
+}
+.aim .ai .ah .sp {
+  flex: 1;
+}
+.aim-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 22px;
+  text-align: center;
+}
+.aim-empty b {
+  font-size: 15px;
+  font-weight: 600;
+}
+.aim-empty p {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: var(--t3);
+}
+.aim-empty .sug {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 10px;
+  border-radius: 8px;
+  box-shadow: inset 0 0 0 1px var(--line2);
+  background: var(--card);
+  font-size: 12.5px;
+  color: var(--t1);
+  text-align: left;
+}
+.aim-empty .sug:hover {
+  background: var(--fill);
+}
+.aim-empty .sug .ci {
+  color: var(--t3);
+  flex: none;
+}
+.aim-in {
+  flex: none;
+  margin: 8px 12px 12px;
+  padding: 8px 10px 6px;
+  border-radius: 12px;
+  background: var(--card);
+  box-shadow:
+    0 0 0 1px var(--line2),
+    0 1px 3px rgba(0, 0, 0, 0.04);
+  position: relative;
+}
+.aim-in .ta {
+  display: block;
+  width: 100%;
+  min-height: 38px;
+  max-height: 140px;
+  padding: 2px;
+  border: 0;
+  outline: 0;
+  resize: none;
+  background: transparent;
+  color: var(--t1);
+  font: inherit;
+}
+.aim-in .ta::placeholder {
+  color: var(--t3);
+}
+.aim-in .ft {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 28px;
+  font-size: 12px;
+}
+.aim-in .ft .sp {
+  flex: 1;
+}
+.aim-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 6px;
+  border-radius: 6px;
+  color: var(--t1);
+  white-space: nowrap;
+}
+.aim-pick:hover,
+.aim-pick.open {
+  background: var(--fill);
+}
+.aim-pick > .ci:last-child {
+  color: var(--t3);
+}
+.aim-in .send {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--fill2);
+  color: var(--t3);
+  flex: none;
+}
+.aim-in .send.on {
+  background: var(--solid);
+  color: var(--solid-t);
+}
+.aim-menu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 6px);
+  padding: 6px;
+  border-radius: 12px;
+  background: var(--pop);
+  box-shadow: var(--shadow-up);
+  z-index: 20;
+  max-height: 360px;
+  overflow: auto;
+}
+.aim-menu.down {
+  bottom: auto;
+  top: calc(100% - 2px);
+  left: 8px;
+  right: 10px;
+}
+.aim-menu .mh {
+  padding: 6px 8px 4px 30px;
+  font-size: 12px;
+  color: var(--t3);
+}
+.aim-menu .it {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: 8px;
+  white-space: nowrap;
+  color: var(--t1);
+  text-align: left;
+}
+.aim-menu .it:hover:not(:disabled) {
+  background: var(--fill);
+}
+.aim-menu .it:disabled {
+  color: var(--t3);
+}
+.aim-menu .it .ck {
+  width: 14px;
+  display: grid;
+  place-items: center;
+  color: var(--acc);
+  flex: none;
+}
+.aim-menu .it .nm {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.aim-menu .it .r {
+  margin-left: auto;
+  padding-left: 12px;
+  font-size: 12px;
+  color: var(--t3);
+}
+.aim-menu .sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--line);
+}
+.aim-menu .lnk {
+  padding: 4px 8px 4px 30px;
+  font-size: 12px;
+  color: var(--t3);
+  white-space: normal;
+}
+.aim-menu .it.lnkb {
+  color: var(--acc-t);
+  font-size: 12px;
+}
+/* 中间清单、四象限上：这一行会改成什么 */
+.aim-mv {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  height: 20px;
+  padding: 0 7px;
+  margin-left: 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--acc-t);
+  background: var(--acc-soft);
+  box-shadow: inset 0 0 0 1px var(--acc-ring);
+  white-space: nowrap;
+}
+.row.aim-hit {
+  background: color-mix(in srgb, var(--acc-soft) 60%, transparent);
+}
+/* A 里设置是中间一个标签 */
+.content.setc {
+  display: flex;
+}
+.content.setc > .setpane {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.content.setc .set.set-tab {
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
+  box-shadow: none;
+  background: var(--win);
+}
+.tab .tx {
+  width: 20px;
+  height: 20px;
+  margin-right: -6px;
+  border-radius: 4px;
+  display: grid;
+  place-items: center;
+  color: var(--t3);
+}
+.tab .tx:hover {
+  background: var(--fill);
+  color: var(--t1);
+}
+/* 抄了几处（行尾小块）：和笔记名一样淡 */
+.acc.dup {
+  color: var(--t3);
 }

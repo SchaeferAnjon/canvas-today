@@ -1,6 +1,6 @@
 // AI 回答里的引用指库里的哪样东西、到哪一处（task-3e53q：读 PDF 时旁支回答里「小论文计划里排」带下划线点不开）
 import { describe, expect, it } from 'vitest'
-import { anchorLines, citeOf, citeOfWiki, noteAnchorOf } from '../src/cite'
+import { anchorLines, boardCardOf, citeOf, citeOfWiki, noteAnchorOf } from '../src/cite'
 
 const FILES = ['课程/小论文计划.md', '课程/study project 2/J52 SAGE.pdf', '课程/线代/第3讲 笔记.md', '课程/线代/第3讲.pdf', '阅读/书.md', '可视化/旋转.html', '日记/书.md']
 const AI = { base: '', root: '/Users/me/笔记库', files: FILES }
@@ -41,6 +41,25 @@ describe('citeOf：[字](链接)', () => {
   })
 })
 
+describe('citeOf：命令行常写的样子（task-3e53q，AI 不写成链接时也认）', () => {
+  it('「路径:42」「路径:42-50」「路径:L42」「路径:42:7」认成几行；没写行号的原样', () => {
+    const at = (line: number, end: number) => ({ kind: 'note', path: '课程/小论文计划.md', anchor: { line, end } })
+    expect(citeOf('课程/小论文计划.md:42', AI)).toEqual(at(42, 42))
+    expect(citeOf('课程/小论文计划.md:42-50', AI)).toEqual(at(42, 50))
+    expect(citeOf('课程/小论文计划.md:L42-L43', AI)).toEqual(at(42, 43))
+    expect(citeOf('/Users/me/笔记库/课程/小论文计划.md:42:7', AI)).toEqual(at(42, 42))
+    expect(citeOf('课程/小论文计划.md', AI)).toEqual({ kind: 'note', path: '课程/小论文计划.md' })
+  })
+  it('~/… 按家目录认；/private/tmp 和 /tmp 算一处；家目录没给时 ~ 照实说是库外', () => {
+    const want = { kind: 'note', path: '课程/小论文计划.md' }
+    expect(citeOf('~/笔记库/课程/小论文计划.md', { ...AI, home: '/Users/me' })).toEqual(want)
+    expect(citeOf('~/笔记库/课程/小论文计划.md', AI)).toEqual({ kind: 'outside', path: '~/笔记库/课程/小论文计划.md' })
+    expect(citeOf('/tmp/v/课程/小论文计划.md', { ...AI, root: '/private/tmp/v' })).toEqual(want)
+    expect(citeOf('/private/tmp/v/课程/小论文计划.md', { ...AI, root: '/tmp/v' })).toEqual(want)
+    expect(citeOf('/tmp/w/课程/小论文计划.md', { ...AI, root: '/private/tmp/v' })).toEqual({ kind: 'outside', path: '/tmp/w/课程/小论文计划.md' })
+  })
+})
+
 describe('citeOfWiki：[[双链]]', () => {
   it('按名字、路径找，#标题、#^块、别名都认', () => {
     expect(citeOfWiki('小论文计划', AI)).toEqual({ kind: 'note', path: '课程/小论文计划.md' })
@@ -64,5 +83,39 @@ describe('noteAnchorOf / anchorLines：到哪几行', () => {
     expect(anchorLines(TEXT, { heading: '第二篇' })).toEqual({ from: 6, to: 8 })
     expect(anchorLines(TEXT, { block: 'p2' })).toEqual({ from: 10, to: 10 })
     expect(anchorLines(TEXT, { heading: '没有' })).toBeNull()
+  })
+})
+
+describe('七种引用（task-3e53q 第 ① 条线）', () => {
+  it('canvas-notes://commit/<提交号>：历史里的一次提交（大小写都认，号太短、不是十六进制的不认）', () => {
+    expect(citeOf('canvas-notes://commit/3f9a2c1', AI)).toEqual({ kind: 'commit', hash: '3f9a2c1' })
+    expect(citeOf('canvas-notes://commit/3F9A2C1d', AI)).toEqual({ kind: 'commit', hash: '3f9a2c1d' })
+    expect(citeOf('canvas-notes://commit/3f9', AI, '那次')).toEqual({ kind: 'missing', label: '那次' })
+    expect(citeOf('canvas-notes://commit/zzzzzzz', AI, '那次')).toEqual({ kind: 'missing', label: '那次' })
+  })
+  it('boardCardOf：白板.md#^卡号 是位置行、编号行上的 id；拖到空白处的、列里的、老写法的都认；没有这张卡是 null', () => {
+    const board = [
+      '---',
+      'type: board',
+      '---',
+      '# 读论文白板',
+      '',
+      '## 方法',
+      '',
+      '<!-- card id=c7 -->',
+      '**LOSO 评估**',
+      '随机划分 91.8%，留一被试 80.6%。',
+      '',
+      '另一张。',
+      '',
+      '<!-- card id=c9 x=600 y=80 -->',
+      '放在空白处的一张。',
+      '',
+    ].join('\n')
+    expect(boardCardOf(board, 'c7')).toBe('**LOSO 评估**\n随机划分 91.8%，留一被试 80.6%。')
+    expect(boardCardOf(board, 'c9')).toBe('放在空白处的一张。')
+    expect(boardCardOf(board, 'c1')).toBeNull()
+    // 只是正文里写着 ^c7 的普通笔记：不是白板卡
+    expect(boardCardOf('一段话 ^c7\n', 'c7')).toBeNull()
   })
 })

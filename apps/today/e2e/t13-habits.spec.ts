@@ -86,8 +86,8 @@ test('习惯：加一个（工作日，今天周日是「休」）；右键改�
     // ⌘K「去哪」里也有习惯
     await page.keyboard.press('Meta+k')
     await page.locator('.pal input').fill('习惯')
-    // 打了字第一行是「加一条「习惯」」，点「去哪」那一组里的「习惯」
-    await page.locator('.pal .pr').filter({ hasNotText: '加一条' }).filter({ hasText: '习惯' }).click()
+    // 打了字第一行是「加一条「习惯」」（还有一行「问AI：习惯」），点「去哪」那一组里的「习惯」
+    await page.locator('.pal .pr').filter({ hasNotText: '加一条' }).filter({ hasNotText: '问AI' }).filter({ hasText: '习惯' }).click()
     await expect(page.locator('.vhead h1')).toHaveText('习惯')
     const add = page.getByLabel('加一个习惯，回车')
     await add.click()

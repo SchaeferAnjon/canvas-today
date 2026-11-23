@@ -43,6 +43,7 @@ export interface CalGhost {
   key: string
   title: string
   date: ISODate
+  /** 空的：只改了日子、没有钟点，画在「全天」那一行 */
   time: string
   minutes?: number
   /** 块下面那行小字（「12:00 · Claude Code 排的」） */

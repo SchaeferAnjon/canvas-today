@@ -12,7 +12,8 @@
  *
  * 行尾的 HTML 注释记这个主题的事：AI 认照片时记的照片上哪一块（box，x y w h 都是 0 到 1）、拿不准（unsure）、猜的几种写法（guesses）；
  * 收起（fold，第一批）；第二批的短编号（id，联系线两头认主题）、外框（frame=从它起框几个、frame-title）、概要（sum、sum-text）、
- * 图的宽（img-w）、浮动主题相对中心的位置（at）。别的软件看不见注释，内容不丢。
+ * 图的宽（img-w）、浮动主题相对中心的位置（at）；费曼「补进导图」的讲错（wrong）、AI 写的正确说法（fix）、留给自己填的空框（blank）。
+ * 别的软件看不见注释，内容不丢。
  * 主题下面缩进的续行是这个主题的备注（文档看法里就是这一项下面的正文）；主题字里的 ![…](…) 是挂在主题上的图。
  * 属性里紧跟「白板样式: 导图」依次是 导图布局（向右是默认不写）、导图配色、导图骨架（默认的不写）、导图联系线（一行一条 `k1 -> k2 "字"`）。
  * 规矩：读进来再写回去一个字节都不变；改一个节点只重写它自己那一行（只改了注释里的东西就只改注释），改备注只动那几行续行；
@@ -41,6 +42,12 @@ export interface MapAttrs {
   imgW?: number
   /** 浮动主题（大树后面、最外层的一项）：相对中心主题中点的位置 */
   at?: [number, number]
+  /** 费曼「补进导图」：这个节点讲错了（字变红，下面挂一个 fix 的子节点写正确说法） */
+  wrong?: boolean
+  /** 费曼「补进导图」：AI 写的正确说法（挂在讲错的节点下面，画成带红框的 AI 块） */
+  fix?: boolean
+  /** 费曼「补进导图」：含糊、没讲到，后面挂一个虚线空框「自己补一句」，点开自己填（填了加一个子节点，blank 去掉） */
+  blank?: boolean
 }
 
 export interface MapNode extends MapAttrs {
@@ -231,7 +238,7 @@ function parseNote(s: string): MapAttrs | null {
   for (const m of s.matchAll(ATTR)) {
     const [all, key, q, bare] = m
     const v = q ?? bare
-    if (key === 'unsure' || key === 'fold') {
+    if (key === 'unsure' || key === 'fold' || key === 'wrong' || key === 'fix' || key === 'blank') {
       if (v !== undefined) return null
       out[key] = true
     } else if (v === undefined) return null
@@ -289,10 +296,14 @@ function attrValue(a: MapAttrs, key: string, fold: boolean): unknown {
       return a.imgW
     case 'at':
       return a.at
+    case 'wrong':
+    case 'fix':
+    case 'blank':
+      return a[key] || undefined
   }
   return undefined
 }
-const ATTR_KEYS = ['box', 'unsure', 'guesses', 'fold', 'id', 'frame', 'frame-title', 'sum', 'sum-text', 'img-w', 'at']
+const ATTR_KEYS = ['box', 'unsure', 'guesses', 'fold', 'id', 'frame', 'frame-title', 'sum', 'sum-text', 'img-w', 'at', 'wrong', 'fix', 'blank']
 const sameValue = (x: unknown, y: unknown) => JSON.stringify(x ?? null) === JSON.stringify(y ?? null)
 
 const quoted = (s: string) => `"${s.replace(/"/g, '”').replace(/-->/g, '->').replace(/\s*\n\s*/g, ' ')}"`
@@ -311,6 +322,9 @@ function tokensOf(a: MapAttrs, fold: boolean): [string, string][] {
   if (a.sum?.text !== undefined) t.push(['sum-text', `sum-text=${quoted(a.sum.text)}`])
   if (a.imgW !== undefined) t.push(['img-w', `img-w=${Math.round(a.imgW)}`])
   if (a.at) t.push(['at', `at=${Math.round(a.at[0])},${Math.round(a.at[1])}`])
+  if (a.wrong) t.push(['wrong', 'wrong'])
+  if (a.fix) t.push(['fix', 'fix'])
+  if (a.blank) t.push(['blank', 'blank'])
   return t
 }
 

@@ -10,8 +10,11 @@ import { isoPlus } from './when'
 
 export const open = (t: TaskView) => !t.done && !t.cancelled
 
-/** 在日子类的看法（今天、明天、日历、四象限）里列出来的：最上层的，加上自己写了日子的子任务 */
-export const listed = (t: TaskView) => t.parent === null || t.date !== null
+/**
+ * 在日子类的看法（今天、明天、日历、四象限）里列出来的：最上层的，加上自己写了日子的子任务；
+ * 抄了好几遍的同一条只列显示的那一份（dupOf 是 null 的）。一篇笔记的看法不用它，那一篇的每一行都列
+ */
+export const listed = (t: Pick<TaskView, 'parent' | 'date' | 'dupOf'>) => (t.parent === null || t.date !== null) && !t.dupOf
 
 export type Nav = 'inbox' | 'today' | 'tomorrow' | 'week' | `list:${string}`
 
@@ -44,9 +47,10 @@ export const cntWeek = (ts: readonly TaskView[], today: ISODate) => ts.filter((t
 /** 一篇里没做完的最上层待办有几条 */
 export const cntNote = (ts: readonly TaskView[], path: string) => ts.filter((t) => open(t) && t.path === path && t.parent === null).length
 
-/** 左栏「有待办的笔记」：有没做完的（收件箱那篇除外），新改的在前；正开着的那篇没有了也留着 */
+/** 左栏「有待办的笔记」：有没做完的（收件箱那篇除外、只有抄过来的那几份的除外），新改的在前；正开着的那篇没有了也留着 */
 export function notesWithTodo(s: Snapshot, keep?: string): NoteView[] {
-  const has = new Set(s.tasks.filter((t) => open(t) && t.path !== INBOX_NOTE).map((t) => t.path))
+  // 只有抄过来的那几份没做完的（滴答同步抄进日记的）不算：不然左栏是几十篇日记
+  const has = new Set(s.tasks.filter((t) => open(t) && !t.dupOf && t.path !== INBOX_NOTE).map((t) => t.path))
   return s.notes.filter((n) => has.has(n.path) || n.path === keep).sort((a, b) => b.mtimeMs - a.mtimeMs || a.path.localeCompare(b.path))
 }
 
@@ -106,7 +110,7 @@ export function dayItems(ts: readonly TaskView[], d: ISODate): { timed: TaskView
  */
 export function calItems(ts: readonly TaskView[], repeat: (r: string) => string): CalItem[] {
   return ts
-    .filter((t) => t.date && !t.cancelled)
+    .filter((t) => t.date && !t.cancelled && !t.dupOf)
     .map((t) => ({ key: t.key, title: t.title, date: t.date!, time: t.time, done: t.done, ...(t.repeat ? { note: repeat(t.repeat) } : {}) }))
 }
 
@@ -122,6 +126,50 @@ export function findAgain(old: Pick<TaskView, 'id' | 'path' | 'line' | 'raw' | '
   const near = (list: TaskView[]) => list.sort((a, b) => Math.abs(a.line - old.line) - Math.abs(b.line - old.line))[0] ?? null
   const same = ts.filter((t) => t.path === old.path)
   return near(same.filter((t) => t.raw === old.raw)) ?? near(same.filter((t) => t.title === old.title)) ?? (same.find((t) => t.line === old.line) ?? null)
+}
+
+/** 菜单栏小窗「下一件」：今天还没过去的日程（系统日历）或带钟点的待办里最早的一件；正在进行的日程排最前 */
+export interface NextUp {
+  kind: 'event' | 'task'
+  title: string
+  /** 「14:00」 */
+  time: string
+  /** 日程结束的钟点（今天之内；跨到明天的是 null） */
+  end: string | null
+  /** 日程是哪个日历、待办是哪一篇 */
+  from: string
+  color: string | null
+  /** 还有几分钟开始；正在进行的是 0 */
+  inMin: number
+  key: string | null
+}
+
+const minOf = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5))
+
+/** nowTime：现在的钟点「10:20」；events：这几天的日程（全天的、不在今天的、已经过去的不算） */
+export function nextUp(
+  ts: readonly TaskView[],
+  events: readonly { title: string; calendar: string; color: string; allDay: boolean; start: string; end: string }[],
+  today: ISODate,
+  nowTime: string,
+): NextUp | null {
+  const now = minOf(nowTime)
+  const out: NextUp[] = []
+  for (const e of events) {
+    if (e.allDay) continue
+    const sd = e.start.slice(0, 10)
+    const ed = e.end.slice(0, 10)
+    if (sd > today || ed < today) continue
+    const start = sd < today ? 0 : minOf(e.start.slice(11, 16))
+    const stop = ed > today ? 1440 : minOf(e.end.slice(11, 16))
+    if (stop <= now) continue
+    out.push({ kind: 'event', title: e.title, time: sd < today ? '00:00' : e.start.slice(11, 16), end: ed > today ? null : e.end.slice(11, 16), from: e.calendar, color: e.color, inMin: Math.max(0, start - now), key: null })
+  }
+  for (const t of ts) {
+    if (!open(t) || !listed(t) || t.date !== today || !t.time || minOf(t.time) < now) continue
+    out.push({ kind: 'task', title: t.title, time: t.time, end: null, from: t.path.replace(/^.*\//, '').replace(/\.md$/i, ''), color: null, inMin: minOf(t.time) - now, key: t.key })
+  }
+  return out.sort((a, b) => a.inMin - b.inMin || (a.kind === b.kind ? 0 : a.kind === 'event' ? -1 : 1))[0] ?? null
 }
 
 /** 某篇笔记的名字和文件夹 */

@@ -4,6 +4,7 @@
  */
 import { allSkins, type Appearance, DEFAULT_SETTINGS as NOTES_DEFAULT, normalizeSettings, type SkinInfo } from '../../../notes/src/shared/appearance'
 import type { Lang } from './i18n'
+import { DEFAULT_QUICK_KEY, isCombo } from './quick'
 
 export type TodayAppearance = Pick<Appearance, 'followSystem' | 'day' | 'night' | 'skin' | 'frame' | 'winBg'>
 
@@ -33,6 +34,8 @@ export interface TodaySettings {
   appearance: TodayAppearance
   /** 开着时常驻菜单栏 */
   tray: boolean
+  /** 全局快速加一条的键（任何软件里按它弹出小框）：「⌥⇧T」这种写法（shared/quick.ts） */
+  quickKey: string
   /** 左栏、右栏开着没有 */
   left: boolean
   right: boolean
@@ -57,6 +60,7 @@ export const DEFAULT_TODAY: TodaySettings = {
   followNotes: true,
   appearance: { followSystem: notesLook.followSystem, day: notesLook.day, night: notesLook.night, skin: notesLook.skin, frame: notesLook.frame, winBg: notesLook.winBg },
   tray: true,
+  quickKey: DEFAULT_QUICK_KEY,
   left: true,
   right: true,
   autoUpdate: true,
@@ -96,6 +100,7 @@ export function normalizeToday(raw: unknown, sysLang: Lang = 'zh', user: readonl
       winBg,
     },
     tray: typeof r.tray === 'boolean' ? r.tray : DEFAULT_TODAY.tray,
+    quickKey: isCombo(r.quickKey) ? r.quickKey : DEFAULT_TODAY.quickKey,
     left: typeof r.left === 'boolean' ? r.left : true,
     right: typeof r.right === 'boolean' ? r.right : true,
     ...(typeof r.lastVault === 'string' ? { lastVault: r.lastVault } : {}),

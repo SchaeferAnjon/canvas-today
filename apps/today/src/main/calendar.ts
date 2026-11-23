@@ -3,12 +3,14 @@
  * 画在日历的周、月里（颜色用它自己日历的），AI 排空档时避开；拖不动，不写。设置里「显示系统日历的日程」开着才读，
  * 第一次打开时系统问一次（「允许完全访问」）。测试模式里小助手是 --memory 的假日历，不碰用户真的日历。
  * 日历 App 里改了（EKEventStoreChanged）小助手发一行 changed：告诉界面重读。
+ * 左栏每个日历能「不在这里显示」（task-ov5bb）：记在和画布笔记共用的 calendars.json（main/cal-hidden.ts），藏起的日历的日程 events() 就不给。
  */
 import type { CalEvent } from '@cn/calendar'
 import type { CalState, RemAuth } from '../shared/api'
 import type { Lang } from '../shared/i18n'
 import { tr } from '../shared/i18n'
 import type { CalSettings, TodaySettings } from '../shared/settings'
+import { HiddenCals, isHidden } from './cal-hidden'
 import { HelperError, type RemHelper } from './rem-helper'
 
 interface HelperCal {
@@ -37,6 +39,8 @@ export interface CalDeps {
   changed: () => void
   notice: (n: { msg: string; sub?: string }) => void
   openExternal: (url: string) => Promise<void>
+  /** 哪几个日历「不在这里显示」：和画布笔记共用的那份文件（main/cal-hidden.ts） */
+  hiddenFile: string
   /** 顺手连提醒事项（左栏那一颗「连接系统日历和提醒事项」）：不另说话，交回连上了几条、哪个列表；没连上是 null */
   connectReminders: () => Promise<{ mirrored: number; list: string } | null>
 }
@@ -51,11 +55,18 @@ export class CalendarLink {
   private asking = false
   private cals: HelperCal[] = []
   private error: string | null = null
+  /** 不在这里显示的日历（画布笔记那边藏的也算：同一份文件） */
+  readonly hidden: HiddenCals
 
   constructor(
     private helper: RemHelper,
     private d: CalDeps,
   ) {
+    this.hidden = new HiddenCals(d.hiddenFile, () => {
+      if (!this.active()) return
+      this.emit()
+      this.d.changed()
+    })
     helper.on('changed', () => {
       if (!this.active()) return
       void this.loadCalendars().then(() => this.d.changed())
@@ -77,7 +88,7 @@ export class CalendarLink {
       asking: this.asking,
       show: this.show(),
       active: this.active(),
-      calendars: this.active() ? this.cals.map((c) => ({ id: c.id, title: c.title, color: c.color ?? GREY, source: c.source })) : [],
+      calendars: this.active() ? this.cals.map((c) => ({ id: c.id, title: c.title, color: c.color ?? GREY, source: c.source, hidden: isHidden(c, this.hidden.get(), this.cals) })) : [],
       error: this.error,
     }
   }
@@ -146,13 +157,41 @@ export class CalendarLink {
     return this.state()
   }
 
-  /** 这几天（本地日子，都含）的日程，交给 @cn/calendar 画；没开、没授权是空的 */
+  /**
+   * 藏起 / 显示一个日历（左栏右键「不在这里显示」、点色块）。藏起的：周、月、全天、小月历的点都不画，
+   * 「帮我排进空着的时间」也不当它占着时间（看不见的不占；「提醒事项」那个日历本来就和待办重复）
+   */
+  setHidden(id: string, hide: boolean): CalState {
+    const c = this.cals.find((x) => x.id === id)
+    if (!c || !this.active()) return this.state()
+    this.hidden.set(c, hide, this.cals)
+    this.emit()
+    this.d.changed()
+    return this.state()
+  }
+
+  /** 全部显示 */
+  showAll(): CalState {
+    this.hidden.clear()
+    this.emit()
+    this.d.changed()
+    return this.state()
+  }
+
+  /** 窗口回到前面：那份文件被画布笔记改过就跟上（平时看着文件夹，这是兜底） */
+  recheck() {
+    this.hidden.check()
+  }
+
+  /** 这几天（本地日子，都含）的日程，交给 @cn/calendar 画；没开、没授权是空的；不在这里显示的日历不给 */
   async events(from: string, to: string): Promise<CalEvent[]> {
     if (!this.active()) return []
     try {
       const { events } = await this.helper.request<{ events: HelperEvent[] }>('events', { from, to })
       const byId = new Map(this.cals.map((c) => [c.id, c]))
-      return events.map((e) => {
+      const hidden = this.hidden.get()
+      const off = new Set(this.cals.filter((c) => isHidden(c, hidden, this.cals)).map((c) => c.id))
+      return events.filter((e) => !off.has(e.calendar)).map((e) => {
         const c = byId.get(e.calendar)
         return { id: e.id, title: e.title, calendar: c?.title ?? '', color: c?.color ?? GREY, allDay: e.allDay, start: e.start, end: e.end }
       })

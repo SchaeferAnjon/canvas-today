@@ -14,20 +14,25 @@ import { themeInfo } from '../../../notes/src/shared/vscode-theme'
 import { deviceDir, lineAt, minutesOf, splitLines } from '@cn/tasks'
 import type { AddCtx, AiSlot, AppState, LookState, EditReq, FocusOp, FocusTask, GitInfo, HabitOp, TaskView } from '../shared/api'
 import type { Busy, SchedCandidate } from '../shared/ai-plan'
+import { type ChatCtx, chatTitle, type CtxEvent, type CtxTask, type ChatPlan, pickTasks, type TodayMsg } from '../shared/ai-chat'
+import { INBOX_NOTE } from '../shared/brand'
 import PKG from '../../package.json'
 import { BRAND, noteUrl, releaseUrl } from '../shared/brand'
 import { type Lang, tr } from '../shared/i18n'
 import type { TodaySettings } from '../shared/settings'
 import { findAgain, listed, open } from '../shared/views'
-import { isoOf, isoPlus, localNowOf, localStamp } from '../shared/when'
+import { isoOf, isoPlus, localNowOf, localStamp, whenLabel } from '../shared/when'
 import { clockOffset, now, onClock } from './clock'
 import { Committer } from './commit'
 import { aiLabel, aiPick, aiSchedule, aiSplit, aiWhen, warmUp } from './ai'
+import { calPrefsPath } from './cal-hidden'
 import { CalendarLink } from './calendar'
-import { addSubtasks, addTask, applyEdit, ensureTaskId, newList, setTimes } from './edits'
+import { addSubtasks, addTask, applyEdit, applyPlan, ensureTaskId, newList, setTimes } from './edits'
+import { TodayChats } from './ai-chat'
+import { ENGINE_LABEL, pickLabel } from '../../../notes/src/shared/ai-features'
 import { FocusTimer } from './focus'
 import { habitEdit } from './habits'
-import { appMenu, habitMenu, taskMenu } from './menu'
+import { appMenu, calMenu, habitMenu, taskMenu } from './menu'
 import { RemMirror } from './mirror'
 import { helperCommand, RemHelper } from './rem-helper'
 import { notifier, Reminders } from './remind'
@@ -35,6 +40,10 @@ import { effectiveLook, notesDataDir, notesVault, SettingsFile, themesDir, watch
 import { E2E, guardScreen } from './test-mode'
 import { registerFamily } from '../../../notes/src/main/family'
 import { MenuBar } from './tray'
+import { QuickPanel } from './quick'
+import type { QuickAddResult, QuickItem } from '../shared/api'
+import { pathTitle } from '../shared/quick'
+import { cntToday } from '../shared/views'
 import { TaskVault } from './vault'
 
 app.setPath('userData', process.env.CT_USER_DATA || join(app.getPath('appData'), BRAND.userDataDir))
@@ -70,6 +79,8 @@ let quitting = false
 /** 界面还没准备好时来的 canvas-today:// 链接 */
 const pendingUrls: string[] = []
 let rendererReady = false
+/** 「快捷键被占了」打开时已经说过 */
+let quickTakenSaid = false
 
 const today = () => isoOf(now())
 const lang = (): Lang => settings.read().lang
@@ -139,7 +150,9 @@ function pushSnapshot() {
   if (snapTimer) clearTimeout(snapTimer)
   snapTimer = setTimeout(() => {
     if (!vault) return
-    broadcast('ct:snapshot', vault.snapshot())
+    const snap = vault.snapshot()
+    broadcast('ct:snapshot', snap)
+    menuBar.setCount(cntToday(snap.tasks, today()))
     reminders?.soon()
     refreshGit()
   }, 30)
@@ -188,7 +201,8 @@ async function openVault(dir: string): Promise<void> {
   // 先认出哪些镜像着（索引里 ringBy: 'reminders'），本机通知再开始排：重开软件时不把提醒事项已经响过的再补响一次
   mirror?.setVault(v)
   reminders = new Reminders(v, DEVICE, {
-    tasks: () => vault?.snapshot().tasks ?? [],
+    // 抄了好几遍的同一条只响显示的那一份
+    tasks: () => vault?.snapshot().tasks.filter((t) => !t.dupOf) ?? [],
     noteTitle: (p) => p.replace(/^.*\//, '').replace(/\.md$/i, ''),
     lang,
     now,
@@ -231,7 +245,7 @@ async function state(): Promise<AppState> {
 
 // ---------- 窗口 ----------
 
-function load(w: BrowserWindow, page: 'index' | 'tray') {
+function load(w: BrowserWindow, page: 'index' | 'tray' | 'quick') {
   if (process.env.ELECTRON_RENDERER_URL) void w.loadURL(`${process.env.ELECTRON_RENDERER_URL}/${page}.html`)
   else void w.loadFile(join(__dirname, `../renderer/${page}.html`))
 }
@@ -298,7 +312,80 @@ function handleUrl(url: string) {
   showMain({ id })
 }
 
-const menuBar = new MenuBar({ preload: preload(), load, showMain: () => showMain(), lang: () => (settings ? lang() : 'zh'), bg: () => winColor(), update: () => updater?.status() ?? null, installUpdate: () => void installUpdate() })
+const menuBar = new MenuBar({
+  preload: preload(),
+  load,
+  showMain: () => showMain(),
+  lang: () => (settings ? lang() : 'zh'),
+  bg: () => winColor(),
+  update: () => updater?.status() ?? null,
+  installUpdate: () => void installUpdate(),
+  quick: () => {
+    menuBar.hide()
+    void quick.show()
+  },
+  quickKey: () => (quick.registered ? quick.wanted : null),
+})
+
+/** 全局快速加一条（main/quick.ts）：whenReady 里照设置注册那组键 */
+const quick = new QuickPanel({
+  preload: preload(),
+  load,
+  bg: () => winColor(),
+  key: () => settings.read().quickKey,
+  changed: () => broadcast('ct:quickState', { key: quick.wanted, registered: quick.registered }),
+})
+
+/**
+ * 小框里回车：一条条写进库（没写 # 的进收件箱、不定日子），收起、焦点还给原来的软件，弹一条通知（点了在画布今日里打开，「撤销」一起撤掉）。
+ * 写不进去时小框不收，说哪里不对
+ */
+async function quickAdd(items: QuickItem[], openIt: boolean): Promise<QuickAddResult> {
+  const v = needVault()
+  const l = lang()
+  const d = today()
+  const done: { undo: string; key: string; title: string; path: string; date: string | null; time: string | null }[] = []
+  // 几条一次提交
+  const failed = await committer!.batch(async () => {
+    for (const it of items) {
+      const r = await addTask(v, it.text, 'inbox', d, v.snapshot(), it.when, localNowOf(now()), it.dest)
+      if (!r.ok) {
+        if (r.reason === 'empty') continue
+        for (const x of [...done].reverse()) await v.undo(x.undo)
+        return r.message ?? ''
+      }
+      done.push({ undo: r.undo, key: `${r.path}#${r.line}`, title: r.title, path: r.path, date: r.date, time: r.time })
+    }
+    return null
+  })
+  if (failed !== null) return { ok: false, message: tr(l, 'failed', failed) }
+  if (!done.length) return { ok: false, message: tr(l, 'qEmpty') }
+  quick.hide(true)
+  const first = done[0]!
+  const one = done.length === 1
+  const where = new Set(done.map((x) => x.path)).size === 1 ? tr(l, 'qInto', pathTitle(first.path)) : tr(l, 'qIntoMany')
+  notifier().show(
+    {
+      title: one ? tr(l, 'qAdded', first.title) : tr(l, 'qAddedN', done.length),
+      body: one && first.date ? `${where} · ${whenLabel(l, first, d)}` : where,
+      actions: [tr(l, 'undo')],
+      key: first.key,
+      due: '',
+      at: localStamp(now()),
+    },
+    // 通知上唯一的按钮是「撤销」（第 0 个按钮，notifier 记成 done）；点通知本身在画布今日里打开那一条
+    (a) => {
+      if (a === 'click') showMain({ key: first.key })
+      else if (a === 'done')
+        void (async () => {
+          for (const x of [...done].reverse()) await v.undo(x.undo)
+          broadcast('ct:say', one ? tr(l, 'qUndone', first.title) : tr(l, 'qUndoneN', done.length))
+        })()
+    },
+  )
+  if (openIt) showMain({ key: first.key })
+  return { ok: true, n: done.length }
+}
 
 // ---------- 界面问的 ----------
 
@@ -368,6 +455,11 @@ function registerIpc() {
   ipcMain.handle('ct:ready', () => {
     rendererReady = true
     for (const u of pendingUrls.splice(0)) handleUrl(u)
+    // 那组键被别的软件占了：打开时说一次（设置 › 一般 和菜单栏小窗里一直写着）
+    if (!quick.registered && !quickTakenSaid) {
+      quickTakenSaid = true
+      win?.webContents.send('ct:notice', { msg: tr(lang(), 'qTakenNotice', quick.wanted), sub: tr(lang(), 'qTakenNoticeSub'), bg: true })
+    }
   })
   ipcMain.handle('ct:chooseVault', async () => {
     const r = await dialog.showOpenDialog(win!, { title: tr(lang(), 'chooseTitle'), buttonLabel: lang() === 'zh' ? '打开' : 'Open', properties: ['openDirectory', 'createDirectory'] })
@@ -430,6 +522,7 @@ function registerIpc() {
       menuBar.relabel()
     }
     if (s.tray !== before.tray) menuBar.set(s.tray)
+    if (s.quickKey !== before.quickKey) quick.applyKey()
     return pushLook(s)
   })
   // 导入 VS Code 主题（同画布笔记 themes:import）：存进和画布笔记同一个文件夹，导进来就用上（跟系统时按浅深换白天或夜里那套）
@@ -549,6 +642,125 @@ function registerIpc() {
     return setTimes(v, items, today())
   })
 
+  // ---------- 右栏 AI 对话（task-ykkoz，main/ai-chat.ts） ----------
+  const chats = new TodayChats(notesDir, app.getPath('userData'))
+  app.on('will-quit', () => chats.dispose())
+  const chatId = (id: unknown) => {
+    if (typeof id !== 'string' || !/^[\w-]{1,64}$/.test(id)) throw new Error('对话的参数不对')
+    return id
+  }
+  /** AI 这一问看得到的：近两周的待办、收件箱里没定日子的、系统日历两周的日程（藏起的日历 events() 已经去掉） */
+  const chatCtx = async (): Promise<ChatCtx> => {
+    const v = needVault()
+    const d = today()
+    const end = isoPlus(d, 13)
+    const all = v.snapshot().tasks
+    const tasks: CtxTask[] = pickTasks(all, d, INBOX_NOTE).map((t, i) => ({
+      id: `t${i + 1}`,
+      key: t.key,
+      title: t.title,
+      path: t.path,
+      line: t.line,
+      raw: t.raw,
+      date: t.date,
+      time: t.time,
+      prio: t.prio,
+      subs: t.subs.map((k) => all.find((x) => x.key === k)?.title).filter((x): x is string => !!x),
+      child: t.parent !== null,
+    }))
+    const events: CtxEvent[] = []
+    if (calendar?.state().active)
+      for (const e of await calendar.events(d, end)) {
+        const sd = e.start.slice(0, 10)
+        const ed = e.end.slice(0, 10)
+        for (let day = sd < d ? d : sd; day <= ed && day <= end; day = isoPlus(day, 1)) {
+          if (e.allDay) events.push({ title: e.title, date: day })
+          else events.push({ title: e.title, date: day, from: day === sd ? minutesOf(e.start.slice(11, 16)) : 0, to: day === ed ? minutesOf(e.end.slice(11, 16)) : 1440 })
+        }
+      }
+    return { now: { date: d, time: localStamp(now()).slice(11, 16) }, tasks, events }
+  }
+  const seenOf = (c: ChatCtx) => ({
+    tasks: c.tasks.filter((t) => t.date).length,
+    inbox: c.tasks.filter((t) => !t.date).length,
+    events: c.events.length,
+    // 先说有钟点的（组会、ecp 课），全天的排后面
+    eventNames: [...new Set([...c.events.filter((e) => e.from !== undefined), ...c.events.filter((e) => e.from === undefined)].map((e) => e.title))].slice(0, 3),
+  })
+  ipcMain.handle('ct:chatInfo', async (_e, id: unknown) => {
+    const v = needVault()
+    const p = chats.pickFor(v.root, chatId(id))
+    const c = await chatCtx()
+    return { engines: chats.engineList(), pick: p.pick, own: p.own, label: p.label, seen: { ...seenOf(c), cal: !!calendar?.state().active } }
+  })
+  ipcMain.handle('ct:chatDefault', () => {
+    const p = chats.defaultPick()
+    return { engine: p.engine, label: ENGINE_LABEL[p.engine], full: pickLabel(p, chats.modelsOf(p.engine)) }
+  })
+  ipcMain.handle('ct:chatList', () => chats.list(needVault().root))
+  ipcMain.handle('ct:chatLoad', (_e, id: unknown) => chats.load(needVault().root, chatId(id)))
+  ipcMain.handle('ct:chatPick', (_e, id: unknown, pick: unknown) => {
+    const v = needVault()
+    chats.setPick(v.root, chatId(id), pick)
+    return chats.pickFor(v.root, chatId(id))
+  })
+  ipcMain.handle('ct:chatAsk', async (_e, id: unknown, text: unknown, jobId: unknown) => {
+    const cid = chatId(id)
+    if (typeof text !== 'string' || !text.trim() || text.length > 4000) throw new Error('对话的参数不对')
+    const v = needVault()
+    const { msgs } = chats.load(v.root, cid)
+    const before = msgs.slice()
+    const nextId = () => (msgs.length ? Math.max(...msgs.map((m) => m.id)) + 1 : 1)
+    msgs.push({ id: nextId(), role: 'user', time: now(), text: text.trim() })
+    const title = before.length ? undefined : chatTitle(text)
+    chats.save(v.root, cid, msgs, title)
+    const { pick, label } = chats.pickFor(v.root, cid)
+    const j = job(jobId)
+    try {
+      const c = await chatCtx()
+      const r = await chats.ask(pick, c, before, text.trim(), join(app.getPath('userData'), 'ai-chat'), j.ac.signal)
+      const plan: ChatPlan | undefined = r.changes.length || r.dropped.length ? { changes: r.changes, dropped: r.dropped, ...(r.keep ? { keep: r.keep } : {}), state: r.changes.length ? 'open' : 'dropped' } : undefined
+      msgs.push({ id: nextId(), role: 'ai', time: now(), text: r.say, engine: pick.engine, by: label, seen: seenOf(c), ...(plan ? { plan } : {}), ...(r.keep && !plan ? { text: `${r.say}\n${r.keep}` } : {}) })
+      chats.save(v.root, cid, msgs)
+      return { ok: true, msgs }
+    } catch (e) {
+      const aborted = (e as Error)?.name === 'AbortError'
+      if (!aborted) {
+        msgs.push({ id: nextId(), role: 'ai', time: now(), text: '', engine: pick.engine, by: label, error: String((e as Error)?.message ?? e) })
+        chats.save(v.root, cid, msgs)
+      }
+      return { ok: false, aborted, msgs }
+    } finally {
+      j.done()
+    }
+  })
+  /** 改动卡：收下（on 是勾着的那几条）/ 不要 / 撤销了 */
+  const setPlan = (v: TaskVault, cid: string, msgId: unknown, f: (p: ChatPlan) => ChatPlan) => {
+    const { msgs } = chats.load(v.root, cid)
+    const m = msgs.find((x) => x.id === msgId)
+    if (!m?.plan) throw new Error('这张改动卡找不到了')
+    m.plan = f(m.plan)
+    chats.save(v.root, cid, msgs)
+    return msgs
+  }
+  ipcMain.handle('ct:chatAccept', async (_e, id: unknown, msgId: unknown, on: unknown) => {
+    const cid = chatId(id)
+    if (!Array.isArray(on) || !on.every((x) => typeof x === 'number')) throw new Error('对话的参数不对')
+    const v = needVault()
+    const { msgs, title } = chats.load(v.root, cid)
+    const m: TodayMsg | undefined = msgs.find((x) => x.id === msgId)
+    if (!m?.plan || m.plan.state !== 'open') throw new Error('这张改动卡找不到了')
+    const picked = m.plan.changes.filter((_, i) => (on as number[]).includes(i))
+    if (!picked.length) return { ok: false, reason: 'failed', message: '一条都没勾' }
+    const r = await applyPlan(v, picked, title || '画布今日的 AI 对话', today())
+    if (!r.ok) return r
+    return { ...r, msgs: setPlan(v, cid, msgId, (p) => ({ ...p, state: 'took', on: on as number[], undo: r.undo, n: r.n })) }
+  })
+  ipcMain.handle('ct:chatPlanState', (_e, id: unknown, msgId: unknown, st: unknown) => {
+    if (st !== 'dropped' && st !== 'undone') throw new Error('对话的参数不对')
+    return setPlan(needVault(), chatId(id), msgId, (p) => ({ ...p, state: st }))
+  })
+
   ipcMain.handle('ct:focusInfo', () => focus!.info())
   ipcMain.handle('ct:focus', (_e, op: unknown) => {
     const o = focusOp(op)
@@ -567,6 +779,29 @@ function registerIpc() {
     return focus!.info()
   })
   ipcMain.handle('ct:showMain', (_e, sel?: { key: string }) => showMain(sel))
+  // ---------- 全局快速加一条（main/quick.ts） ----------
+  ipcMain.handle('ct:quickShow', () => {
+    menuBar.hide()
+    return quick.show()
+  })
+  ipcMain.handle('ct:quickClose', () => quick.hide(true))
+  ipcMain.handle('ct:quickState', () => ({ key: quick.wanted, registered: quick.registered }))
+  ipcMain.handle('ct:openSettings', () => openSettings())
+  ipcMain.handle('ct:quickAdd', (_e, items: unknown, openIt: unknown) => {
+    if (!Array.isArray(items) || !items.length || items.length > 50) throw new Error('快速加一条的参数不对')
+    const ok = items.every((x) => x && typeof x === 'object' && typeof x.text === 'string' && (x.dest === null || typeof x.dest === 'string'))
+    if (!ok) throw new Error('快速加一条的参数不对')
+    return quickAdd(
+      (items as QuickItem[]).map((x) => ({ text: x.text, dest: x.dest, when: x.when ?? null })),
+      openIt === true,
+    )
+  })
+  // 小窗、小框量好自己多高
+  ipcMain.handle('ct:fit', (e, h: unknown) => {
+    if (typeof h !== 'number' || !Number.isFinite(h)) return
+    if (e.sender.id === quick.webContentsId) quick.fit(h)
+    else if (e.sender.id === menuBar.webContentsId) menuBar.fit(h)
+  })
   ipcMain.handle('ct:updateStatus', async () => {
     await updaterReady
     return updater!.status()
@@ -631,6 +866,20 @@ function registerIpc() {
   })
   ipcMain.handle('ct:calEvents', (_e, from: unknown, to: unknown) => calendar!.events(day(from), day(to)))
   ipcMain.handle('ct:calOpenPrivacy', () => calendar!.openPrivacy())
+  ipcMain.handle('ct:calHide', (_e, id: unknown, hide: unknown) => {
+    if (typeof id !== 'string' || typeof hide !== 'boolean') throw new Error('日历的参数不对')
+    return calendar!.setHidden(id, hide)
+  })
+  ipcMain.handle('ct:calMenu', async (e, id: unknown) => {
+    const st = calendar!.state()
+    const c = st.calendars.find((x) => x.id === id)
+    const w = BrowserWindow.fromWebContents(e.sender)
+    if (!c || !w) return st
+    const pick = await calMenu(w, c.hidden, st.calendars.some((x) => x.hidden), lang())
+    if (pick === 'showAll') return calendar!.showAll()
+    if (pick) return calendar!.setHidden(c.id, pick === 'hide')
+    return calendar!.state()
+  })
 }
 
 /** 提醒事项小助手和镜像：测试模式里小助手一律带 --memory（假提醒事项），globalThis.ctRem 让测试像人一样在提醒事项里改 */
@@ -644,6 +893,8 @@ function setupMirror() {
     changed: () => broadcast('ct:calChanged'),
     notice: (n) => broadcast('ct:notice', n),
     openExternal: (url) => shell.openExternal(url),
+    // 和画布笔记共用：放在画布笔记的设置目录里（测试模式没指定画布笔记的设置目录时放在自己的里面，同导入的主题）
+    hiddenFile: calPrefsPath(notesDir, app.getPath('userData')),
     connectReminders: async () => {
       const r = mirror!.state()
       if (r.connected) return null
@@ -728,12 +979,17 @@ async function installUpdate(): Promise<boolean> {
   return updater.install()
 }
 
-/** 软件菜单「检查更新…」：打开主窗口的设置（状态在「版本和更新」那一行），立刻查一次 */
-function checkFromMenu() {
+/** 打开主窗口的设置（新建的窗口等页面载好再翻过去） */
+function openSettings() {
   const fresh = !win
   showMain()
   if (fresh) win!.webContents.once('did-finish-load', () => setTimeout(() => menuHandlers.settings(), 300))
   else menuHandlers.settings()
+}
+
+/** 软件菜单「检查更新…」：打开主窗口的设置（状态在「版本和更新」那一行），立刻查一次 */
+function checkFromMenu() {
+  openSettings()
   void updater?.check().catch(() => undefined)
 }
 
@@ -777,8 +1033,15 @@ app.whenReady().then(async () => {
   void calendar?.refresh()
   void warmUp()
   menuBar.set(settings.read().tray)
+  if (vault) menuBar.setCount(cntToday(vault.snapshot().tasks, today()))
+  quick.applyKey()
+  // 小框先建好、页面载好：第一次按键时马上出来（测试里第一次按时才建，不多一个窗口）
+  if (!E2E) setTimeout(() => quick.warm(), 3000)
+  // 跨了午夜、测试拨了钟：图标旁边的数重算
+  setInterval(() => vault && menuBar.setCount(cntToday(vault.snapshot().tasks, today())), 60_000)
   onClock((off) => {
     broadcast('ct:clock', off)
+    if (vault) menuBar.setCount(cntToday(vault.snapshot().tasks, today()))
     reminders?.soon()
     focus?.check()
   })
@@ -788,10 +1051,14 @@ app.whenReady().then(async () => {
   // 画布笔记那边导入、删掉了主题：外观页的那一排、正在用的那套跟着换
   watchThemes(themesDir(notesDir, app.getPath('userData')), () => pushLook(settings.read()))
   nativeTheme.on('updated', () => win?.setBackgroundColor(winColor()))
+  // 切回来时：画布笔记那边藏起 / 显示了哪个系统日历就跟上（平时看着那份文件，这是兜底）
+  app.on('browser-window-focus', () => calendar?.recheck())
   app.on('activate', () => showMain())
 })
 
 // 关掉主窗口不退出：常驻菜单栏（关了菜单栏的照 macOS 习惯也留在程序坞里）
+app.on('will-quit', () => quick.dispose())
+
 app.on('window-all-closed', () => {
   if (quitting || E2E) app.quit()
 })

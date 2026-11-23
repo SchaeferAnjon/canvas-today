@@ -1,6 +1,6 @@
 /**
  * 重复（🔁 后面写的中文）：每天、每N天、工作日、每周（几）、每N周、每月、每月N日、每年；后面加「（做完后）」从勾掉那天算。
- * 勾掉一条重复的：这一行打 ✅，下面（它的子任务后面）照规则加新的一行，子任务抄一份都没勾，编号换新的。
+ * 勾掉一条重复的：这一行打 ✅，下面（它的子任务后面）照规则加新的一行，子任务抄一份都没勾，编号换新的，^块编号不抄。
  */
 import { addDays, addMonths, dayOfMonth, type ISODate, toDays, weekday } from './dates'
 import { removeField, setDate, setDone, setId } from './edit'
@@ -133,7 +133,8 @@ export function completeTask(text: string, line: number, today: ISODate, newId: 
       let r = l.endsWith('\r') ? l.slice(0, -1) : l
       if (i === 0) r = r.replace(/^﻿/, '')
       if (!parseTaskLine(r)) return r
-      r = removeField(setDone(r, false, today), 'done')
+      // 块编号不抄（一篇里只能有一个，别处的块链接还指着做完的那一行）
+      r = removeField(removeField(setDone(r, false, today), 'done'), 'block')
       if (i === 0) {
         r = setDate(r, date)
         if (t.id) r = setId(r, newId())

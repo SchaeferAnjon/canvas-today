@@ -68,11 +68,13 @@ export interface AgentContext {
   picked?: { count: number; files: string[] }
   /** 白板框选的几张、文档拖选的几块交给 AI（task-5ryf9，操作条的「问AI」）：几样的 md 原文，前面带 [1] [2] 编号 */
   cards?: { where: 'board' | 'doc'; count: number; text: string }
+  /** 最近打开过的文件（这台 Mac 上记的，新的在前）：【库里的笔记】先列它们（task-3e53q） */
+  recent?: string[]
 }
 
 export type AiEvent =
   | { type: 'text'; delta: string }
-  | { type: 'tool'; id: string; label: string; code?: string; status: 'run' | 'ok' | 'err'; detail?: string }
+  | { type: 'tool'; id: string; label: string; code?: string; status: 'run' | 'ok' | 'err'; detail?: string; paths?: string[] }
 
 export interface ToolStep {
   id: string
@@ -81,6 +83,8 @@ export interface ToolStep {
   code?: string
   status: 'run' | 'ok' | 'err'
   detail?: string
+  /** 这一步读过、写过、搜到的库里文件（相对库根）：回答里光写了它们的名字也认成链接（task-3e53q） */
+  paths?: string[]
 }
 
 export interface TurnRequest {

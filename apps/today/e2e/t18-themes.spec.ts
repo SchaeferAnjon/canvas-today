@@ -9,7 +9,8 @@ import { join } from 'node:path'
 import { launch, LOOK } from './app'
 
 const FIX = join(__dirname, '../../notes/test/fixtures/vscode-themes')
-const dlg = (page: Page) => page.getByRole('dialog', { name: '设置' })
+// B 里是弹窗、A 里是中间一个标签（task-ykkoz）：同一个 .set
+const dlg = (page: Page) => page.locator('.set')
 const winVar = (page: Page) => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--win').trim())
 
 async function openLook(page: Page) {

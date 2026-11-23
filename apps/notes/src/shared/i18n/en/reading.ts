@@ -153,4 +153,18 @@ export const READING: Table = {
   '想原文下面跟着译文读：ParaRead': 'Translation under each paragraph: ParaRead',
   不再提ParaRead: 'Don’t mention ParaRead again',
   不再提: 'Don’t mention again',
+  // ---------- 配对笔记每一节带上框的那块（task-yp8l7）：补截图、点图回 PDF ----------
+  '补上了 {n} 张截图': (p) => `Added ${count(p.n, 'screenshot')}`,
+  '补上了 {n} 张截图；{m} 条当时没记下框的位置，补不了': (p) => `Added ${count(p.n, 'screenshot')}; ${count(p.m, 'section')} didn’t record where you boxed, so they can’t get one`,
+  '{m} 条当时没记下框的位置，补不了截图': (p) => `${count(p.m, 'section')} didn’t record where you boxed, so no screenshot can be added`,
+  '笔记刚被改过，截图没补进去，下次打开再补': 'The note just changed; screenshots weren’t added. They’ll be added next time you open it',
+  '点一下回到 PDF {label}': 'Click to go back to the PDF, {label}',
+  '翻到这一页，选过的那段闪一下': 'Go to this page; the passage you selected flashes',
+  // ---------- 读 PDF 纸里右边那一列问过的（renderer/reading/PdfMarks.tsx，task-2onrm） ----------
+  '第 {n} 页问过的地方': 'Places asked about on page {n}',
+  '第 {n} 页这里问过 {k} 轮': (p) => `Page ${p.n}: asked here, ${count(p.k, 'round')}`,
+  '第 {n} 页问过 {k} 处': (p) => `Page ${p.n} · ${count(p.k, 'place')} asked`,
+  '第{n}页问过{k}处': (p) => `Page ${p.n} · ${count(p.k, 'place')} asked`,
+  '问过 {k} 轮': (p) => `Asked ${count(p.k, 'round')}`,
+  还在记: 'Still noting',
 }

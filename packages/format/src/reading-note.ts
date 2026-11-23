@@ -154,6 +154,8 @@ export interface AskSection {
   recap?: string
   /** 我框的图在 PDF 上 100% 时的宽（CSS 像素），图按这个宽显示（CN-111） */
   cropW?: number
+  /** 选字问的那段原文（task-yp8l7）：写成图下面、第一问上面的一个引用块（选字问不截图） */
+  quote?: string
 }
 
 export const CONVO_DIR = '.canvas-notes/对话'
@@ -496,6 +498,7 @@ function renderDoc(s: AskSection, note: string): string {
   if (s.crop) imgs.push(`![${cropCaption(s)}${s.cropW ? `|${Math.round(s.cropW)}` : ''}](${linkFrom(note, s.crop)})`)
   for (const f of s.figures) imgs.push(`![${alt(f.caption) || '图'}](${linkFrom(note, f.path)})`)
   if (imgs.length) out.push('', imgs.join('\n\n'))
+  if (s.quote?.trim()) out.push('', quote(s.quote))
   const tag = footTag(s.id)
   const defs: string[] = []
   /** 这一问的问题（字里的编号换成脚注引用），脚注的定义收到这一段末尾 */
@@ -570,6 +573,8 @@ function parseDoc(lines: string[], head: RegExpExecArray, note: string): AskSect
   let cur: AskQa | null = null
   let ans: string[] | null = null
   let fence = false
+  /** 第一问之前的引用块：选字问的原文 */
+  const said: string[] = []
   const flush = () => {
     if (cur && ans) cur.a = trimLines(ans)
     ans = null
@@ -586,6 +591,7 @@ function parseDoc(lines: string[], head: RegExpExecArray, note: string): AskSect
     const c = fence ? null : STRUCT.exec(l)
     if (!c) {
       if (ans) ans.push(l)
+      else if (!cur && /^>/.test(l)) said.push(l.replace(/^>\s?/, ''))
       else if (!cur) {
         // 第一问之前：我框的图（写着宽度）、配的图
         const im = IMAGE_LINE.exec(l)
@@ -634,6 +640,7 @@ function parseDoc(lines: string[], head: RegExpExecArray, note: string): AskSect
     } else recap = [c[2]!, ...body.map((b) => b.replace(/^>\s?/, ''))].join(' ').trim()
   }
   flush()
+  if (said.join('').trim()) s.quote = said.join('\n').trim()
   // 小结后面：脚注的定义、最后一行可视化和双链（没有小结时从最后一个回答的末尾剥下来）
   let rest = tail
   if (recap === null && cur) {
@@ -728,6 +735,40 @@ export function upsertSection(md: string, s: AskSection, note: string): string {
   if (after) return md.slice(0, after.from) + text + '\n' + md.slice(after.from)
   const body = md.replace(/\n*$/, '\n')
   return body + '\n' + text
+}
+
+/** 笔记里一段没有「我框的」图（task-yp8l7 补截图）：PDF、页、框的位置（有的话）、是不是以前的格式 */
+export interface CropGap {
+  id: string
+  file: string
+  page: number
+  rect?: Rect
+  /** 以前的格式（完整对话链接那种）：图不写宽度 */
+  old: boolean
+}
+
+/** 笔记里哪几段在 PDF 上问过、却没有「我框的」「整页」那张图（网页、视频上问的不算；写着选字问原文的是选字问，本来就不截图） */
+export function cropGaps(md: string, note: string): CropGap[] {
+  return chunks(md, note).list.flatMap(({ section: s }) =>
+    s && !s.crop && !s.quote && !s.web && s.file && s.page > 0 ? [{ id: s.id, file: s.file, page: s.page, ...(s.rect ? { rect: s.rect } : {}), old: !s.qas }] : [],
+  )
+}
+
+/**
+ * 给一段补上「我框的」图（task-yp8l7）：只在这一段第二行（回到 PDF 的那一行）后面插一行图，别的字一个不动。
+ * w：框在 PDF 上 100% 时的宽（新格式写进说明，以前的格式不写）。找不到这一段、这一段已经有图时原样返回
+ */
+export function insertCrop(md: string, note: string, id: string, crop: string, w?: number): string {
+  const c = chunks(md, note).list.find((x) => x.section?.id === id)
+  if (!c || c.section!.crop) return md
+  const first = md.indexOf('\n', c.from)
+  if (first < 0 || first >= c.to) return md
+  let end = md.indexOf('\n', first + 1)
+  if (end < 0 || end > c.to) end = c.to
+  const width = w && c.section!.qas ? `|${Math.round(w)}` : ''
+  // 下一行紧跟着字（不是空行）时图后面再空一行，图自成一段
+  const gap = md[end] === '\n' && end + 1 < c.to && md[end + 1] !== '\n' ? '\n' : ''
+  return md.slice(0, end) + `\n\n![我框的${width}](${linkFrom(note, crop)})${gap}` + md.slice(end)
 }
 
 /** 换掉的段后面紧跟下一段时补一个空行 */

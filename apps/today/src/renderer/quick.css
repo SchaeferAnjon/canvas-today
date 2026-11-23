@@ -1,0 +1,123 @@
+/* 全局快速加一条的小框：640 宽，系统弹层的样子（--pop 底，系统给的圆角和阴影），照方案页原型 A1 的 .qp */
+body.quickbody {
+  background: var(--pop);
+  overflow: hidden;
+}
+.qp {
+  display: flex;
+  flex-direction: column;
+}
+.qin {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 14px 16px 8px;
+}
+.qin .ci {
+  color: var(--acc-t);
+  margin-top: 3px;
+}
+.qin textarea {
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: none;
+  resize: none;
+  font: inherit;
+  font-size: 17px;
+  line-height: 1.5;
+  height: 26px;
+  max-height: 180px;
+  padding: 0;
+  color: var(--t1);
+  overflow-y: auto;
+}
+.qin textarea::placeholder {
+  color: var(--t3);
+}
+/* 认出来的那一行：和主窗口快速加一条同一套 .chips，左边对齐输入框的字 */
+.qp .qgot {
+  margin: 0 16px 10px 44px;
+  color: var(--t2);
+}
+.qmulti {
+  padding: 0 16px 8px 44px;
+}
+.qmulti .qr {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+}
+.qmulti .qr:last-child {
+  border-bottom: 0;
+}
+.qmulti .qt {
+  min-width: 120px;
+  flex: 1;
+  font-size: 13px;
+}
+.qmulti .chips {
+  margin: 0;
+}
+.qdest {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 6px 16px 6px 44px;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+  color: var(--t2);
+  position: relative;
+}
+.qdest > .ci {
+  position: absolute;
+  left: 18px;
+  color: var(--t3);
+}
+.qdest b {
+  color: var(--t1);
+  font-weight: 500;
+}
+.qdest .t3 {
+  color: var(--t2);
+}
+.qdest .qswap {
+  margin-left: auto;
+  flex: none;
+}
+.qdest .qswap .kbd {
+  margin-left: 2px;
+}
+.qerr {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 16px 6px 44px;
+  font-size: 12px;
+  color: var(--red);
+}
+/* 底栏不铺 --fill（深色下次要字对比度不够），和菜单栏小窗底栏一样顶上一道线 */
+.qfoot {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 16px;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+  color: var(--t2);
+}
+.qfoot .kbd {
+  margin-right: 4px;
+}
+.qfoot .sp {
+  flex: 1;
+}
+.qnov {
+  padding: 18px 20px;
+  font-size: 13px;
+  color: var(--t2);
+}

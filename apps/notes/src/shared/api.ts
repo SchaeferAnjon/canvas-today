@@ -1,5 +1,6 @@
 /** 主进程和界面之间的接口，preload 按这个暴露成 window.cn */
 
+import type { LocalLlmStatus } from './local-models'
 import type { AutoApi } from './automation'
 import type { AiAct, AiEvent, BridgeOp, ChatSide, EngineId, EngineInfo, SideTurnRequest, StoredMsg, TurnRequest, TurnResult } from './agent'
 import type { ChatSummary } from './ai-chats'
@@ -9,6 +10,7 @@ import type { ThemeFile } from './vscode-theme'
 import type { HomeConfig } from './home'
 import type { NoteKind } from './layout'
 import type { DiffResult, DiffSource } from './diff'
+import type { EmbedModelStatus } from './search'
 
 export interface VaultInfo {
   path: string
@@ -199,12 +201,87 @@ export interface BoardBase {
   from: string
 }
 
-/** 「提到这篇的」一条：那一篇嵌了整篇（embed）、只是链接（link）、引用了哪几节（sections） */
+/** 「提到这篇的」一条：那一篇嵌了整篇（embed）、只是链接（link）、引用了哪几节（sections）、哪几段（blocks，那段开头几个字） */
 export interface Backlink {
   path: string
   embed: boolean
   link: boolean
   sections: string[]
+  blocks: string[]
+  /** 正文里提到这篇的那一句（梦游页 W.3）；只列了名字的没有 */
+  quote?: { text: string; mark?: [number, number] }
+  /** 只列了名字（目录页、「相关」列表、上一篇下一篇）：文末收成一行 */
+  bare: boolean
+}
+
+/** 右栏「相关」的一条（task-h7oy8，设计页 44 1.6）：提到这篇的、梦游连上的、像但还没连的 */
+export interface RelatedItem {
+  id: string
+  kind: 'mention' | 'dream' | 'like'
+  /** 那一篇 */
+  path: string
+  /** 出处：上两级文件夹（课名 · 类别） */
+  where: string
+  /** 一句为什么：梦游、AI 判的理由（原话） */
+  why?: string
+  /** 提到这篇的：嵌了整篇 / 一节 / 一段 */
+  embed?: 'note' | 'heading' | 'block'
+  /** 提到这篇的：那一篇里提到了几处（多于 1 处才有） */
+  places?: number
+  /** 梦游连上的：哪一晚（YYYY-MM-DD；没记下的是写在末尾「相关：」行里的） */
+  night?: string
+  /** 梦游连上的：写在末尾「相关：」行里（out 这篇的、in 那篇的） */
+  relLine?: 'out' | 'in'
+  /** 那一句原文，mark 是提到这篇的那几个字 */
+  quote?: { text: string; mark?: [number, number] }
+  /** 指着这篇哪一处（链到一节写标题，链到一段写那段开头几个字） */
+  to?: { kind: 'heading' | 'block'; label: string }
+  /** 和这篇哪一行有关（0 起）：「光标这一段」按它分组 */
+  here?: number
+  /** 打开那一篇时跳到第几行（0 起） */
+  line?: number
+  /** 既被正文提到、又是梦游连的（只出现在「提到这篇的」那组） */
+  alsoDream?: boolean
+  /** 像但还没连的：AI 还没判过，只是本机向量找的 */
+  unjudged?: boolean
+  /** 判的时候这篇那一句原话（连上时先在这一句里找字） */
+  near?: string
+  /** 梦游连上的：链接写在哪一篇的哪一行（撤掉改这里） */
+  src?: { path: string; line: number }
+}
+
+export interface RelatedResult {
+  path: string
+  mention: RelatedItem[]
+  /** 前后篇（「上一篇 / 下一篇」那种一行） */
+  seq: { path: string; dir: 'prev' | 'next' | '' }[]
+  /** 只列了名字的（目录页、「相关」列表） */
+  listed: string[]
+  dream: RelatedItem[]
+  like: RelatedItem[]
+  /** 像但还没连的：ok；small 库太小（不到 20 篇）先不猜；indexing 本机在算（done / total）；off 「按意思找」关着 */
+  likeState: 'ok' | 'small' | 'indexing' | 'off'
+  /** unit：note 在读文件（篇），chunk 在算向量（段） */
+  indexing?: { done: number; total: number; unit: 'note' | 'chunk' }
+  /** 梦游连上的：ok；never 还没跑过；off 设置里补双链关着 */
+  dreamState: 'ok' | 'never' | 'off'
+  /** 库里几篇笔记 */
+  notes: number
+  /** 主进程算这一次用了几毫秒 */
+  ms: number
+}
+
+/** 相关栏里点了「连上 / 不相关 / 撤掉」：撤销时原样交回 */
+export interface RelatedUndo {
+  kind: 'link' | 'unrelated' | 'unlink'
+  /** 这篇和那篇 */
+  a: string
+  b: string
+  /** 改了的那一篇和改前改后（不相关没改文件） */
+  file?: { path: string; before: string; after: string }
+  /** 连上时改成链接的那几个字；加在文末「相关：」时是 null */
+  words?: string | null
+  commit?: string | null
 }
 
 export interface CnApi {
@@ -291,6 +368,15 @@ export interface CnApi {
   boardBases(): Promise<BoardBase[]>
   /** 哪些篇链接、嵌了这一篇 */
   backlinks(path: string): Promise<Backlink[]>
+  /** 右栏「相关」：cursor 不用传（光标这一段在界面里分） */
+  related(path: string): Promise<RelatedResult>
+  relatedLink(path: string, other: string, near?: string): Promise<RelatedUndo>
+  relatedUnrelated(path: string, other: string): Promise<RelatedUndo>
+  relatedUnlink(path: string, other: string, src: { path: string; line: number }): Promise<RelatedUndo>
+  relatedUndo(u: RelatedUndo): Promise<void>
+  /** 梦游给这篇连了新的、还没在相关栏里看过：右图标栏「相关」那格右上一个小点 */
+  relatedDot(path: string): Promise<boolean>
+  relatedSeen(path: string): Promise<void>
   /** 白板上一次改了好几篇：只提交这几篇；返回提交号 */
   boardCommit(paths: string[], message: string): Promise<string | null>
   /** 撤回 boardCommit 那一次（反向提交） */
@@ -323,6 +409,8 @@ export interface CnApi {
   sync(): Promise<SyncOutcome>
   /** hideInternal：跳过只动了软件自己设置的提交、不列设置文件（CN-116） */
   history(limit: number, opts?: { hideInternal?: boolean }): Promise<CommitInfo[]>
+  /** 一次提交的说明、时间、改了哪几篇（AI 回答里的 canvas-notes://commit/<号> 预览卡）；库里没有这次提交是 null */
+  commitInfo(hash: string): Promise<CommitInfo | null>
   /** 那篇（工作区里的字）每一行和它所在提交的作者时间（毫秒，还没提交的行是 0）；库里还没有它的历史时是 null */
   lineTimes(path: string): Promise<{ lines: string[]; at: number[] } | null>
   /** 那次提交删掉的（用户的）文件、其中现在还能放回的（CN-108） */
@@ -495,6 +583,23 @@ export interface CnApi {
   diffFiles(src: DiffSource): Promise<DiffResult>
   /** 梦游开始、跑完、报告变了 */
   onDream(cb: (report: DreamReport | null, running: boolean) => void): () => void
+  /** 本地模型（梦游判断的另一条路，task-h7oy8）：选的哪个、下好没有、下到哪了 */
+  llmStatus(): Promise<LocalLlmStatus>
+  /** 下载（不给 id 下选着的；给了先选上它）：下好、取消、出错都回最后的状态，不报错；进度走 onLlm */
+  llmDownload(id?: string): Promise<LocalLlmStatus>
+  /** 停下正在下的（已下的留着，下次接着下） */
+  llmCancel(): Promise<void>
+  /** 换模型（LOCAL_MODELS 的 id） */
+  llmSetModel(id: string): Promise<LocalLlmStatus>
+  /** 「在访达中显示」放模型的文件夹（下好了选中那个文件） */
+  llmReveal(): Promise<void>
+  /** 状态变了（下载进度一秒最多五次） */
+  onLlm(cb: (s: LocalLlmStatus) => void): () => void
+  /** 找候选用的本机模型：现在用哪个、bge-m3 下到哪、索引建到哪（设置 › 梦游那一行） */
+  embedStatus(): Promise<EmbedModelStatus>
+  onEmbed(cb: (s: EmbedModelStatus) => void): () => void
+  /** bge-m3 没下成时「重试」（续着下，已下的那截不丢） */
+  embedRetry(): Promise<void>
 }
 
 /** 找重复的一对：a、b 是相对路径，score 是 0 到 1 的相似度，why 是一句人话 */
@@ -507,7 +612,8 @@ export interface DuplicatePair {
 
 /** file：归类和改名（收件箱里的挪进课程、项目、生活、写作、素材，顺手起好名字） */
 /** viz：今天卡得最久的几处做的可视化（新的 HTML，挂到读 PDF 笔记那一段） */
-export type DreamGroup = 'attach' | 'file' | 'viz' | 'link' | 'dup' | 'week'
+/** unsure：AI 拿不准的一对（把握 0.5 到 0.75），你来定连不连；recheck：已经收下的旧「相关：」行复查下来判成不相关，建议去掉（task-h7oy8） */
+export type DreamGroup = 'attach' | 'file' | 'viz' | 'link' | 'unsure' | 'recheck' | 'dup' | 'week'
 
 export interface DreamItem {
   id: string
@@ -539,6 +645,14 @@ export interface DreamItem {
   redoCommits?: string[]
   /** 梦游动手时自己记下的「改了什么」，每个文件一句人话（侧栏只列这一句，点了开对比标签） */
   changes?: { path: string; text: string }[]
+  /** AI 判的那几组（补双链、拿不准、复查、AI 认出的重复）：判成哪一档、把握、两边原话（软件逐字核对过） */
+  judged?: {
+    level: 'same-content' | 'same-topic' | 'tangential' | 'unrelated' | 'unsure'
+    confidence: number
+    /** 这篇 / 那篇 各一句原话；复查判成无关时可能是空串 */
+    a: { path: string; quote: string }
+    b: { path: string; quote: string }
+  }
   /** 老图挪进各篇自己的附件文件夹：每张从哪到哪、不挪的和原因、改了几处链接（预览标签按笔记分组列出来） */
   oldImages?: {
     moves: { from: string; to: string; note: string; section: string }[]
@@ -567,6 +681,35 @@ export interface DreamReport {
   stay?: number
   /** 设置里选了「改完直接收下」：梦游完直接收下的那次提交（报告顶上能一键撤回） */
   autoTaken?: string
+  /** 这晚 AI 判断补双链的账（task-h7oy8）：谁判的、问了几次、判了几篇、几篇用的是以前判过的结果、还剩几篇下一晚接着 */
+  judge?: DreamJudgeStats
+}
+
+export interface DreamJudgeStats {
+  /** 「Claude Code · Haiku」「本地模型 · Qwen3 4B」 */
+  by: string
+  /** 找候选用了哪几路：关键词、向量（模型名）、标题 */
+  sources: string[]
+  /** 这晚问了几次 AI（一篇一次） */
+  asked: number
+  /** 这晚判完的篇数（含用以前结果的） */
+  notes: number
+  /** 用以前判过的结果、没再问 AI 的篇数 */
+  cached: number
+  /** 还要判、这晚没轮到的篇数（到了每晚的上限） */
+  left: number
+  /** 每晚上限 */
+  cap: number
+  /** 这晚到上限停下了 */
+  capped: boolean
+  /** 判过但没提的对数（沾边、无关），和其中一个例子 */
+  skipped: number
+  skipExample?: { a: string; b: string; why: string }
+  /** 原话对不上、作废的对数 */
+  voided: number
+  /** 问 AI 出错的篇数（下一晚重判） */
+  failed: number
+  ms: number
 }
 
 /**

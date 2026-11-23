@@ -2,9 +2,10 @@
  * 一篇笔记里的待办：扫出来（哪一行、上面的标题、谁是谁的子任务），改一行、加一条、加子任务、删、挪到另一篇。
  * 文字是解码后的整篇（换行可能是 \r\n、开头可能有 BOM）：一律按「\n」切行，每行末尾的 \r 留在原处，
  * 改的那一行之外一个字节都不动；新加的行照旁边那一行的换行写。
- * 不认：开头的属性（--- … ---）、``` 和 ~~~ 代码块里的行。
+ * 不认：开头的属性（--- … ---）、``` 和 ~~~ 代码块里的行（引用块里的代码块也不认）。
+ * 引用块、提示块里的「> - [ ]」照样认：层次（谁是谁的子任务、块到哪为止）按「> 」后面的缩进算，换了一层引用就是另一段。
  */
-import { isTaskLine, parseTaskLine, type TaskLine } from './line'
+import { isTaskLine, parseTaskLine, quoteOf, type TaskLine } from './line'
 
 export interface Heading {
   line: number
@@ -52,6 +53,22 @@ const lead = (l: string) => /^[ \t]*/.exec(l)![0]
 const blank = (l: string) => /^[ \t]*$/.test(l)
 const LIST = /^[ \t]*([-*+]|\d{1,9}[.)])([ \t]+|$)/
 const FENCE = /^ {0,3}(`{3,}|~{3,})/
+
+/** 一行拆成引用的「> 」那段（几层）和后面的字 */
+function split(l: string): { depth: number; prefix: string; body: string } {
+  const q = quoteOf(l)
+  return { depth: q.depth, prefix: q.prefix, body: l.slice(q.prefix.length) }
+}
+
+/**
+ * 认层次用的：和 split 一样，只是缩进的「    > 备注」（挂在上面那一条下面的引用，不是列表）算上一层列表的续行，
+ * 不算另起一段引用（从提醒事项导入的备注就这么写，rem-import.ts）
+ */
+function level(l: string): { depth: number; body: string } {
+  const s = split(l)
+  if (s.depth && lead(l) && !LIST.test(s.body)) return { depth: 0, body: l }
+  return s
+}
 const HEADING = /^ {0,3}(#{1,6})(?:[ \t]+(.*?))?[ \t]*#*[ \t]*$/
 
 /** 每一行是不是正文（不在属性、代码块里） */
@@ -68,16 +85,19 @@ function bodyMask(lines: string[]): boolean[] {
       }
     }
   }
-  let fence: string | null = null
+  /** 开着的代码块：围栏的字、在第几层引用里开的 */
+  let fence: { mark: string; depth: number } | null = null
   for (; i < lines.length; i++) {
-    const l = content(lines, i)
-    const f = FENCE.exec(l)
+    const { depth, body } = split(content(lines, i))
+    // 引用里开的代码块，引用结束它也结束
+    if (fence && depth < fence.depth) fence = null
+    const f = FENCE.exec(fence && depth > fence.depth ? '' : body)
     if (fence) {
       ok[i] = false
-      if (f && f[1]![0] === fence[0] && f[1]!.length >= fence.length && blank(l.slice(f[0].length))) fence = null
+      if (f && depth === fence.depth && f[1]![0] === fence.mark[0] && f[1]!.length >= fence.mark.length && blank(body.slice(f[0].length))) fence = null
     } else if (f) {
       ok[i] = false
-      fence = f[1]!
+      fence = { mark: f[1]!, depth }
     }
   }
   return ok
@@ -91,18 +111,25 @@ export function scanTasks(text: string): FileTask[] {
   /** 往上的列表项：缩进宽度、第几行、是不是待办 */
   let stack: { w: number; line: number; task: boolean }[] = []
   let heading: Heading | null = null
+  /** 上一行有字的在第几层引用：换了一层就是另一段，列表断开 */
+  let lastDepth = 0
   for (let i = 0; i < lines.length; i++) {
     if (!ok[i]) continue
     const l = content(lines, i)
-    if (blank(l)) continue
-    const h = HEADING.exec(l)
+    const { depth, body } = level(l)
+    if (blank(body)) continue
+    if (depth !== lastDepth) {
+      stack = []
+      lastDepth = depth
+    }
+    const h = depth === 0 ? HEADING.exec(l) : null
     if (h && lead(l).length <= 3 && l.trimStart().startsWith('#')) {
       heading = { line: i, level: h[1]!.length, text: (h[2] ?? '').trim() }
       stack = []
       continue
     }
-    const w = width(lead(l))
-    if (!LIST.test(l)) {
+    const w = width(lead(body))
+    if (!LIST.test(body)) {
       // 缩进的续行还在列表里；顶格的一段字把列表断开
       if (w === 0) stack = []
       continue
@@ -124,14 +151,18 @@ export function scanTasks(text: string): FileTask[] {
   return out
 }
 
-/** 第 n 行的块：这一行，加下面缩进比它深的行（中间的空行算，块末尾的空行不算） */
+/** 第 n 行的块：这一行，加下面缩进比它深的行（中间的空行算，块末尾的空行不算；引用里的按「> 」后面的缩进，换了一层引用就到头） */
 function blockEnd(lines: string[], n: number): number {
-  const w = width(lead(content(lines, n)))
+  const first = content(lines, n)
+  const top = level(first)
+  // 不在引用里的：照整行的缩进（缩进的「    > 备注」「    > - [ ] 」都算它下面的）
+  const w = width(lead(top.depth ? top.body : first))
   let end = n
   for (let i = n + 1; i < lines.length; i++) {
     const l = content(lines, i)
-    if (blank(l)) continue
-    if (width(lead(l)) <= w) break
+    const { depth, body } = split(l)
+    if (blank(body)) continue
+    if (top.depth ? depth !== top.depth || width(lead(body)) <= w : width(lead(l)) <= w) break
     end = i
   }
   return end
@@ -196,11 +227,11 @@ export function removeBlock(text: string, n: number): { text: string; removed: s
   return { text: removeLines(text, b.from, b.to), removed: splitLines(text).slice(b.from, b.to + 1) }
 }
 
-/** 加在这篇最后一条待办（连它的子任务）后面；一条都没有就加在文末，前面是一段字或标题时空一行 */
+/** 加在这篇最后一条待办（连它的子任务）后面（那一条在引用块里的，新行也带上同样的「> 」）；一条都没有就加在文末，前面是一段字或标题时空一行 */
 export function appendLines(text: string, add: string[]): { text: string; line: number } {
   const ts = scanTasks(text)
   const last = ts.filter((t) => t.parent === null).pop()
-  if (last) return { text: insertLines(text, last.blockEnd, add), line: last.blockEnd + 1 }
+  if (last) return { text: insertLines(text, last.blockEnd, add.map((r) => last.task.quote + r)), line: last.blockEnd + 1 }
   if (text === '' || text === BOM) return { text: text + add.join('\n') + '\n', line: 0 }
   const lines = splitLines(text)
   const eol = eolOf(lines, lines.length - 2)
@@ -221,7 +252,7 @@ export const appendTask = (text: string, line: string) => appendLines(text, [lin
 /** 这篇用什么缩进一格：第一个缩进的列表项用的空白，没有就四个空格 */
 export function indentUnitOf(text: string): string {
   for (const l of splitLines(text)) {
-    const c = l.endsWith('\r') ? l.slice(0, -1) : l
+    const c = split(l.endsWith('\r') ? l.slice(0, -1) : l).body
     if (LIST.test(c)) {
       const ws = lead(c)
       if (ws) return ws.startsWith('\t') ? '\t' : ws
@@ -230,14 +261,15 @@ export function indentUnitOf(text: string): string {
   return '    '
 }
 
-/** 给第 parent 行加一个子任务：放在它的块最后；缩进照已有的子任务，没有就照这篇的习惯缩进一格 */
+/** 给第 parent 行加一个子任务：放在它的块最后；缩进照已有的子任务，没有就照这篇的习惯缩进一格（引用里的带上同样的「> 」） */
 export function addSubtask(text: string, parent: number, title: string): { text: string; line: number } {
   const lines = splitLines(text)
   const p = parseTaskLine(content(lines, parent))
   if (!p) throw new Error(`第 ${parent + 1} 行不是待办`)
   const t = scanTasks(text).find((x) => x.line === parent)
   const first = t?.children[0]
-  const indent = first !== undefined ? lead(content(lines, first)) : p.indent + indentUnitOf(text)
+  const c = first !== undefined ? parseTaskLine(content(lines, first)) : null
+  const indent = c ? c.quote + c.indent : p.quote + p.indent + indentUnitOf(text)
   const end = blockEnd(lines, parent)
   const row = `${indent}- [ ] ${title.replace(/[\r\n]+/g, ' ').trim()}`
   return { text: insertLines(text, end, [row]), line: end + 1 }
@@ -249,10 +281,12 @@ function dedent(rows: string[]): string[] {
   return rows.map((r) => (r.startsWith(base) ? r.slice(base.length) : r.replace(/^[ \t]+/, '')))
 }
 
-/** 把这一条（连子任务）从 src 挪到 dst 的最后一条待办后面 */
+/** 把这一条（连子任务）从 src 挪到 dst 的最后一条待办后面（在引用块里的，先去掉「> 」） */
 export function moveBlock(src: string, n: number, dst: string): { from: string; to: string; line: number } {
   const r = removeBlock(src, n)
-  const rows = dedent(r.removed.map((l, i) => (i === 0 && l.startsWith(BOM) ? l.slice(1) : l)).map((l) => (l.endsWith('\r') ? l.slice(0, -1) : l)))
+  const plain = r.removed.map((l, i) => (i === 0 && l.startsWith(BOM) ? l.slice(1) : l)).map((l) => (l.endsWith('\r') ? l.slice(0, -1) : l))
+  const q = quoteOf(plain[0]!).prefix
+  const rows = dedent(plain.map((l) => (q && l.startsWith(q) ? l.slice(q.length) : split(l).body)))
   const a = appendLines(dst, rows)
   return { from: r.text, to: a.text, line: a.line }
 }

@@ -6,6 +6,7 @@
  */
 import { useEffect, useRef } from 'react'
 import { codiconSvg } from '@cn/design/codicon-svg'
+import { trackDrag } from '@cn/design/drag-end'
 import { HOUR } from './WeekGrid'
 import { parseDrop, slotAt } from './model'
 
@@ -41,11 +42,26 @@ export function useDragDrop(h: DragHandlers): void {
       const el = e.target as HTMLElement
       if (el.closest('[data-ev]')) {
         d = { key: null, ev: true, x: e.clientX, y: e.clientY, moved: false }
+        follow(e)
         return
       }
       const r = el.closest<HTMLElement>('[data-drag]')
       if (!r || el.closest(NOT_DRAG)) return
       d = { key: r.dataset.drag!, ev: false, x: e.clientX, y: e.clientY, moved: false }
+      follow(e)
+    }
+    // 松手没送到页面（窗口外松手、失焦）：当没拖过，日子不改（trackDrag，task-0nz63）
+    let stop: (() => void) | null = null
+    const follow = (e: PointerEvent) => {
+      stop = trackDrag<PointerEvent>(e, { move, end: (how, ev) => (how === 'up' ? up(ev!) : cancel()) })
+    }
+    const cancel = () => {
+      const x = d
+      d = null
+      if (!x) return
+      clear()
+      document.querySelectorAll('.cal-lift').forEach((el) => el.classList.remove('cal-lift'))
+      x.ghost?.remove()
     }
     const move = (e: PointerEvent) => {
       if (!d) return
@@ -110,13 +126,11 @@ export function useDragDrop(h: DragHandlers): void {
       ref.current.menu(r.dataset.drag!)
     }
     document.addEventListener('pointerdown', down)
-    document.addEventListener('pointermove', move)
-    document.addEventListener('pointerup', up)
     document.addEventListener('contextmenu', ctx)
     return () => {
+      stop?.()
+      cancel()
       document.removeEventListener('pointerdown', down)
-      document.removeEventListener('pointermove', move)
-      document.removeEventListener('pointerup', up)
       document.removeEventListener('contextmenu', ctx)
     }
   }, [])

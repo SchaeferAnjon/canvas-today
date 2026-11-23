@@ -2,6 +2,7 @@
  * 系统菜单（照家族规矩：右键一律系统原生菜单，DESIGN.v3 9.1）。
  * 待办的右键：今天 / 明天 / 下周一（右边小字是哪天）· 开始专注 25 分钟 · 打开笔记，到这一行 · 删除（照原型）。
  * 习惯的右键：打开笔记 · 重复 ▸（每天、工作日、每周一、三、五……）· 删除。
+ * 日历左栏系统日历的右键：不在这里显示 / 在这里显示（有藏起的时再加「全部显示」，task-ov5bb）。
  * 软件菜单栏：中英文跟着设置里的语言；应用菜单里「关于」下面是「检查更新…」（下好了是「重启并更新到 x」）。
  */
 import { BrowserWindow, Menu, type MenuItemConstructorOptions } from 'electron'
@@ -47,6 +48,18 @@ export function habitMenu(win: BrowserWindow, h: HabitView, lang: Lang): Promise
       },
       { type: 'separator' },
       { label: tr(lang, 'mDelete'), enabled: !h.readOnly, click: () => (picked = { kind: 'delete' }) },
+    ]
+    Menu.buildFromTemplate(items).popup({ window: win, callback: () => resolve(picked) })
+  })
+}
+
+/** 日历左栏一个系统日历的右键：不在这里显示 / 在这里显示；有藏起的日历时再给「全部显示」 */
+export function calMenu(win: BrowserWindow, hidden: boolean, anyHidden: boolean, lang: Lang): Promise<'hide' | 'show' | 'showAll' | null> {
+  return new Promise((resolve) => {
+    let picked: 'hide' | 'show' | 'showAll' | null = null
+    const items: MenuItemConstructorOptions[] = [
+      hidden ? { label: tr(lang, 'calShowHere'), click: () => (picked = 'show') } : { label: tr(lang, 'calHideHere'), click: () => (picked = 'hide') },
+      ...(anyHidden ? [{ type: 'separator' } as const, { label: tr(lang, 'calShowAll'), click: () => (picked = 'showAll') }] : []),
     ]
     Menu.buildFromTemplate(items).popup({ window: win, callback: () => resolve(picked) })
   })

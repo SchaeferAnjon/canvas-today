@@ -2,7 +2,7 @@
  * 周看法（画布今日的日历）：七天、0 到 24 点一小时 HOUR 高，打开停在 8:00；日子头和「全天」一行在上面不动，只有下面的钟点格滚
  * （格子不从头底下滚过去：宿主的面板半透明时头不用垫底色，也看不到下面滚过去的字）。
  * 今天那一列淡底和一道红色的现在线；待办块左边一道强调色，系统日程用它自己日历的颜色、带锁（只读，data-ev），
- * AI 排的是虚线框（ghosts）。叠在一起的块分几列并排。拖放目标：每一列 day:<日子>、「全天」每一格 allday:<日子>（model.ts parseDrop）
+ * AI 排的是虚线框（ghosts；没有钟点的画在「全天」那一行）。叠在一起的块分几列并排。拖放目标：每一列 day:<日子>、「全天」每一格 allday:<日子>（model.ts parseDrop）
  */
 import { type CSSProperties, useEffect, useRef, useState } from 'react'
 import { Codicon } from '@cn/design'
@@ -86,6 +86,13 @@ export function WeekGrid({ lang, days, today, nowMin, items, events = [], ghosts
                   {x.title}
                 </div>
               ))}
+              {ghosts
+                .filter((g) => g.date === d && !g.time)
+                .map((g) => (
+                  <div key={g.key} className="cal-chip ghost" data-ghost={g.key} title={`${g.title} · ${g.note}`}>
+                    {g.title}
+                  </div>
+                ))}
             </div>
           ))}
         </div>
@@ -116,7 +123,7 @@ function DayColumn({ lang, d, today, nowMin, items, events, ghosts, sel }: { lan
   const T = CAL_TEXT[lang]
   const evs = eventsOn(events, d).timed
   const its = itemsOn(items, d).timed
-  const gh = ghosts.filter((g) => g.date === d)
+  const gh = ghosts.filter((g) => g.date === d && g.time)
   const spans: Span[] = [
     ...evs.map((s) => ({ id: `e:${s.ev.id}`, from: s.from, to: s.to })),
     ...its.map((x) => ({ id: `i:${x.key}`, ...itemSpan(x) })),

@@ -14,7 +14,8 @@ import '@cn/design/settings.css'
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import { activeSkin, allSkins, SKINS, skinOf } from '../../../notes/src/shared/appearance'
 import { themeInfo } from '../../../notes/src/shared/vscode-theme'
-import type { RemList } from '../shared/api'
+import type { QuickKeyState, RemList } from '../shared/api'
+import { comboOf, DEFAULT_QUICK_KEY, QUICK_KEY_SUGGEST, quickKeyOften, quickKeyProblem } from '../shared/quick'
 import type { TodayAppearance, TodaySettings } from '../shared/settings'
 import { updateError, updateLine } from '../shared/update'
 import { nowMs, reloadState, saveSettings, setLook, useData, useLang } from './store'
@@ -45,9 +46,17 @@ const PAGES: { id: SettingsPage; icon: CodiconName; name: 'sGeneral' | 'sLook' |
   { id: 'family', icon: 'multiple-windows', name: 'sFamily', desc: 'sFamilyDesc' },
 ]
 
-export function SettingsDialog({ page: first = 'general', onClose, onImport, appNotice }: { page?: SettingsPage; onClose: () => void; onImport: () => void; appNotice?: string | null }) {
+/**
+ * onPage：换了页告诉外面（A 里设置是中间一个标签，从弹窗换成标签、退到后面再点回来时开在同一页）；外面给的 page 变了（底栏「日历已连接」）就翻过去
+ */
+export function SettingsDialog({ page: first = 'general', onClose, onImport, appNotice, asTab, onPage }: { page?: SettingsPage; onClose: () => void; onImport: () => void; appNotice?: string | null; asTab?: boolean; onPage?: (p: SettingsPage) => void }) {
   const t = useT()
-  const [page, setPage] = useState<SettingsPage>(first)
+  const [page, setPageState] = useState<SettingsPage>(first)
+  useEffect(() => setPageState(first), [first])
+  const setPage = (p: SettingsPage) => {
+    setPageState(p)
+    onPage?.(p)
+  }
   /** 从软件家族「去库 ›」「去外观 ›」跳过去：翻到那一行、闪一下 */
   const [focus, setFocus] = useState<{ row: string; seq: number } | null>(null)
   const goRow = (row: string) => {
@@ -59,7 +68,7 @@ export function SettingsDialog({ page: first = 'general', onClose, onImport, app
   const text = useMemo(() => ({ title: t('settings'), nav: t('sNav'), close: t('sCloseSet'), closeTip: t('sCloseTip'), saved: (hint: string) => t('sSaved', hint), undo: t('sUndo') }), [t])
   const sections = [{ pages: PAGES.map((p) => ({ id: p.id, name: t(p.name), icon: <Codicon name={p.icon} /> })) }]
   return (
-    <SettingsShell text={text} sections={sections} page={page} onPage={(id) => setPage(id as SettingsPage)} onClose={onClose} appNotice={appNotice} focus={focus}>
+    <SettingsShell asTab={asTab} text={text} sections={sections} page={page} onPage={(id) => setPage(id as SettingsPage)} onClose={onClose} appNotice={appNotice} focus={focus}>
       <PageHead icon={<Codicon name={cur.icon} size={18} />} title={t(cur.name)} desc={t(cur.desc)} />
       {page === 'general' && <GeneralPage />}
       {page === 'look' && <LookPage />}
@@ -104,6 +113,7 @@ function GeneralPage() {
         <Row id="tray" label={t('sTrayRow')} desc={t('sTrayDesc')}>
           <Toggle on={s.tray} label={t('sTrayRow')} onChange={() => flip('tray', t('sTrayRow'))} />
         </Row>
+        <QuickKeyRow />
       </Group>
       <Group title={t('sAbout')}>
         <UpdateRow onFlip={() => flip('autoUpdate', t('uAuto'))} />
@@ -117,6 +127,81 @@ function GeneralPage() {
         </Row>
       </Group>
     </>
+  )
+}
+
+/**
+ * 全局快速加一条的键（画布今日特色第一条线）：点了按一组新的（esc 取消）；系统和两个软件自己用着的不给，常被别的软件占着的先说一声；
+ * 注册不上（被别的软件占了）时说出来，给几组没人用的点一下就换（照方案页原型 A5）
+ */
+function QuickKeyRow() {
+  const t = useT()
+  const lang = useLang()
+  const change = useChange()
+  const s = useData().state!.settings
+  const [rec, setRec] = useState(false)
+  const [warn, setWarn] = useState<string | null>(null)
+  const [st, setSt] = useState<QuickKeyState | null>(null)
+  useEffect(() => {
+    void window.ct.quickState().then(setSt)
+    return window.ct.onQuickState(setSt)
+  }, [])
+  const put = (combo: string) => {
+    setRec(false)
+    const bad = quickKeyProblem(combo, lang)
+    if (bad) return setWarn(bad)
+    const who = quickKeyOften(combo, lang)
+    setWarn(who ? t('sQuickOften', combo, who) : null)
+    if (combo !== s.quickKey) change({ quickKey: combo }, { quickKey: s.quickKey }, t('sQuickSet', combo))
+  }
+  useEffect(() => {
+    if (!rec) return
+    const onKey = (e: KeyboardEvent) => {
+      // 录键时这个键不交给软件别处（⌘K 不开搜索、esc 不关设置）
+      e.preventDefault()
+      e.stopPropagation()
+      e.stopImmediatePropagation()
+      if (e.key === 'Escape') return setRec(false)
+      if (['Meta', 'Shift', 'Alt', 'Control', 'CapsLock'].includes(e.key)) return
+      const combo = comboOf(e)
+      if (combo) put(combo)
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [rec, s.quickKey, lang])
+  const taken = !!st && !st.registered && st.key === s.quickKey
+  const more = warn ? (
+    <div className="sa-kwarn" role="alert">
+      <Codicon name="warning" size={12} />
+      <span>{warn}</span>
+    </div>
+  ) : taken ? (
+    <div className="sa-kwarn" role="alert">
+      <Codicon name="warning" size={12} />
+      <span>{t('sQuickTaken', s.quickKey)}</span>
+      <span className="sa-ksug">
+        {QUICK_KEY_SUGGEST.filter((k) => k !== s.quickKey).map((k) => (
+          <button key={k} type="button" className="btn sm" onClick={() => put(k)}>
+            {k === DEFAULT_QUICK_KEY ? t('sQuickRec', k) : k}
+          </button>
+        ))}
+      </span>
+    </div>
+  ) : undefined
+  return (
+    <Row id="quickKey" label={t('sQuickKey')} desc={t('sQuickKeyDesc')} more={more}>
+      <button
+        type="button"
+        className={'sa-keyb' + (rec ? ' rec' : taken ? ' bad' : '')}
+        aria-label={t('sQuickKeyAria')}
+        onClick={() => {
+          setWarn(null)
+          setRec(!rec)
+        }}
+      >
+        {rec ? t('sQuickPress') : s.quickKey}
+      </button>
+    </Row>
   )
 }
 
@@ -447,7 +532,7 @@ function CalRow() {
         {step(t('remOpenPrivacy'), () => void window.ct.calOpenPrivacy())}
       </>
     )
-  else sub = c.active ? t('calOnSub', c.calendars.length) : t('calOffSub')
+  else sub = c.active ? t('calOnSub', c.calendars.filter((x) => !x.hidden).length) : t('calOffSub')
   return (
     <Row id="cal" label={t('calRow')} desc={sub}>
       <Toggle on={c.active} label={t('calRow')} onChange={() => c.available && void flip()} />

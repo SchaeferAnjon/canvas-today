@@ -47,7 +47,7 @@ export const DEFAULT_ITEMS: Readonly<Record<Exclude<BuiltinGroup, 'recent'>, rea
   app: ['restart-update', 'settings', 'theme', 'keys-settings', 'ui-lang', 'cards-settings', 'edit-home', 'update'],
   // 只在某些时候才有的照样写着：读 PDF 时的笔记、能改名的标签、中间开着笔记、右栏网页开着、双语翻译插件开着
   more: [
-    'back', 'forward', 'toggle-left', 'toggle-right', 'fold-center', 'left-files', 'left-recent', 'left-desks', 'find-file', 'outline', 'notes', 'close', 'rename',
+    'back', 'forward', 'toggle-left', 'toggle-right', 'fold-center', 'left-files', 'left-recent', 'left-desks', 'find-file', 'outline', 'related', 'notes', 'close', 'rename',
     'toggle-view', 'ai-new-chat',
     'web-address', 'web-reload', 'web-top-fold', 'web-bookmarks-bar', 'translate-lang', 'translate-style', 'translate-reveal',
   ],
