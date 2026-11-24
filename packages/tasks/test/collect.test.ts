@@ -133,7 +133,7 @@ describe('写回：新记号插在 ^块编号、#标签、注释前面，块编�
   })
   it('勾掉重复的：下一次那一行不抄块编号', () => {
     const doc = '- [ ] 浇花 📅 2026-11-20 🔁 每天 ^water\n'
-    const r = completeTask(doc, 0, D, () => 'n1')
+    const r = completeTask(doc, 0, D)
     expect(r.text).toBe('- [x] 浇花 📅 2026-11-20 🔁 每天 ✅ 2026-11-23 ^water\n- [ ] 浇花 📅 2026-11-24 🔁 每天\n')
   })
   it('只动那一行：一篇里勾掉、撤销一字节不差', () => {

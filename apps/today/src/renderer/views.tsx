@@ -4,18 +4,20 @@
  */
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { CalBar, type CalMode, daysFrom, hasEvents, MiniMonth, MonthGrid, monthWeeks, shiftMonth, useWhenInput, WeekGrid } from '@cn/calendar'
-import { parseQuick, type Quick, weekday } from '@cn/tasks'
+import { diffDays, parseQuick, type Quick, remindOf, weekday } from '@cn/tasks'
 import type { AddCtx, AiSlot, Snapshot, TaskView } from '../shared/api'
 import { type ApiId, PROVIDER_NAME } from '@cn/ai-engines/shared'
 import { INBOX_NOTE } from '../shared/brand'
 import { repeatLabel, tr } from '../shared/i18n'
-import { calItems, cntToday, type Group, groupsOf, type Nav, open, quadOf } from '../shared/views'
+import { calItems, cntAll, cntToday, type Group, groupsOf, type Nav, open, quadOf } from '../shared/views'
 import { dayLabel, isoPlus, mdLabel, thirdPick, whenLabel } from '../shared/when'
 import { useActions } from './actions'
 import { prioText, usePreview } from './ai-preview'
 import type { PlanChange } from '../shared/ai-chat'
 import { nowLocal, refreshAi, useCalEvents, useData, useLang } from './store'
 import { Check, EngineLogo, Ic, useT } from './ui'
+import { McSrcChip, McToday } from './mc'
+import { withMcLinks } from '../shared/mc'
 import { ChangeBar } from '@cn/ai-chat/answer-bar'
 
 /** 一篇笔记在界面上叫什么：收件箱那篇叫「收件箱/待办」（照原型），别的是文件名 */
@@ -35,7 +37,7 @@ export function Row({ t, today, sel, flash, timeOnly, showNote = true, quad = fa
   return (
     <div className={`row${sel ? ' on' : ''}${t.done ? ' done' : ''}${t.cancelled ? ' cancel' : ''}${flash ? ' flash' : ''}${pv ? ' aim-hit' : ''}`} data-drag={t.key} data-part="任务行">
       <Check t={t} onToggle={() => a.tick(t)} />
-      <span className="rt">{t.title}</span>
+      <span className="rt">{t.mc?.title ?? t.title}</span>
       {pv && <PreviewMark c={pv} today={today} quad={quad} />}
       <span className="accs">
         {subs > 0 && <SubCount t={t} />}
@@ -46,7 +48,9 @@ export function Row({ t, today, sel, flash, timeOnly, showNote = true, quad = fa
             {tr(lang, 'copies', t.dups.length + 1)}
           </span>
         )}
-        {t.path !== INBOX_NOTE && showNote && (
+        {/* MeetCaption 写的：「来自 ECP 09:43」，点了到画布笔记那一篇那一秒；就替掉笔记名那一格 */}
+        {t.mc && <McSrcChip t={t} />}
+        {t.path !== INBOX_NOTE && showNote && !t.mc && (
           <span className="acc note">
             <Ic n="file" s={12} />
             {noteLabel(t.path)}
@@ -214,12 +218,22 @@ export function QuickChips({ q, today, ai, bare }: { q: Quick; today: string; ai
 
 // ---------- 清单（原型 listView） ----------
 
+/** 「已完成」先列多少条（库里勾掉的可能上千条），多的点「再列 N 条」（和画布笔记一样） */
+const DONE_PAGE = 100
+
 export function ListView({ nav, snap, today, sel, flash }: { nav: Nav; snap: Snapshot; today: string; sel: string | null; flash: string | null }) {
   const lang = useLang()
   const t = useT()
   const a = useActions()
   setSnapForSubs(snap)
   const groups = useMemo(() => groupsOf(nav, snap.tasks, today), [nav, snap, today])
+  // 一篇笔记里「已完成 N 条 ›」默认收着，换一篇收回去；「已完成」看法换走再回来从头列
+  const [foldOpen, setFoldOpen] = useState(false)
+  const [doneShown, setDoneShown] = useState(DONE_PAGE)
+  useEffect(() => {
+    setFoldOpen(false)
+    setDoneShown(DONE_PAGE)
+  }, [nav])
   let title: string
   let sub: string
   if (nav === 'today') {
@@ -234,20 +248,43 @@ export function ListView({ nav, snap, today, sel, flash }: { nav: Nav; snap: Sna
   } else if (nav === 'week') {
     title = t('week')
     sub = `${mdLabel(lang, today)} – ${mdLabel(lang, isoPlus(today, 6))}`
+  } else if (nav === 'all') {
+    title = t('all')
+    sub = t('allSub', cntAll(snap.tasks))
+  } else if (nav === 'done') {
+    title = t('done')
+    sub = t('doneSub')
   } else {
     title = noteLabel(nav.slice(5))
     sub = nav.slice(5)
   }
-  const ctx: AddCtx = nav.startsWith('list:') ? { note: nav.slice(5) } : (nav as AddCtx)
+  // 「全部」里加的进收件箱
+  const ctx: AddCtx = nav.startsWith('list:') ? { note: nav.slice(5) } : nav === 'all' ? 'inbox' : (nav as AddCtx)
   const name = (g: Group) =>
     g.kind === 'overdue' || g.kind === 'today' || g.kind === 'tomorrow' || g.kind === 'doneToday' || g.kind === 'noDate'
       ? t(g.kind)
       : g.kind === 'day'
         ? `${dayLabel(lang, g.date!, today)} · ${mdLabel(lang, g.date!)}`
-        : g.kind === 'heading'
-          ? `${'#'.repeat(Math.max(1, snap.tasks.find((x) => g.items[0] && x.key === g.items[0].key)?.headingLevel ?? 2))} ${g.name}`
-          : ''
-  const rows = (items: TaskView[], timeOnly?: boolean) => items.map((x) => <Row key={x.key} t={x} today={today} sel={sel === x.key} flash={flash === x.key} timeOnly={timeOnly} />)
+        : g.kind === 'doneDay'
+          ? !g.date
+            ? t('noDoneDate')
+            : Math.abs(diffDays(g.date, today)) < 7
+              ? `${dayLabel(lang, g.date, today)} · ${mdLabel(lang, g.date)}`
+              : mdLabel(lang, g.date)
+          : g.kind === 'folder'
+            ? g.name
+              ? g.name.split('/').join(' › ')
+              : t('topLevel')
+            : g.kind === 'note'
+              ? noteLabel(g.name)
+              : g.kind === 'heading'
+                ? `${'#'.repeat(Math.max(1, snap.tasks.find((x) => g.items[0] && x.key === g.items[0].key)?.headingLevel ?? 2))} ${g.name}`
+                : ''
+  // 「全部」的笔记那组、一篇笔记里不再写出处；「已完成」先列 DONE_PAGE 条
+  const showNote = nav !== 'all' && !nav.startsWith('list:')
+  const rows = (items: TaskView[], timeOnly?: boolean) => items.map((x) => <Row key={x.key} t={x} today={today} sel={sel === x.key} flash={flash === x.key} timeOnly={timeOnly} showNote={showNote} />)
+  let left = nav === 'done' ? doneShown : Infinity
+  const doneTotal = nav === 'done' ? groups.reduce((n, g) => n + g.items.length, 0) : 0
   return (
     <>
       <div className="vhead" data-part={title}>
@@ -255,9 +292,43 @@ export function ListView({ nav, snap, today, sel, flash }: { nav: Nav; snap: Sna
         <span className="t2">{sub}</span>
       </div>
       <div className="mbody">
-        <QuickAdd ctx={ctx} nav={nav} today={today} />
+        {nav !== 'done' && <QuickAdd ctx={ctx} nav={nav} today={today} />}
+        {nav === 'today' && <McToday tasks={snap.tasks} today={today} />}
         {groups.map((g, i) => {
-          const it = g.items
+          if (g.kind === 'doneFold')
+            // 一篇笔记里勾掉的收成一行（画布笔记左栏「按文件夹」同一个样子），点开列出来
+            return (
+              <Fragment key={i}>
+                <button className="more donefold" aria-expanded={foldOpen} onClick={() => setFoldOpen((x) => !x)}>
+                  {t('doneFold', g.items.length, foldOpen)}
+                </button>
+                {foldOpen && rows(g.items)}
+              </Fragment>
+            )
+          if (g.kind === 'folder')
+            return (
+              <div className="grp folder" key={i} data-part="文件夹">
+                <Ic n="folder" s={14} />
+                {name(g)}
+                <span className="n">{g.count || ''}</span>
+              </div>
+            )
+          if (g.kind === 'note')
+            return (
+              <Fragment key={i}>
+                <button className="grp notehead" title={t('openThisNote')} onClick={() => a.goNav(`list:${g.note!}`)} data-part="笔记">
+                  <Ic n="file" s={12} />
+                  {name(g)}
+                  <span className="n">{g.items.length}</span>
+                </button>
+                {rows(g.items)}
+              </Fragment>
+            )
+          const it = nav === 'done' ? g.items.slice(0, Math.max(0, left)) : g.items
+          if (nav === 'done') {
+            left -= it.length
+            if (!it.length) return null
+          }
           if (g.done && !it.length) return null
           if (g.empty && !it.length)
             return (
@@ -273,7 +344,7 @@ export function ListView({ nav, snap, today, sel, flash }: { nav: Nav; snap: Sna
               {(label || it.length > 0) && (
                 <div className={`grp${g.red ? ' red' : ''}`} {...(g.drop ? { 'data-drop': g.drop } : {})}>
                   {label}
-                  <span className="n">{it.length || ''}</span>
+                  <span className="n">{g.items.length || ''}</span>
                 </div>
               )}
               {g.fold && it.length > 2 ? (
@@ -288,6 +359,18 @@ export function ListView({ nav, snap, today, sel, flash }: { nav: Nav; snap: Sna
             </Fragment>
           )
         })}
+        {nav === 'done' && doneTotal > doneShown && (
+          <button className="more donefold" onClick={() => setDoneShown((n) => n + DONE_PAGE)}>
+            {t('doneMore', Math.min(DONE_PAGE, doneTotal - doneShown))}
+          </button>
+        )}
+        {(nav === 'all' || nav === 'done') && groups.length === 0 && (
+          <div className="empty">
+            <Ic n={nav === 'done' ? 'pass' : 'checklist'} s={32} />
+            <b>{t(nav === 'done' ? 'doneEmpty' : 'allEmpty')}</b>
+            <p>{t(nav === 'done' ? 'doneEmptySub' : 'allEmptySub')}</p>
+          </div>
+        )}
         {nav.startsWith('list:') && groups.length === 0 && (
           <div className="empty">
             <Ic n="checklist" s={32} />
@@ -317,14 +400,16 @@ export function Detail({ x, snap, today }: { x: TaskView | null; snap: Snapshot;
   const a = useActions()
   const lang = useLang()
   const t = useT()
-  const [title, setTitle] = useState(x?.title ?? '')
+  // MeetCaption 写的那几条：框里不带 ▶ 时间那串，存的时候接回去（shared/mc.ts withMcLinks）
+  const shownTitle = x ? (x.mc?.title ?? x.title) : ''
+  const [title, setTitle] = useState(shownTitle)
   const [editing, setEditing] = useState(false)
   const [step, setStep] = useState('')
-  const { rem, focus } = useData()
+  const { rem, focus, state } = useData()
   const remList = rem?.list?.title ?? (lang === 'zh' ? '画布今日' : 'Canvas Today')
   // 外面改了标题、换了一条：没在改时跟着换；正在改的字不动（外部改动不丢正在打的字）
   useEffect(() => {
-    if (!editing) setTitle(x?.title ?? '')
+    if (!editing) setTitle(shownTitle)
   }, [x?.title, x?.key, editing])
   useEffect(() => setStep(''), [x?.path, x?.title])
   if (!x)
@@ -346,14 +431,16 @@ export function Detail({ x, snap, today }: { x: TaskView | null; snap: Snapshot;
   picks.push([null, t('undated')])
   const times = x.time && !TIMES.includes(x.time) ? [...TIMES, x.time] : TIMES
   const rems = x.remind && !REMS.includes(x.remind) ? [...REMS, x.remind] : REMS
+  // 设置「提醒所有带钟点的待办」开着、有钟点没写 🔔：到点照准时响，空的那一项不说「不提醒」
+  const implicit = !x.remind && remindOf(x, !!state?.settings.remindAll) !== null
   const wd = x.date ? weekday(x.date) : 1
   const reps = ['', '每天', '工作日', `每周${'日一二三四五六'[wd]}`, `每月${x.date ? Number(x.date.slice(8, 10)) : 1}日`]
   if (x.repeat && !reps.includes(x.repeat)) reps.push(x.repeat)
   const subs = x.subs.map((k) => snap.tasks.find((s) => s.key === k)).filter((s): s is TaskView => !!s)
   const commitTitle = () => {
     setEditing(false)
-    if (title.trim() && title.trim() !== x.title) a.field(x, { op: 'title', title: title.trim() })
-    else setTitle(x.title)
+    if (title.trim() && title.trim() !== shownTitle) a.field(x, { op: 'title', title: x.mc ? withMcLinks(title.trim(), x.title) : title.trim() })
+    else setTitle(shownTitle)
   }
   return (
     <div className="db" data-part="详情">
@@ -369,7 +456,7 @@ export function Detail({ x, snap, today }: { x: TaskView | null; snap: Snapshot;
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.nativeEvent.isComposing) (e.target as HTMLInputElement).blur()
             if (e.key === 'Escape') {
-              setTitle(x.title)
+              setTitle(shownTitle)
               setEditing(false)
               ;(e.target as HTMLInputElement).blur()
             }
@@ -412,7 +499,7 @@ export function Detail({ x, snap, today }: { x: TaskView | null; snap: Snapshot;
             <select className="sel" aria-label={t('remind')} value={x.remind ?? ''} onChange={(e) => a.field(x, { op: 'remind', remind: e.target.value || null })}>
               {rems.map((o) => (
                 <option key={o} value={o}>
-                  {o ? tr(lang, 'remindLabel', o) : t('noRemind')}
+                  {o ? tr(lang, 'remindLabel', o) : implicit ? t('remindDefault') : t('noRemind')}
                 </option>
               ))}
             </select>
@@ -421,7 +508,7 @@ export function Detail({ x, snap, today }: { x: TaskView | null; snap: Snapshot;
                 {t('remRings')}
               </span>
             ) : (
-              x.remind &&
+              (x.remind || implicit) &&
               x.date && (
                 <button className="link" onClick={() => a.preview(x)}>
                   {t('previewNotif')}
@@ -505,6 +592,7 @@ export function Detail({ x, snap, today }: { x: TaskView | null; snap: Snapshot;
             <Ic n="go-to-file" s={14} />
             {t('openNote')}
           </button>
+          {x.mc && <McSrcChip t={x} />}
         </div>
       </div>
       <div className="dsec">{t('focus')}</div>

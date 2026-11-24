@@ -231,4 +231,18 @@ export const AI: Table = {
   框的那块: 'The boxed area',
   // 对话往上翻着看时底下出了新字（@cn/ai-chat 的 follow.tsx）
   新回答: 'New response',
+  // 发不出去时输入框下面那一句（AiPanel，AI 对话同时跑）
+  '「{name}」那边还在答': '“{name}” is still answering',
+  '同时在答 {m} 段，排在第 {n} 个': (p) => `${p.m} chats answering, you’re #${p.n} in line`,
+  '{name}一次答一段，排在第 {n} 个': (p) => `${p.name} answers one chat at a time, you’re #${p.n} in line`,
+  '没开始答：排队时停下了': 'Not started: stopped while waiting in line',
+  '别的对话答完了，还没看': 'Another chat finished; not read yet',
+  正在答: 'Answering',
+  '排第 {n}': '#{n} in line',
+  '答完了，还没看': 'Finished; not read yet',
+  同时答几段对话: 'Chats answering at once',
+  '最多同时答{n}段对话，多的排队': (p) => `Up to ${p.n} chats answer at once; the rest wait in line`,
+  '{n}段': '{n}',
+  '不同页面的AI对话能同时答，多出来的排队，前面答完自动开始': 'AI chats on different pages can answer at the same time; extra ones wait in line and start when one finishes',
+  '排在第 {n} 个，前面答完自动开始…': (p) => `#${p.n} in line; starts when one finishes…`,
 }

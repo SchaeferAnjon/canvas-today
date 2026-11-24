@@ -11,7 +11,7 @@ import { activeSkin, skinOf } from '../../../notes/src/shared/appearance'
 import { themeCss, themeInfo } from '../../../notes/src/shared/vscode-theme'
 import { installThemeCss } from '../../../notes/src/renderer/skin'
 import { applyWall } from '@cn/design/wall'
-import type { AiInfo, AppState, CalState, FocusInfo, GitInfo, LookState, RemState, Snapshot, UpdateState } from '../shared/api'
+import type { AiInfo, AppState, CalState, FocusInfo, GitInfo, LookState, McState, RemState, Snapshot, UpdateState } from '../shared/api'
 import type { Lang } from '../shared/i18n'
 import type { TodayAppearance, TodaySettings } from '../shared/settings'
 import { isoOf, localNowOf } from '../shared/when'
@@ -36,11 +36,13 @@ export interface Data {
   ai: AiInfo | null
   /** 右栏 AI 对话默认用哪一家（画布笔记设置里「AI 对话」那一行） */
   chatAi: AiInfo | null
+  /** MeetCaption 联动（今天的课、正在上课没有）：主进程推过来；没装、没连库时 installed 是 false */
+  mc: McState | null
 }
 
 const media = () => window.matchMedia('(prefers-color-scheme: dark)')
 
-let data: Data = { state: null, snap: { version: 0, tasks: [], notes: [], habits: [] }, git: null, offset: 0, dark: media().matches, update: null, rem: null, focus: null, cal: null, calVersion: 0, ai: null, chatAi: null }
+let data: Data = { state: null, snap: { version: 0, tasks: [], notes: [], habits: [] }, git: null, offset: 0, dark: media().matches, update: null, rem: null, focus: null, cal: null, calVersion: 0, ai: null, chatAi: null, mc: null }
 const subs = new Set<() => void>()
 const set = (p: Partial<Data>) => {
   data = { ...data, ...p }
@@ -121,6 +123,8 @@ export async function boot() {
   window.ct.onCal((cal) => set({ cal }))
   void window.ct.calState().then((cal) => set({ cal }))
   window.ct.onCalChanged(() => set({ calVersion: data.calVersion + 1 }))
+  window.ct.onMc((mc) => set({ mc }))
+  void window.ct.mcState().then((mc) => set({ mc }))
   void refreshAi()
   const m = media()
   m.addEventListener('change', () => set({ dark: m.matches }))

@@ -63,6 +63,7 @@ Canvas Today 的样子和 Canvas Notes（画布笔记）一样，下面这些文
 - `apps/notes/src/shared/i18n/en/folder.ts`
 - `apps/notes/src/shared/i18n/en/growth.ts`
 - `apps/notes/src/shared/i18n/en/mcp.ts`
+- `apps/notes/src/shared/i18n/en/meetcaption.ts`
 - `apps/notes/src/shared/i18n/en/menus.ts`
 - `apps/notes/src/shared/i18n/en/mindmap.ts`
 - `apps/notes/src/shared/i18n/en/mindmap2.ts`
@@ -83,6 +84,7 @@ Canvas Today 的样子和 Canvas Notes（画布笔记）一样，下面这些文
 - `apps/notes/src/shared/layout.ts`
 - `apps/notes/src/shared/left.ts`
 - `apps/notes/src/shared/materials.ts`
+- `apps/notes/src/shared/meetcaption.ts`
 - `apps/notes/src/shared/prefs.ts`
 - `apps/notes/src/shared/read-along.ts`
 - `apps/notes/src/shared/reading.ts`

@@ -5,6 +5,7 @@
 import { normalizeGlass } from '@cn/design/glass'
 import { allSkins, type Appearance, DEFAULT_SETTINGS as NOTES_DEFAULT, normalizeSettings, type SkinInfo, WALL_MIXES, WALL_SPEEDS, type WallMix, type WallSpeed } from '../../../notes/src/shared/appearance'
 import type { Lang } from './i18n'
+import { DEFAULT_MC_LEAD, MC_LEADS, type McLead } from './mc'
 import { DEFAULT_QUICK_KEY, isCombo } from './quick'
 
 /** 外观和画布笔记同一套（task-aph2j：主题渐变、浓淡、动不动也一样）；画布今日不能从电脑选图 */
@@ -64,8 +65,17 @@ export interface TodaySettings {
   /** 上次查到「已是最新」的时间，重开软件后设置里也显示 */
   updateCheckedAt?: number
   reminders: RemSettings
+  /**
+   * 提醒所有带钟点的待办（2026-11-24 用户定，默认开）：有日子有钟点、没写 🔔 的也照「准时」排本机通知、镜像进提醒事项（@cn/tasks remindOf），
+   * 不往文件里补 🔔；关了只认写了 🔔 的。每台设备各记各的，iPhone / iPad 在自己的设置里
+   */
+  remindAll: boolean
   calendar: CalSettings
   plan: PlanSettings
+  /** 上课前几分钟问「开字幕吗」（MeetCaption 联动，shared/mc.ts）：0 是开始时，null 是不问；默认 5 */
+  mcLead: McLead
+  /** 日历和提醒事项的设置引导看过了（第一次连上时自动出一次，关掉就不再自动出；设置里能再打开） */
+  calGuideSeen?: boolean
 }
 
 const notesLook = NOTES_DEFAULT.appearance
@@ -92,8 +102,10 @@ export const DEFAULT_TODAY: TodaySettings = {
   autoUpdate: true,
   familyFetch: true,
   reminders: DEFAULT_REM,
+  remindAll: true,
   calendar: { show: false },
   plan: DEFAULT_PLAN,
+  mcLead: DEFAULT_MC_LEAD,
 }
 
 function normalizeRem(raw: unknown): RemSettings {
@@ -154,8 +166,11 @@ export function normalizeToday(raw: unknown, sysLang: Lang = 'zh', user: readonl
     familyFetch: typeof r.familyFetch === 'boolean' ? r.familyFetch : DEFAULT_TODAY.familyFetch,
     ...(typeof r.updateCheckedAt === 'number' && Number.isFinite(r.updateCheckedAt) && r.updateCheckedAt > 0 ? { updateCheckedAt: r.updateCheckedAt } : {}),
     reminders: normalizeRem(r.reminders),
+    remindAll: typeof r.remindAll === 'boolean' ? r.remindAll : DEFAULT_TODAY.remindAll,
     calendar: { show: (r.calendar as { show?: unknown } | undefined)?.show === true },
     plan: normalizePlan(r.plan),
+    mcLead: r.mcLead === null || MC_LEADS.includes(r.mcLead as McLead) ? (r.mcLead as McLead) : DEFAULT_MC_LEAD,
+    ...(r.calGuideSeen === true ? { calGuideSeen: true } : {}),
   }
 }
 

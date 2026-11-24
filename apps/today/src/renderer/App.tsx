@@ -9,12 +9,13 @@ import { type Prio, type When, type WhenFields, weekday } from '@cn/tasks'
 import type { AddCtx, EditOp, EditResult, Notice, TaskView } from '../shared/api'
 import { INBOX_NOTE } from '../shared/brand'
 import { repeatLabel, tr, wdName } from '../shared/i18n'
-import { cntInbox, cntNote, cntToday, cntTomorrow, cntWeek, findAgain, type Nav, notesWithTodo } from '../shared/views'
+import { cntAll, cntInbox, cntNote, cntToday, cntTomorrow, cntWeek, findAgain, type Nav, notesWithTodo } from '../shared/views'
 import { barKind } from '../shared/update'
 import { dayLabel, isoPlus, mdLabel, whenLabel } from '../shared/when'
 import { type Actions, ActionsCtx } from './actions'
 import { AiChat } from './AiChat'
 import { UNDONE_EVENT } from './ai-preview'
+import { CalGuide, onlyCanvasToday } from './cal-guide'
 import { DeleteAsk, ImportDialog } from './ImportDialog'
 import { Palette } from './Palette'
 import { SettingsDialog, type SettingsPage } from './Settings'
@@ -28,6 +29,8 @@ import { est, type PlanStep, planLists, pushLater } from '../shared/plan'
 
 type Act = 'plan' | 'lists' | 'calendar' | 'quad' | 'focus' | 'habit'
 type SelRef = Pick<TaskView, 'key' | 'id' | 'path' | 'line' | 'raw' | 'title'>
+/** 提示条里叫它什么：MeetCaption 写的那几条不带 ▶ 时间那串链接（shared/mc.ts） */
+const shown = (x: TaskView) => x.mc?.title ?? x.title
 const pickSel = (t: TaskView): SelRef => ({ key: t.key, id: t.id, path: t.path, line: t.line, raw: t.raw, title: t.title })
 
 export function App() {
@@ -88,6 +91,20 @@ function Desk() {
   /** 导入提醒事项的弹窗、搬完删原条目前再问一次（要删的那几条） */
   const [imp, setImp] = useState(false)
   const [delAsk, setDelAsk] = useState<string[] | null>(null)
+  /** 日历和提醒事项的设置引导（cal-guide.tsx） */
+  const [guide, setGuide] = useState(false)
+  // 第一次连上提醒事项或系统日历：引导自动出一次。头一回拿到两边的样子时就连着的不算（重开软件），这次打开里从没连变成连上、没看过才出
+  const linked = !!rem?.connected || !!cal?.show
+  const wasLinked = useRef<boolean | null>(null)
+  useEffect(() => {
+    if (!state || !rem || !cal) return
+    if (wasLinked.current === false && linked && !state.settings.calGuideSeen) setGuide(true)
+    wasLinked.current = linked
+  }, [linked, state, rem, cal])
+  const closeGuide = () => {
+    setGuide(false)
+    if (!getData().state!.settings.calGuideSeen) void saveSettings({ calGuideSeen: true })
+  }
   /** 右栏开着哪一格：详情、AI 对话（task-ykkoz）；AI 开过一次以后一直挂着（换到详情时藏起，正在问的那一问不断） */
   const [rtab, setRtab] = useState<'detail' | 'ai'>('detail')
   const [aiOpened, setAiOpened] = useState(false)
@@ -194,30 +211,31 @@ function Desk() {
         flashKey(x.key)
         setRtab('detail')
       },
+      goNav: (n) => go('lists', n),
       // 取消了的 [-] 点一下改回没做完
       tick: (x) =>
         void edit(x, { op: 'done', done: !x.done && !x.cancelled }, (r) => {
-          if (x.done || x.cancelled) return [t('unticked', x.title), r.copies ? t('untickedCopies', r.copies + 1) : t('untickedSub', note(x.path), x.line + 1)]
-          if (r.next) return [t('ticked', x.title), t('tickedNext', mdLabel(lang, r.next.date), note(x.path))]
-          return [t('ticked', x.title), r.copies ? t('tickedCopies', r.copies + 1) : t('tickedSub', note(x.path), x.line + 1)]
+          if (x.done || x.cancelled) return [t('unticked', shown(x)), r.copies ? t('untickedCopies', r.copies + 1) : t('untickedSub', note(x.path), x.line + 1)]
+          if (r.next) return [t('ticked', shown(x)), t('tickedNext', mdLabel(lang, r.next.date), note(x.path))]
+          return [t('ticked', shown(x)), r.copies ? t('tickedCopies', r.copies + 1) : t('tickedSub', note(x.path), x.line + 1)]
         }),
       setDate: (x, date, time, how) =>
         void edit(x, { op: 'date', date, ...(time !== undefined ? { time } : {}) }, () => {
-          if (!date) return [t('dateRemoved', x.title), t('dateRemovedSub')]
-          if (how === 'allday') return [t('allday', x.title, dayLabel(lang, date, today)), t('alldaySub', date)]
+          if (!date) return [t('dateRemoved', shown(x)), t('dateRemovedSub')]
+          if (how === 'allday') return [t('allday', shown(x), dayLabel(lang, date, today)), t('alldaySub', date)]
           const w = whenLabel(lang, { date, time: time !== undefined ? time : x.time }, today)
-          return [t('moved', x.title, w), t('movedSub', note(x.path), date)]
+          return [t('moved', shown(x), w), t('movedSub', note(x.path), date)]
         }),
       setPrio: (x, p: Prio, sayIt = false) =>
-        void edit(x, { op: 'prio', prio: p }, () => (sayIt ? [t('prioSet', x.title, p ? t(p === 3 ? 'hi' : p === 2 ? 'mid' : 'lo') : t('prioNone')), t('prioSub', ['', '🔽', '🔼', '⏫'][p]!)] : null)),
+        void edit(x, { op: 'prio', prio: p }, () => (sayIt ? [t('prioSet', shown(x), p ? t(p === 3 ? 'hi' : p === 2 ? 'mid' : 'lo') : t('prioNone')), t('prioSub', ['', '🔽', '🔼', '⏫'][p]!)] : null)),
       field: (x, op) => void edit(x, op),
       del: (x) => {
-        void edit(x, { op: 'delete' }, () => [t('deleted', x.title), t('deletedSub', note(x.path))]).then((r) => {
+        void edit(x, { op: 'delete' }, () => [t('deleted', shown(x)), t('deletedSub', note(x.path))]).then((r) => {
           if (r && sel?.key === x.key) setSelRef(null)
         })
       },
       move: (x, to) =>
-        void edit(x, { op: 'move', to }, () => [t('movedNote', x.title, note(to)), t('movedNoteSub', to)]).then((r) => {
+        void edit(x, { op: 'move', to }, () => [t('movedNote', shown(x), note(to)), t('movedNoteSub', to)]).then((r) => {
           if (r && r.ok) setSelRef({ key: `${r.path}#${r.line}`, id: x.id, path: r.path, line: r.line, raw: r.raw, title: x.title })
         }),
       add: async (text: string, ctx: AddCtx, when?: When | null) => {
@@ -233,6 +251,13 @@ function Desk() {
       },
       openNote: (path, line) =>
         void window.ct.openNote(path, line).then((r) => (!r.ok ? show(t('noNotesApp')) : r.by === 'default' ? show(t('openedNoteDefault', note(path))) : show(line === undefined ? t('openedNoteOnly', note(path)) : t('openedNote', note(path), line + 1)))),
+      mcJump: (x) =>
+        void window.ct.mcJump(x.key).then((r) => (!r.ok ? show(t('noNotesApp')) : r.by === 'default' ? show(t('openedNoteDefault', note(x.path))) : show(t('mcJumped', note(x.path), x.mc?.clock ?? '')))),
+      mcStart: (key, name) =>
+        void window.ct.mcStart(key).then(
+          () => show(t('mcStarted', name)),
+          (e) => show(t('failed', String((e as Error).message ?? e).replace(/^Error invoking remote method '[^']+': (Error: )?/, ''))),
+        ),
       menu: async (x) => {
         const p = await window.ct.taskMenu(x.key, lang)
         if (!p) return
@@ -306,13 +331,13 @@ function Desk() {
           if (ok) window.dispatchEvent(new CustomEvent(UNDONE_EVENT, { detail: id }))
         })(),
       cancel: (x) =>
-        void edit(x, { op: 'cancel' }, (r) => [t('planDropped', x.title), r.copies ? t('planDroppedCopies', r.copies) : t('planDroppedSub', note(x.path), x.line + 1)]),
-      setMinutes: (x, m) => void edit(x, { op: 'minutes', minutes: m }, () => (m ? [t('planEstSet', x.title, m), t('planEstSetSub', note(x.path))] : null)),
+        void edit(x, { op: 'cancel' }, (r) => [t('planDropped', shown(x)), r.copies ? t('planDroppedCopies', r.copies) : t('planDroppedSub', note(x.path), x.line + 1)]),
+      setMinutes: (x, m) => void edit(x, { op: 'minutes', minutes: m }, () => (m ? [t('planEstSet', shown(x), m), t('planEstSetSub', note(x.path))] : null)),
       pushLater: (x, evs) => {
         const nowD = new Date(nowMs())
         const at = pushLater(x, evs, getData().snap.tasks, today, nowD.getHours() * 60 + nowD.getMinutes())
-        if (at) void edit(x, { op: 'date', date: today, time: at }, () => [t('planPushed', x.title, at), t('movedSub', note(x.path), today)])
-        else void edit(x, { op: 'date', date: isoPlus(today, 1), time: null }, () => [t('planPushedTomorrow', x.title), t('movedSub', note(x.path), isoPlus(today, 1))])
+        if (at) void edit(x, { op: 'date', date: today, time: at }, () => [t('planPushed', shown(x), at), t('movedSub', note(x.path), today)])
+        else void edit(x, { op: 'date', date: isoPlus(today, 1), time: null }, () => [t('planPushedTomorrow', shown(x)), t('movedSub', note(x.path), isoPlus(today, 1))])
       },
       closeDay: async (o) => {
         const r = await window.ct.planClose(o)
@@ -351,8 +376,8 @@ function Desk() {
             void queue.then(() => {
               if (!undos.length) return
               after?.(last.date)
-              if (!last.date) return show(t('dateRemoved', x.title), t('dateRemovedSub'), undos.join(','))
-              show(t('moved', x.title, whenLabel(lang, last, today)), t('movedSub', note(x.path), last.date), undos.join(','))
+              if (!last.date) return show(t('dateRemoved', shown(x)), t('dateRemovedSub'), undos.join(','))
+              show(t('moved', shown(x), whenLabel(lang, last, today)), t('movedSub', note(x.path), last.date), undos.join(','))
             }),
         })
       },
@@ -536,6 +561,8 @@ function Desk() {
           {navItem('today', 'star-empty', t('today'), nToday, 'date:' + today)}
           {navItem('tomorrow', 'arrow-circle-right', t('tomorrow'), cntTomorrow(snap.tasks, today), 'date:' + isoPlus(today, 1))}
           {navItem('week', 'layers', t('week'), cntWeek(snap.tasks, today))}
+          {navItem('all', 'list-flat', t('all'), cntAll(snap.tasks))}
+          {navItem('done', 'pass', t('done'), null)}
           <div className="sec">{t('notesWithTodo')}</div>
           {notes.map((n) => navItem(`list:${n.path}`, 'file', n.title, cntNote(snap.tasks, n.path), `list:${n.path}`, n.folder))}
           {newList !== null && (
@@ -607,7 +634,7 @@ function Desk() {
     tab = { icon: 'rocket', label: t('planDay') }
   } else if (act === 'lists') {
     center = <ListView nav={nav} snap={snap} today={today} sel={sel?.key ?? null} flash={flash} />
-    tab = nav.startsWith('list:') ? { icon: 'file', label: noteLabel(nav.slice(5)) } : { icon: 'checklist', label: t(nav as 'today' | 'tomorrow' | 'inbox' | 'week') }
+    tab = nav.startsWith('list:') ? { icon: 'file', label: noteLabel(nav.slice(5)) } : { icon: 'checklist', label: t(nav as 'today' | 'tomorrow' | 'inbox' | 'week' | 'all' | 'done') }
   } else if (act === 'calendar') {
     center = (
       <CalendarView
@@ -742,7 +769,7 @@ function Desk() {
             )}
             {setTab ? (
               <div className="content setc">
-                <SettingsDialog asTab page={setTab} onPage={setSetOpenRaw} appNotice={toast?.msg ?? null} onClose={() => setSetOpen(null)} onImport={() => (setSetOpen(null), setImp(true))} />
+                <SettingsDialog asTab page={setTab} onPage={setSetOpenRaw} appNotice={toast?.msg ?? null} onClose={() => setSetOpen(null)} onImport={() => (setSetOpen(null), setImp(true))} onGuide={() => setGuide(true)} />
               </div>
             ) : (
               <div className="content">
@@ -837,7 +864,17 @@ function Desk() {
           onAskAi={(text) => (setPal(false), askAi(text))}
         />
       )}
-      {setOpen && !fa && <SettingsDialog page={setOpen} onPage={setSetOpenRaw} appNotice={toast?.msg ?? null} onClose={() => setSetOpen(null)} onImport={() => (setSetOpen(null), setImp(true))} />}
+      {setOpen && !fa && <SettingsDialog page={setOpen} onPage={setSetOpenRaw} appNotice={toast?.msg ?? null} onClose={() => setSetOpen(null)} onImport={() => (setSetOpen(null), setImp(true))} onGuide={() => setGuide(true)} />}
+      {guide && (
+        <CalGuide
+          onClose={closeGuide}
+          onSettings={() => (closeGuide(), setSetOpen('calrem'))}
+          onOnly={() => {
+            closeGuide()
+            void onlyCanvasToday().then(() => show(t('guideOnlyToast'), t('guideOnlySub')))
+          }}
+        />
+      )}
       {imp && (
         <ImportDialog
           onClose={() => setImp(false)}

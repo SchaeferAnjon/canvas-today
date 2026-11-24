@@ -39,6 +39,7 @@ import { appMenu, calMenu, habitMenu, taskMenu } from './menu'
 import { RemMirror } from './mirror'
 import { helperCommand, RemHelper } from './rem-helper'
 import { notifier, Reminders } from './remind'
+import { McLink } from './mc'
 import { effectiveLook, notesDataDir, notesVault, SettingsFile, themesDir, watchNotesSettings, watchThemes } from './settings'
 import { E2E, guardScreen } from './test-mode'
 import { registerFamily } from '../../../notes/src/main/family'
@@ -72,6 +73,8 @@ let vault: TaskVault | null = null
 let family: ReturnType<typeof registerFamily> | null = null
 let committer: Committer | null = null
 let reminders: Reminders | null = null
+/** MeetCaption 联动（main/mc.ts）：上课前问开字幕、今日页那节课、待办来自哪节课 */
+let mc: McLink | null = null
 /** 镜像进系统提醒事项（task-b9y8i）：whenReady 里建好 */
 let mirror: RemMirror | null = null
 let updater: Updater | null = null
@@ -153,8 +156,9 @@ let gitTimer: NodeJS.Timeout | null = null
 async function gitInfo(): Promise<GitInfo | null> {
   if (!vault) return null
   try {
-    const [st, branch] = await Promise.all([git.status(vault.root), git.currentBranch(vault.root)])
-    return { changed: st.length, branch }
+    // 同步途中（pull --rebase，HEAD 临时分离）分支照样拿得到（headState），不落到下面那个空分支
+    const [st, head] = await Promise.all([git.status(vault.root), git.headState(vault.root)])
+    return { changed: st.length, branch: head.branch ?? '' }
   } catch {
     return { changed: 0, branch: '' }
   }
@@ -239,10 +243,12 @@ async function openVault(dir: string): Promise<void> {
     openNote: (t) => void openNote(t.path, t.line).catch((e) => console.error('打不开笔记', e)),
     say: (text) => broadcast('ct:say', text),
     wrote: (paths, msg) => committer?.add(paths, msg),
+    remindAll: () => settings.read().remindAll,
   })
   await reminders.start()
   await focus?.load()
   if (!process.env.CT_VAULT) settings.set({ lastVault: root })
+  void mc?.check()
 }
 
 /** 用哪个库：测试指定的 → 在画布今日里自己选过的 → 画布笔记上次打开的（两个软件同一个库）→ 画布今日上次的 */
@@ -532,6 +538,26 @@ function registerIpc() {
       return { ok: false }
     }
   })
+  // ---------- MeetCaption 联动（main/mc.ts） ----------
+  ipcMain.handle('ct:mcState', () => mc!.state())
+  ipcMain.handle('ct:mcStart', (_e, key: unknown) => {
+    if (typeof key !== 'string') throw new Error('哪一节课不对')
+    return mc!.startKey(key)
+  })
+  ipcMain.handle('ct:mcOpenLive', () => mc!.openLive())
+  ipcMain.handle('ct:mcJump', async (_e, key: unknown) => {
+    if (typeof key !== 'string') throw new Error('哪一条不对')
+    const t = needVault()
+      .snapshot()
+      .tasks.find((x) => x.key === key)
+    if (!t) return { ok: false }
+    try {
+      return { ok: true, by: await mc!.jump(t) }
+    } catch (e) {
+      console.error('打不开画布笔记', e)
+      return { ok: false }
+    }
+  })
   ipcMain.handle('ct:previewNotif', (_e, key: unknown) => {
     const t = needVault()
       .snapshot()
@@ -549,6 +575,12 @@ function registerIpc() {
     if (s.tray !== before.tray) menuBar.set(s.tray)
     if (s.plan.tray !== before.plan.tray || s.lang !== before.lang) trayTitle()
     if (s.quickKey !== before.quickKey) quick.applyKey()
+    // 提醒所有带钟点的待办：重排本机通知、重新镜像（关了的那批从提醒事项拿掉）
+    if (s.remindAll !== before.remindAll) {
+      reminders?.soon()
+      void mirror?.sync()
+    }
+    if (s.mcLead !== before.mcLead) void mc?.check()
     return pushLook(s)
   })
   // 导入 VS Code 主题（同画布笔记 themes:import）：存进和画布笔记同一个文件夹，导进来就用上（跟系统时按浅深换白天或夜里那套）
@@ -914,6 +946,10 @@ function registerIpc() {
   })
   ipcMain.handle('ct:calEvents', (_e, from: unknown, to: unknown) => calendar!.events(day(from), day(to)))
   ipcMain.handle('ct:calOpenPrivacy', () => calendar!.openPrivacy())
+  ipcMain.handle('ct:openCalendarApp', async () => {
+    const err = await shell.openPath('/System/Applications/Calendar.app')
+    if (err) throw new Error(err)
+  })
   ipcMain.handle('ct:calHide', (_e, id: unknown, hide: unknown) => {
     if (typeof id !== 'string' || typeof hide !== 'boolean') throw new Error('日历的参数不对')
     return calendar!.setHidden(id, hide)
@@ -978,8 +1014,14 @@ function setupMirror() {
     settings: () => settings.read(),
     save: (calendar) => void settings.set({ calendar }),
     lang,
-    state: (s) => broadcast('ct:cal', s),
-    changed: () => broadcast('ct:calChanged'),
+    state: (s) => {
+      broadcast('ct:cal', s)
+      void mc?.check()
+    },
+    changed: () => {
+      broadcast('ct:calChanged')
+      void mc?.check()
+    },
     notice: (n) => broadcast('ct:notice', n),
     openExternal: (url) => shell.openExternal(url),
     // 和画布笔记共用：放在画布笔记的设置目录里（测试模式没指定画布笔记的设置目录时放在自己的里面，同导入的主题）
@@ -1109,19 +1151,37 @@ app.whenReady().then(async () => {
   family = registerFamily({
     vault: () => vault,
     // 联动.json 不是 md，库的监视不报它：底栏的「未提交」重数一次
-    send: (ch, ...a) => (ch === 'files:changed' ? refreshGit() : broadcast(ch, ...a)),
+    send: (ch, ...a) => (ch === 'files:changed' ? refreshGit() : (broadcast(ch, ...a), ch === 'family:links' && pushSnapshot())),
     fetchOn: () => settings.read().familyFetch,
     // 测试模式：装了哪些读 CT_FAMILY_INSTALLED_FILE（和画布笔记一样的 CN_FAMILY_INSTALLED_FILE 也认），名单只从 CT_FAMILY_URL 读
     test: E2E ? { installedFile: process.env.CT_FAMILY_INSTALLED_FILE ?? process.env.CN_FAMILY_INSTALLED_FILE, url: process.env.CT_FAMILY_URL } : null,
   })
+  TaskVault.mcTodosOn = () => family?.linkOn('mc-todo') ?? true
   setupMirror()
   setupFocus()
+  mc = new McLink({
+    root: () => vault?.root ?? null,
+    now,
+    lang,
+    lead: () => settings.read().mcLead,
+    installed: async () => !!(await family!.installed()).meetcaption,
+    events: (from, to) => calendar?.events(from, to) ?? Promise.resolve([]),
+    push: (s) => broadcast('ct:mc', s),
+    showMain: () => showMain(),
+    openPlain: async (p) => {
+      const err = await shell.openPath(needVault().abs(p))
+      if (err) throw new Error(err)
+    },
+    cnOpenOn: () => family?.linkOn('cn-open') !== false,
+    say: (text) => broadcast('ct:say', text),
+  })
   appMenu(lang(), menuHandlers)
   updaterReady = setupUpdater()
   const dir = vaultDir()
   if (dir) await openVault(dir)
   createWindow()
   void calendar?.refresh()
+  mc.start()
   void warmUp()
   menuBar.set(settings.read().tray)
   if (vault) menuBar.setCount(cntToday(vault.snapshot().tasks, today()))
@@ -1137,6 +1197,7 @@ app.whenReady().then(async () => {
     broadcast('ct:clock', off)
     if (vault) menuBar.setCount(cntToday(vault.snapshot().tasks, today()))
     reminders?.soon()
+    void mc?.check()
     focus?.check()
     trayTitle()
   })
@@ -1164,6 +1225,7 @@ app.on('before-quit', (e) => {
   e.preventDefault()
   reminders?.stop()
   mirror?.stop()
+  mc?.stop()
   vault?.close()
   // 退出前把排着的提交掉，最多等 5 秒
   void Promise.race([committer.flush(), new Promise((r) => setTimeout(r, 5000))]).finally(() => app.quit())

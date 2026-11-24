@@ -40,6 +40,7 @@ const task = (p: Partial<TaskView>): TaskView => {
     headingLevel: 0,
     headingLine: null,
     ringBy: 'app',
+    mc: null,
     ...p,
   }
 }

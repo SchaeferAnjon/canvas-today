@@ -6,6 +6,7 @@
 import type { Table } from './core'
 import { COMMON } from './en/common'
 import { PARAREAD } from './en/pararead'
+import { MEETCAPTION } from './en/meetcaption'
 import { SETTINGS } from './en/settings'
 import { PALETTE } from './en/palette'
 import { SHELL } from './en/shell'
@@ -105,6 +106,8 @@ export const EN_PARTS: Readonly<Record<string, Table>> = {
   'ai-sources': AI_SOURCES,
   // ParaRead 联动（画布笔记这一侧）：划线带含义、ParaRead 组件、划线颜色
   pararead: PARAREAD,
+  // MeetCaption 联动（画布笔记这一侧）：文件夹首页组件、上课记录的录音条
+  meetcaption: MEETCAPTION,
   // 别处的 AI 对话记笔记开关（2026-11-24）
   'ai-note-chat': AI_NOTE_CHAT,
 }

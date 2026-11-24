@@ -10,6 +10,13 @@ export const MENUS: Table = {
   钉到最上面: 'Pin to top',
   '右键菜单::置顶': 'Pin',
   拷贝双链: 'Copy wiki link',
+  // 导出一篇文档（export-doc.tsx）
+  '导出为 Markdown…': 'Export as Markdown…',
+  '白板 / 数据库暂不支持导出': 'Whiteboards and databases can’t be exported yet',
+  '已导出 PDF：{name}': 'Exported PDF: {name}',
+  '导出 PDF 没成功：{why}': 'Couldn’t export PDF: {why}',
+  '已导出为 Markdown：{name}': 'Exported as Markdown: {name}',
+  '导出 Markdown 没成功：{why}': 'Couldn’t export Markdown: {why}',
   打开首页: 'Open home',
   在新标签打开首页: 'Open home in new tab',
 

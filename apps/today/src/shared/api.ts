@@ -12,6 +12,7 @@ import type { ThemeFile } from '../../../notes/src/shared/vscode-theme'
 
 /** 检查更新的状态：和画布笔记同一个 Updater（apps/notes/src/main/updater.ts），类型也用它的 */
 export type { UpdateState } from '../../../notes/src/shared/api'
+import type { McClass, McLead, McLive, McProject, McSrc } from './mc'
 import type { UpdateState } from '../../../notes/src/shared/api'
 
 /** 索引里的一条待办（库里某篇笔记的某一行） */
@@ -57,6 +58,8 @@ export interface TaskView {
   headingLine: number | null
   /** 谁来响：镜像进系统提醒事项了的由提醒事项响（main/mirror.ts），本机不排通知；别的是 app */
   ringBy: RingBy
+  /** MeetCaption 写进上课记录的（这一行带 ▶ 时间）：来自哪节课、哪一刻（shared/mc.ts）；别的是 null */
+  mc: McSrc | null
 }
 
 export interface NoteView {
@@ -403,6 +406,19 @@ export interface QuickItem {
 
 export type QuickAddResult = { ok: true; n: number } | { ok: false; message: string }
 
+/** MeetCaption 联动（main/mc.ts）：今天的课、正在上课没有；没装 MeetCaption 时 installed 是 false，界面什么都不画 */
+export interface McState {
+  installed: boolean
+  /** 库里 .canvas-notes/meetcaption.json 的项目（没连库、没有是空的） */
+  projects: McProject[]
+  /** 今天的课（照课表和对上的日历日程） */
+  classes: McClass[]
+  /** 正在上课（开着字幕）；没有是 null */
+  live: McLive | null
+  /** 设置「上课前问开字幕吗」 */
+  lead: McLead
+}
+
 export interface CtApi {
   state(): Promise<AppState>
   chooseVault(): Promise<AppState>
@@ -497,6 +513,15 @@ export interface CtApi {
   openRelease(): Promise<void>
 
   // ---------- 提醒事项 ----------
+  /** MeetCaption 联动（main/mc.ts） */
+  mcState(): Promise<McState>
+  onMc(cb: (s: McState) => void): () => void
+  /** 今日页那节课旁边「开字幕」：走 meetcaption://start */
+  mcStart(key: string): Promise<void>
+  /** 上课中「打开字幕」：meetcaption://open?session= */
+  mcOpenLive(): Promise<void>
+  /** 待办上「来自 ECP 09:43」：在画布笔记里打开那一篇那一秒（canvas-notes://open?file=&t=） */
+  mcJump(key: string): Promise<{ ok: boolean; by?: 'notes' | 'default' }>
   remState(): Promise<RemState>
   onRem(cb: (s: RemState) => void): () => void
   /** 连接：第一次系统问一次能不能访问提醒事项 */
@@ -530,6 +555,8 @@ export interface CtApi {
   /** 日历 App 里改了：重读 */
   onCalChanged(cb: () => void): () => void
   calOpenPrivacy(): Promise<void>
+  /** 打开系统「日历」App（设置引导里那一步；测试模式只记下来） */
+  openCalendarApp(): Promise<void>
   /** 左栏一个日历：藏起 / 再显示（点色块） */
   calHide(id: string, hide: boolean): Promise<CalState>
   /** 左栏一个日历的右键：不在这里显示 / 在这里显示 · 全部显示（主进程弹系统菜单、点了就改） */

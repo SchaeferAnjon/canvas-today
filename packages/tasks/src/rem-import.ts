@@ -8,7 +8,7 @@
 import { addDays, addMinutes, minutesOf } from './dates'
 import { newTaskLine, setDone } from './edit'
 import { appendLines } from './file'
-import { cleanTitle, parseDue, prioFromEK, type RemAlarm, UNTITLED } from './mirror'
+import { cleanTitle, parseDue, prioFromEK, type RemAlarm, type RemItem, UNTITLED } from './mirror'
 import { monFirst } from './recur'
 import { ALL_DAY_AT, formatRemind } from './remind'
 
@@ -183,9 +183,24 @@ export function importLines(item: ImportItem, newId?: () => string): ImportLines
   const reminded = !item.completed && !!rem.remind && !!rem.date
   let line = newTaskLine({ title, date: rem.date, time: rem.time, remind: rem.remind, repeat, prio: prioFromEK(item.priority), id: reminded && newId ? newId() : null })
   if (item.completed) line = item.completedAt ? setDone(line, true, item.completedAt.slice(0, 10)) : line.replace('- [ ]', '- [x]')
-  const notes = (item.notes ?? '').replace(/\r\n?/g, '\n').replace(/\s+$/, '')
-  const quote = [...(notes ? notes.split('\n') : []), ...extra].map((l) => (l.trim() ? `    > ${l.trimEnd()}` : '    >'))
-  return { lines: [line, ...quote], recurNote, place: item.alarms.some((a) => 'place' in a), multiAlarm: item.alarms.filter((a) => !('place' in a)).length > 1, reminded }
+  return { lines: [line, ...quoteLines(item.notes, extra)], recurNote, place: item.alarms.some((a) => 'place' in a), multiAlarm: item.alarms.filter((a) => !('place' in a)).length > 1, reminded }
+}
+
+/** 备注写进下一行缩进的引用（一行备注一行引用，空行留个 >） */
+function quoteLines(notes: string | null, extra: string[]): string[] {
+  const n = (notes ?? '').replace(/\r\n?/g, '\n').replace(/\s+$/, '')
+  return [...(n ? n.split('\n') : []), ...extra].map((l) => (l.trim() ? `    > ${l.trimEnd()}` : '    >'))
+}
+
+/**
+ * 在提醒事项「画布今日」列表里直接新建的那一条写成库里的一行（加下面缩进的备注），照导入的写法：标题、📅 日子钟点、
+ * 🔔（照闹钟换算，没闹钟不写）、优先级、备注；一定带 🆔（id，claimId 算的）。不搬重复（镜像的小助手读不到规则）；
+ * 提醒事项那条自己的网址写进备注（链接那一格要换成我们的），标题不动（认领时不让提醒事项里的标题变）
+ */
+export function claimLines(r: RemItem, id: string): string[] {
+  const rem = remindFromAlarms(r.due ? parseDue(r.due) : null, r.alarms)
+  const line = newTaskLine({ title: cleanTitle(r.title) || UNTITLED, date: rem.date, time: rem.time, remind: rem.remind, prio: prioFromEK(r.priority), id })
+  return [line, ...quoteLines(r.notes, [...(r.url ? [`[链接](${safeUrl(r.url)})`] : []), ...rem.notes])]
 }
 
 /** 搬的先后：没做完的在前（有日子的按日子、钟点，没日子的在后，再按建的先后），已完成的在最后（按勾掉的先后） */

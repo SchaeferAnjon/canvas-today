@@ -4,12 +4,15 @@ import type { Prio, When } from '@cn/tasks'
 import type { CalEvent } from '@cn/calendar'
 import type { AddCtx, AiSlot, EditOp, HabitView, TaskView } from '../shared/api'
 import type { CloseItem } from '../shared/plan'
+import type { Nav } from '../shared/views'
 
 export interface Actions {
   select(t: TaskView | null): void
   /** 选中这一条，换到能看到它的那一页，闪一下（canvas-today:// 链接、⌘K、通知点过来） */
   goTask(t: TaskView): void
   tick(t: TaskView): void
+  /** 左栏清单换到这一页（「全部」里点笔记名） */
+  goNav(n: Nav): void
   setDate(t: TaskView, date: string | null, time?: string | null, how?: 'allday'): void
   setPrio(t: TaskView, p: Prio, say?: boolean): void
   /** 详情里改一项（时间、提醒、重复、标题、加一步）：不弹提示条，改动在「存在哪」那一行看得到 */
@@ -28,6 +31,10 @@ export interface Actions {
   /** 收工：那一节写进今天的日记，提示条能撤销；写成了交回那一篇的路径，没成是 null */
   closeDay(o: { time: string; items: CloseItem[]; focus: { n: number; minutes: number } }): Promise<string | null>
   openNote(path: string, line?: number): void
+  /** MeetCaption 写的那一条：在画布笔记里打开那一篇、到那一秒（canvas-notes://open?file=&t=） */
+  mcJump(t: TaskView): void
+  /** 今日页那节课旁边「开字幕」：走 meetcaption://start；name 是课名（提示条用） */
+  mcStart(key: string, name: string): void
   menu(t: TaskView): void
   preview(t: TaskView): void
   undo(id: string): void

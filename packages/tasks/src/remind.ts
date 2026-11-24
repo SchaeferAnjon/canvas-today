@@ -36,6 +36,18 @@ export function formatRemind(r: Remind): string {
   return `提前${r.minutes}分钟`
 }
 
+/**
+ * 设置「提醒所有带钟点的待办」（2026-11-24 用户定，默认开）：开着时有日子有钟点、没写 🔔 的也照「准时」排提醒、镜像进提醒事项；
+ * 关了只认写了 🔔 的。只是排的时候这样算，不往文件里补 🔔。画布今日 Mac（remind.ts 排通知、mirror.ts 镜像）和 iOS（CanvasCore 的移植）共用这一条
+ */
+export const IMPLICIT_REMIND = '准时'
+
+/** 这一条按哪个 🔔 算：写了的照写的（写的认不出也照写的，不替它换）；没写的看 remindAll 和有没有钟点 */
+export function remindOf(t: { date: string | null; time: string | null; remind: string | null }, remindAll: boolean): string | null {
+  if (t.remind) return t.remind
+  return remindAll && t.date && t.time ? IMPLICIT_REMIND : null
+}
+
 /** 什么时候响：「2026-11-23T14:00」；没日子、说法认不出返回 null */
 export function fireAt(date: string | null, time: string | null, remind: string | null): string | null {
   if (!date || !remind) return null
@@ -136,15 +148,16 @@ export interface Planned<T extends RemindTask = RemindTask> {
 /**
  * 排提醒：now 是本地钟点「2026-11-23T14:00:05」。
  * fire：已经到点、还在 catchUp 分钟以内没响过的（软件刚打开时补响，再早的不补）；next：下一个要响的（定时器排它）。
+ * remindAll：有钟点、没写 🔔 的也照「准时」排（remindOf）
  */
-export function planReminders<T extends RemindTask>(tasks: readonly T[], events: readonly RemindEvent[], now: string, catchUp = 60): { fire: Planned<T>[]; next: Planned<T> | null } {
+export function planReminders<T extends RemindTask>(tasks: readonly T[], events: readonly RemindEvent[], now: string, catchUp = 60, remindAll = false): { fire: Planned<T>[]; next: Planned<T> | null } {
   const cur = now.slice(0, 16)
   const from = addMinutes(cur, -catchUp)
   const fire: Planned<T>[] = []
   let next: Planned<T> | null = null
   for (const task of tasks) {
     if (task.done || task.ringBy === 'reminders') continue
-    const due = fireAt(task.date, task.time, task.remind)
+    const due = fireAt(task.date, task.time, remindOf(task, remindAll))
     if (!due) continue
     const at = reminderNext(events, task.key, due)
     if (!at) continue

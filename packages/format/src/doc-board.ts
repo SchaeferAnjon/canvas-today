@@ -356,8 +356,24 @@ export function splitDoc(text: string): DocBoard {
     // 7a. AI 对话写进笔记的新写法（ai-note.ts）的一节：一问一列（列头「第 N 页 · 问的那句」），一页的几问并排，旁支在它那一问那一列；
     //     节里第一问前面自己的字并进第一列最上面。列头不能改名、拖（那一行是问的原话，不是列名）
     if (s.head && headLevel(s.head) === 2) {
-      const qs = askColumns(text, s.head.from, end)
+      const raw = askColumns(text, s.head.from, end)
+      // 拖到空白处的卡（位置行 + 下一块）落在问答一节的字里（这一节在文末时从收件箱、文件树拖进来的，appendPlaced 加在文末）：
+      // 照普通白板空白处的卡摆，不当这一问补的字（以前位置行当正文画出来、嵌入不成卡、拖不动）
+      const loose: DocUnit[] = []
+      const free = (r: { from: number; to: number }) => {
+        const got = loosePlaced(text, r)
+        loose.push(...got.units)
+        return got.left
+      }
+      const lead = raw.lead ? free(raw.lead) : []
+      const qs = {
+        lead: lead[0] ?? null,
+        columns: raw.columns.map((c) => ({ ...c, cards: c.cards.flatMap((x) => (x.part === 'more' ? free(x).map((r) => ({ part: 'more' as const, ...r })) : [x])) })),
+      }
+      if (qs.columns.length && lead.length > 1) qs.columns[0]!.cards.unshift(...lead.slice(1).map((r) => ({ part: 'more' as const, ...r })))
       if (qs.columns.length && pureAsks(text, qs, at(s.head))) {
+        for (const u of loose) placed.push({ ...u, section: name })
+        total += loose.length
         const h2 = text.slice(s.head.from, s.head.to)
         qs.columns.forEach((c, k) => {
           const head = `${h2}\n\n${text.slice(c.head.from, c.cards.find((x) => x.part === 'qa')?.to ?? c.head.to)}`
@@ -548,6 +564,45 @@ function pureAsks(text: string, qs: ReturnType<typeof askColumns>, headLine: str
     }
   }
   return /^#{2}\s+第\s*\d+\s*页/.test(headLine) || n <= qs.columns.length
+}
+
+/**
+ * 问答一节里一截用户的字（第一问前面的、一问后面补的）里拖到空白处的卡：位置行（有 x、y）和它下面那一块是一张空白处的卡；
+ * 剩下的字照旧是补的字（去掉头尾空白，按拿走的卡隔开）。只记编号的一行、别的注释不画
+ */
+function loosePlaced(text: string, r: { from: number; to: number }): { units: DocUnit[]; left: { from: number; to: number }[] } {
+  const bs = contentBlocks(text.slice(r.from, r.to)).map((b) => ({ ...b, from: b.from + r.from, to: b.to + r.from }))
+  const units: DocUnit[] = []
+  const left: { from: number; to: number }[] = []
+  let run: { from: number; to: number } | null = null
+  const flush = () => {
+    if (run) left.push(run)
+    run = null
+  }
+  for (let k = 0; k < bs.length; k++) {
+    const b = bs[k]!
+    const t = text.slice(b.from, b.to)
+    if (b.kind === 'html' && /^<!--[\s\S]*?-->\s*$/.test(t.trim())) {
+      const card = CARD_LINE.exec(t)
+      const a = card ? lineAttrs(card[1]!) : {}
+      const x = num(a.x)
+      const y = num(a.y)
+      const nb = bs[k + 1]
+      if (card && x !== null && y !== null && nb && nb.kind !== 'heading' && nb.kind !== 'hr') {
+        flush()
+        const nt = text.slice(nb.from, nb.to)
+        const u: DocUnit = { kind: kindOf(nt, nb), from: nb.from, to: nb.to, text: nt, place: { id: a.id ?? '', x, y, from: b.from, to: b.to } }
+        const extra = extraOf(a)
+        if (extra) u.attrs = extra
+        units.push(u)
+        k++
+      } else if (card || COLUMN_LINE.test(t)) flush()
+      continue
+    }
+    run = run ? { from: run.from, to: b.to } : { from: b.from, to: b.to }
+  }
+  flush()
+  return units.length ? { units, left } : { units, left: [r] }
 }
 
 /** 去掉末尾的空白 */
@@ -830,6 +885,8 @@ export function freshId(text: string, prefix = 'd'): string {
  * id：新位置行用这个编号（AI 挪列里的卡时用它在白板上的名字，挪完名字不变）；不给是 d1、d2……
  */
 export function placeUnit(text: string, unit: DocUnit, x: number, y: number, id?: string): string {
+  // 问过 AI 那一列里的一张（问、回答、旁支、补的字）：位置行插进去会落在那一问中间、当正文画出来（AI「挪到空白处」就这样多插过两行）
+  if (unit.ask && unit.ask.part !== 'group' && unit.ask.part !== 'marks' && !unit.place && !unit.tag) throw new Error('「问过 AI」那一列里的卡跟着它那一问，不能单独挪到空白处；能挪的是空白处的卡和普通列里的卡')
   if (unit.place) return text.slice(0, unit.place.from) + placeLine(unit.place.id, x, y, unit.attrs) + text.slice(unit.place.to)
   if (unit.tag) return text.slice(0, unit.tag.from) + placeLine(unit.tag.id, x, y, unit.attrs) + text.slice(unit.tag.to)
   const fresh = id && !usedIds(text).has(id) ? id : freshId(text)
@@ -1211,4 +1268,38 @@ export function findUnitAgain(unit: DocUnit, base: string, now: string, board: D
     if (o > most) (most = o), (best = x)
   }
   return best ? { unit: best, same: false } : { gone: nf }
+}
+
+/**
+ * 白板一列的宽、列间距（2026-11-24 用户定「400 左右」：276 → 400，task 白板卡宽）。
+ * 13 寸窗口开着两边栏时白板约 1130–1170 宽：92 + 2 × 400 + 22 = 914，放下 2 整列，第 3 列露出约一半。
+ * 空白处的卡也是这么宽。渲染进程、主进程（AI 放卡）、缩略图都用这两个数。
+ */
+export const BOARD_COL_W = 400
+export const BOARD_COL_GAP = 22
+/** 改宽以前的列宽：文件里已经记着的位置是照它摆的（pushApart 用它认「原来是并排的」） */
+export const BOARD_OLD_COL_W = 276
+
+/**
+ * 列加宽以后，摆在自己位置上的列、空白处的卡（文件里记着坐标，原来按 276 宽摆的）会叠在一起：画的时候往右推开，不写文件，
+ * 下次拖它才把画出来的位置写进去。规矩（按原来的 x 从左到右一个个看，和它左边已经看过的每一个比）：
+ * - 原来就横着叠着（x 差不到 276，上下摞着的）：跟着左边那个推多少自己推多少，上下摞的关系不变；
+ * - 原来并排、现在叠了（x 差在 276 到新宽之间）：推到左边那个画出来的右边，空出原来的空隙（最多 gap）；
+ * - 现在也不叠（x 差够新宽）：只在左边那个被推过来压上时再推，同样空出原来的空隙（最多 gap）。
+ * 没叠的不动，所以照新宽摆过的文件画出来和文件里一样（再算一次结果不变）。返回每一个画在哪个 x（没推的也在里面）。
+ */
+export function pushApart(items: readonly { id: string; x: number }[], w: number = BOARD_COL_W, gap: number = BOARD_COL_GAP, old: number = BOARD_OLD_COL_W): Map<string, number> {
+  const out = new Map<string, number>()
+  const seen: { x: number; nx: number }[] = []
+  for (const it of [...items].sort((a, b) => a.x - b.x)) {
+    let nx = it.x
+    for (const j of seen) {
+      const dx = it.x - j.x
+      if (dx < old - 0.5) nx = Math.max(nx, it.x + (j.nx - j.x))
+      else nx = Math.max(nx, j.nx + w + Math.min(dx < w ? dx - old : dx - w, gap))
+    }
+    out.set(it.id, nx)
+    seen.push({ x: it.x, nx })
+  }
+  return out
 }

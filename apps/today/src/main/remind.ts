@@ -93,6 +93,8 @@ export interface RemindDeps {
   openNote: (t: TaskView) => void
   say: (text: string) => void
   wrote: (paths: string[], message: string) => void
+  /** 设置「提醒所有带钟点的待办」：有钟点、没写 🔔 的也照「准时」排 */
+  remindAll: () => boolean
 }
 
 export class Reminders {
@@ -160,6 +162,8 @@ export class Reminders {
       this.deps.tasks().map((t) => ({ ...t, key: t.rkey, done: t.done || t.cancelled })),
       this.events,
       localStamp(now),
+      60,
+      this.deps.remindAll(),
     )
     for (const p of plan.fire) {
       const k = `${p.task.key}|${p.at}`
@@ -179,7 +183,8 @@ export class Reminders {
     const lang = this.deps.lang()
     const today = isoOf(this.deps.now())
     return {
-      title: t.title,
+      // MeetCaption 写的那几条：不带 ▶ 时间那串链接
+      title: t.mc?.title ?? t.title,
       body: tr(lang, 'notifBody', whenLabel(lang, t, today), this.deps.noteTitle(t.path)),
       actions: [tr(lang, 'nDone'), tr(lang, 'n10m'), tr(lang, 'n1h'), tr(lang, 'nTomorrow'), tr(lang, 'nOpen')],
       key: t.rkey,

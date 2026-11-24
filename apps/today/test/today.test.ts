@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 import type { Snapshot, TaskView } from '../src/shared/api'
 import { repeatLabel, TABLES, tr } from '../src/shared/i18n'
 import { lookFromNotes, normalizeToday } from '../src/shared/settings'
-import { cntInbox, cntToday, cntWeek, findAgain, groupsOf, notesWithTodo, quadOf } from '../src/shared/views'
+import { cntAll, cntInbox, cntToday, cntWeek, findAgain, groupsOf, notesWithTodo, quadOf } from '../src/shared/views'
 import { dayLabel, thirdPick, whenLabel } from '../src/shared/when'
 
 const T = '2026-11-22'
@@ -39,6 +39,7 @@ function task(p: Partial<TaskView>): TaskView {
     headingLevel: 0,
     headingLine: null,
     ringBy: 'app',
+    mc: null,
     ...p,
   }
 }
@@ -120,6 +121,44 @@ describe('清单怎么分组（照原型 listView）', () => {
   it('一篇笔记按 ## 标题分组，同名的两节分开', () => {
     const a = [task({ path: 'n.md', line: 3, title: '一', heading: '这周', headingLine: 1 }), task({ path: 'n.md', line: 9, title: '二', heading: '这周', headingLine: 7 })]
     expect(groupsOf('list:n.md', a, T).map((g) => g.items.length)).toEqual([1, 1])
+  })
+  it('一篇笔记里勾掉的收成最后一组「已完成」，完成日子倒着；没做完的照旧按标题分', () => {
+    const a = [
+      task({ path: 'n.md', line: 1, title: '早勾', done: true, doneDate: '2026-11-01' }),
+      task({ path: 'n.md', line: 2, title: '没做' }),
+      task({ path: 'n.md', line: 3, title: '刚勾', done: true, doneDate: T }),
+    ]
+    const g = groupsOf('list:n.md', a, T)
+    expect(g.map((x) => [x.kind, x.items.map((y) => y.title)])).toEqual([
+      ['none', ['没做']],
+      ['doneFold', ['刚勾', '早勾']],
+    ])
+  })
+  it('全部：没做完的（含没日子的）按文件夹、笔记分，收件箱在前、有日子的在前；已完成按完成那天倒着，没写完成日子的最后', () => {
+    const a = [
+      task({ path: '写作/b.md', line: 1, title: '没日子' }),
+      task({ path: '写作/b.md', line: 2, title: '有日子', date: '2026-11-30' }),
+      task({ path: '写作/a.md', line: 1, title: 'a 里', done: true, doneDate: '2026-11-20' }),
+      task({ path: '课程/x.md', line: 1, title: '课程里' }),
+      task({ path: '收件箱/待办.md', line: 1, title: '收' }),
+      task({ path: '收件箱/待办.md', line: 2, title: '老的', done: true }),
+      task({ path: '收件箱/待办.md', line: 3, title: '今天勾', done: true, doneDate: T }),
+    ]
+    const all = groupsOf('all', a, T)
+    expect(all.map((x) => [x.kind, x.name, x.count ?? x.items.map((y) => y.title)])).toEqual([
+      ['folder', '收件箱', 1],
+      ['note', '收件箱/待办.md', ['收']],
+      ['folder', '课程', 1],
+      ['note', '课程/x.md', ['课程里']],
+      ['folder', '写作', 2],
+      ['note', '写作/b.md', ['有日子', '没日子']],
+    ])
+    expect(cntAll(a)).toBe(4)
+    expect(groupsOf('done', a, T).map((x) => [x.date ?? null, x.items.map((y) => y.title)])).toEqual([
+      [T, ['今天勾']],
+      ['2026-11-20', ['a 里']],
+      [null, ['老的']],
+    ])
   })
   it('有待办的笔记：收件箱那篇不算，新改的在前；正开着的那篇没待办了也留着', () => {
     const s: Snapshot = {

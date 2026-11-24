@@ -68,7 +68,8 @@ export async function launch(o: LaunchOpts = {}): Promise<Running> {
     execFileSync('git', ['-C', vault, 'add', '-A'])
     execFileSync('git', ['-C', vault, 'commit', '-q', '-m', '样本'])
     o.prepare?.(vault)
-    writeFileSync(join(userData, 'settings.json'), JSON.stringify({ ...LOOK('sky', 'b'), ...(o.settings ?? {}) }))
+    // 日历和提醒事项的设置引导默认算看过了（连上时不弹出来挡住别的测试）；测引导的那一条给 calGuideSeen: false
+    writeFileSync(join(userData, 'settings.json'), JSON.stringify({ ...LOOK('sky', 'b'), calGuideSeen: true, ...(o.settings ?? {}) }))
     if (o.reminders) writeFileSync(remFile, JSON.stringify(o.reminders))
   }
 

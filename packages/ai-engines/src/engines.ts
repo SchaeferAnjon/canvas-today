@@ -12,7 +12,10 @@
  * src/providers/claude、src/providers/codex、src/providers/acp，许可声明见仓库根目录 THIRD_PARTY_NOTICES.md。
  */
 import { spawn } from 'node:child_process'
+import { randomBytes } from 'node:crypto'
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { createServer } from 'node:http'
+import type { AddressInfo } from 'node:net'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { EngineId } from './shared'
@@ -67,6 +70,11 @@ export interface EngineRun {
   omni?: boolean
   /** 这家命令行自己的工具（不是我们 MCP 的）开始、做完：对话里的步骤行（全能模式下跑命令、写文件、上网搜这些） */
   onStep?(s: EngineStep): void
+  /**
+   * 全能模式下命令行自己写文件（Write、Edit、MultiEdit、NotebookEdit）之前问一声，返回了才写（AI 对话同时跑：另一段对话在写同一个文件时等着）。
+   * path 是它给的路径（绝对的）。只有 Claude Code 认（PreToolUse 钩子），别家照常直接写
+   */
+  beforeWrite?(path: string): Promise<void>
   signal: AbortSignal
   onText(delta: string): void
 }
@@ -149,7 +157,7 @@ const CLAUDE_QUIET = new Set(['ToolSearch'])
  * 派子 Agent、交付页），有了 Bash 它会真去建任务、派子 Agent；hooks 每问一次都会跑；用户的 MCP（邮件、日历、交易账户）在不问人的
  * 模式下会直接动手。读 PDF 照 CN-89 读用户设置（讲解偏好），hooks 照样关掉。两种都 --strict-mcp-config：MCP 只接我们的。
  */
-export function claudeArgs(r: Pick<EngineRun, 'system' | 'appendSystem' | 'mcp' | 'model' | 'effort' | 'images' | 'keepSession' | 'readOnly' | 'fork' | 'omni'>, resume?: string, mcpConfig?: string): string[] {
+export function claudeArgs(r: Pick<EngineRun, 'system' | 'appendSystem' | 'mcp' | 'model' | 'effort' | 'images' | 'keepSession' | 'readOnly' | 'fork' | 'omni'>, resume?: string, mcpConfig?: string, gate?: string): string[] {
   const omni = !!r.omni && (!r.mcp || !!mcpConfig)
   const args = [
     '-p',
@@ -162,7 +170,7 @@ export function claudeArgs(r: Pick<EngineRun, 'system' | 'appendSystem' | 'mcp' 
         ['--append-system-prompt', r.system, '--setting-sources', 'user', '--settings', JSON.stringify({ disableAllHooks: true })]
       : omni
         ? // 全能模式的 AI 对话：留 Claude Code 自己的系统提示，我们的附在后面；一个用户设置都不读
-          ['--append-system-prompt', r.system, '--setting-sources=']
+          ['--append-system-prompt', r.system, '--setting-sources=', ...(gate ? ['--settings', gate] : [])]
         : // 不读用户的设置（hooks、权限、插件）
           ['--system-prompt', r.system, '--setting-sources=']),
     // MCP 只接我们给的
@@ -209,6 +217,58 @@ function mcpConfigFile(mcp: NonNullable<EngineRun['mcp']>): { path: string; remo
   const config = { mcpServers: { [MCP_NAME]: { type: 'http', url: mcp.url, headers: { Authorization: `Bearer ${mcp.token}` } } } }
   writeFileSync(path, JSON.stringify(config), { mode: 0o600 })
   return { path, remove: () => rmSync(dir, { recursive: true, force: true }) }
+}
+
+/**
+ * 全能模式下 Claude Code 自己写文件前等软件点头（EngineRun.beforeWrite）：这一轮起一个只听本机的小服务，
+ * PreToolUse 钩子用 curl 把要写的那一步（JSON 从标准输入来）发过去，软件放行了才回、钩子才结束、它才写。
+ * 口令写在只有自己能读的临时文件里（不放在命令行上）；curl 连不上、超时都当放行（钩子出错不挡它写）。返回 --settings 的那段 JSON
+ */
+export const GATE_TOOLS = 'Write|Edit|MultiEdit|NotebookEdit'
+export async function writeGate(before: (path: string) => Promise<void>): Promise<{ settings: string; close(): void }> {
+  const secret = randomBytes(18).toString('hex')
+  const server = createServer((req, res) => {
+    if (req.method !== 'POST' || req.headers.authorization !== `Bearer ${secret}`) {
+      res.statusCode = 403
+      return void res.end()
+    }
+    let body = ''
+    req.setEncoding('utf8')
+    req.on('data', (c: string) => {
+      if (body.length < 4_000_000) body += c
+    })
+    req.on('end', () => {
+      let path = ''
+      try {
+        const input = (JSON.parse(body) as { tool_input?: { file_path?: unknown; notebook_path?: unknown } }).tool_input
+        const p = input?.file_path ?? input?.notebook_path
+        if (typeof p === 'string') path = p
+      } catch {
+        // 不是钩子的 JSON：照放行
+      }
+      if (!path) return void res.end()
+      // 等不到（这一轮停下了）也回：停下时命令行进程已经被结束，回不回都一样
+      before(path).then(
+        () => res.end(),
+        () => res.end(),
+      )
+    })
+  })
+  await new Promise<void>((ok) => server.listen(0, '127.0.0.1', ok))
+  const port = (server.address() as AddressInfo).port
+  const dir = mkdtempSync(join(tmpdir(), 'cn-gate-'))
+  const auth = join(dir, 'auth')
+  writeFileSync(auth, `Authorization: Bearer ${secret}`, { mode: 0o600 })
+  const command = `curl -s -m 3600 -X POST -H @'${auth}' --data-binary @- http://127.0.0.1:${port}/ >/dev/null; exit 0`
+  const settings = JSON.stringify({ hooks: { PreToolUse: [{ matcher: GATE_TOOLS, hooks: [{ type: 'command', command, timeout: 3600 }] }] } })
+  return {
+    settings,
+    close: () => {
+      server.close()
+      server.closeAllConnections()
+      rmSync(dir, { recursive: true, force: true })
+    },
+  }
 }
 
 /** stream-json 里用得到的几样 */
@@ -340,11 +400,14 @@ export function claudeEngine(command?: string, prefix: string[] = []): Engine {
       const exe = command ?? need('claude')
       const once = async (resume: string | undefined): Promise<EngineOutcome> => {
         const config = r.mcp ? mcpConfigFile(r.mcp) : null
+        // 全能模式的 AI 对话：自己写文件前等软件点头（同一个文件同一时间只让一段对话写）
+        const gate = r.omni && r.beforeWrite && !r.appendSystem && (!r.mcp || config) ? await writeGate(r.beforeWrite) : null
         try {
           const text = withHistory(r, !resume)
-          return await runClaude(exe, [...prefix, ...claudeArgs(r, resume, config?.path)], r.images?.length ? claudeImageMessage(text, r.images) : text, r)
+          return await runClaude(exe, [...prefix, ...claudeArgs(r, resume, config?.path, gate?.settings)], r.images?.length ? claudeImageMessage(text, r.images) : text, r)
         } finally {
           config?.remove()
+          gate?.close()
         }
       }
       if (!r.session) return once(undefined)
@@ -605,7 +668,7 @@ interface AcpOptions {
 }
 
 /** 我们 MCP 工具的名字（ACP 的权限请求、步骤里认出是我们的） */
-const OURS = /canvas|board_|web_|doc_|note_|notes_list|folder_/
+const OURS = /canvas|board_|web_|doc_|note_|notes_list|folder_|list_recent|search_notes|read_note|list_tasks/
 
 /** ACP 的 tool_call 换成一步（kind 照 ACP 规范：read、edit、delete、move、search、execute、think、fetch、other）；我们 MCP 的、想的那几步不算 */
 export function acpStep(u: { toolCallId?: string; title?: string; kind?: string; rawInput?: unknown; locations?: { path?: string }[] }): Omit<EngineStep, 'status'> | null {

@@ -1,9 +1,9 @@
 /**
  * 重复（🔁 后面写的中文）：每天、每N天、工作日、每周（几）、每N周、每月、每月N日、每年；后面加「（做完后）」从勾掉那天算。
- * 勾掉一条重复的：这一行打 ✅，下面（它的子任务后面）照规则加新的一行，子任务抄一份都没勾，编号换新的，^块编号不抄。
+ * 勾掉一条重复的：这一行打 ✅，下面（它的子任务后面）照规则加新的一行，子任务抄一份都没勾，编号照原编号和下一次的日子算（nextId），^块编号不抄。
  */
 import { addDays, addMonths, dayOfMonth, type ISODate, toDays, weekday } from './dates'
-import { removeField, setDate, setDone, setId } from './edit'
+import { hashId, removeField, setDate, setDone, setId } from './edit'
 import { blockOf, editLine, insertLines, lineAt, splitLines } from './file'
 import { parseTaskLine } from './line'
 
@@ -115,10 +115,15 @@ export function nextDate(r: Repeat, due: ISODate | null, done: ISODate): ISODate
 }
 
 /**
- * 勾掉第 line 行那一条。重复的：下面加新的一行（next 是新的那行和它的日子）。
- * newId 给新的一行发编号（原来有编号才用）
+ * 「下一次」那一行的 🆔：照原 🆔 和下一次的日子算。两处（两台 Mac、手机、提醒事项）各勾一次写出同一行，Git 合并成一条
  */
-export function completeTask(text: string, line: number, today: ISODate, newId: () => string): { text: string; next?: { line: number; date: ISODate } } {
+export const nextId = (id: string, date: ISODate): string => hashId(`next\n${id}\n${date}`)
+
+/**
+ * 勾掉第 line 行那一条。重复的：下面加新的一行（next 是新的那行和它的日子）；原来有 🆔 的新的一行 🆔 是 nextId，没有的照旧不加。
+ * 下一次那一行已经在了（勾掉、取消、再勾；原来有 🆔 的按 🆔 在整篇找，没有的看紧跟在下面的几行是不是一模一样）就不再加，next 指着它
+ */
+export function completeTask(text: string, line: number, today: ISODate): { text: string; next?: { line: number; date: ISODate } } {
   const raw = lineAt(text, line)
   const t = raw === undefined ? null : parseTaskLine(raw)
   if (!t) throw new Error(`第 ${line + 1} 行不是待办`)
@@ -126,20 +131,28 @@ export function completeTask(text: string, line: number, today: ISODate, newId: 
   const rule = !t.done && t.repeat ? parseRepeat(t.repeat) : null
   if (!rule) return { text: done }
   const date = nextDate(rule, t.date, today)
+  const id = t.id ? nextId(t.id, date) : null
   const b = blockOf(text, line)
+  const all = splitLines(done)
+  const plain = (l: string) => (l.endsWith('\r') ? l.slice(0, -1) : l)
+  if (id) {
+    const at = all.findIndex((l) => parseTaskLine(plain(l))?.id === id)
+    if (at >= 0) return { text: done, next: { line: at, date } }
+  }
   const rows = splitLines(text)
     .slice(b.from, b.to + 1)
     .map((l, i) => {
-      let r = l.endsWith('\r') ? l.slice(0, -1) : l
-      if (i === 0) r = r.replace(/^﻿/, '')
+      let r = plain(l)
+      if (i === 0) r = r.replace(/^\uFEFF/, '')
       if (!parseTaskLine(r)) return r
       // 块编号不抄（一篇里只能有一个，别处的块链接还指着做完的那一行）
       r = removeField(removeField(setDone(r, false, today), 'done'), 'block')
       if (i === 0) {
         r = setDate(r, date)
-        if (t.id) r = setId(r, newId())
+        if (id) r = setId(r, id)
       }
       return r
     })
+  if (!id && rows.every((r, i) => all[b.to + 1 + i] !== undefined && plain(all[b.to + 1 + i]!) === r)) return { text: done, next: { line: b.to + 1, date } }
   return { text: insertLines(done, b.to, rows), next: { line: b.to + 1, date } }
 }

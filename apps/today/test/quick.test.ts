@@ -67,7 +67,7 @@ describe('#清单 写进哪一篇', () => {
 
 describe('菜单栏小窗的下一件', () => {
   const t = (p: Partial<TaskView>): TaskView =>
-    ({ key: p.title, id: null, rkey: '', path: '课程/ecp/Lecture05 笔记.md', line: 0, raw: '', title: '', done: false, cancelled: false, doing: false, dupOf: null, dups: [], date: '2026-11-22', time: null, remind: null, repeat: null, prio: 0, doneDate: null, parent: null, subs: [], depth: 0, heading: null, headingLevel: 0, headingLine: null, ringBy: 'app', ...p }) as TaskView
+    ({ key: p.title, id: null, rkey: '', path: '课程/ecp/Lecture05 笔记.md', line: 0, raw: '', title: '', done: false, cancelled: false, doing: false, dupOf: null, dups: [], date: '2026-11-22', time: null, remind: null, repeat: null, prio: 0, doneDate: null, parent: null, subs: [], depth: 0, heading: null, headingLevel: 0, headingLine: null, ringBy: 'app', mc: null, ...p }) as TaskView
   const ev = (title: string, start: string, end: string, allDay = false) => ({ title, calendar: '工作', color: '#4F7CAC', allDay, start, end })
   const tasks = [t({ title: '复习', time: '11:00' }), t({ title: '交回', time: '18:00' }), t({ title: '没钟点' }), t({ title: '勾掉了', time: '10:30', done: true })]
   it('最早的那件：带钟点没做完的待办或今天的日程；过去了的不算，全天的不算', () => {

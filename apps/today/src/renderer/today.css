@@ -906,6 +906,34 @@ strong {
 .grp .n {
   font-weight: 400;
 }
+/* 「全部」：文件夹一行（比组名重一点），下面每篇笔记一行（点了开这一篇） */
+.grp.folder {
+  color: var(--t2);
+  font-size: 13px;
+  padding-top: 18px;
+}
+.mbody .chips + .grp.folder {
+  padding-top: 8px;
+}
+.grp.notehead {
+  width: 100%;
+  text-align: left;
+  padding: 8px 8px 2px 28px;
+}
+.grp.notehead:hover {
+  color: var(--t1);
+}
+/* 一篇笔记里勾掉的收成一行「已完成 N 条 ›」、「已完成」里「再列 N 条 ›」 */
+.more.donefold {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border-radius: 6px;
+}
+.more.donefold:hover {
+  color: var(--t1);
+  background: var(--fill);
+}
 .row {
   display: flex;
   align-items: center;
@@ -2362,6 +2390,53 @@ select.sel {
   color: var(--t2);
 }
 
+/* 日历和提醒事项的设置引导（cal-guide.tsx）：一张小卡，照上面的确认框（--pop、圆角 12），宽 520；四步一步一行，编号圈 + 字 + 右边一颗小按钮 */
+.askw.guidew {
+  width: min(520px, calc(100vw - 40px));
+}
+.guideh {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.guides {
+  list-style: none;
+  margin: 14px 0 4px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.guides li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--t1);
+}
+.guiden {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--acc-t);
+  background: var(--acc-soft);
+}
+.guidet {
+  flex: 1;
+  min-width: 0;
+}
+.guides .btn {
+  flex: none;
+}
+
 /* ---------- 右栏 AI 对话（task-ykkoz，设计稿 32-今日AI排日程；样子照画布笔记的 AI 对话框） ---------- */
 .rai {
   flex: 1;
@@ -2467,6 +2542,9 @@ select.sel {
   flex: 1;
   min-height: 0;
   overflow: auto;
+  /* 对话区永远不横向滚：步骤行、长路径、没空格的一长串放不下就折行 */
+  overflow-x: hidden;
+  overflow-wrap: anywhere;
   position: relative;
   padding: 12px 14px;
   display: flex;
@@ -3280,4 +3358,78 @@ select.sel {
 .aibar .cn-cb {
   margin: 0;
   flex: none;
+}
+
+/* ---------- MeetCaption 联动（画布今日这一侧，renderer/mc.tsx；DESIGN.v3 第 12 节） ---------- */
+/* 今日页「今天的课」：一节一行，行高同任务行 40；钟点 12 --t2 等宽数字，课名 13 --t1，「照课表 / 照日历「…」」12 --t3，右边「开字幕」实心胶囊 */
+.mctoday {
+  margin-bottom: 4px;
+}
+.mcrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 40px;
+  padding: 0 10px;
+  border-radius: 6px;
+}
+.mcrow:hover {
+  background: var(--fill);
+}
+.mcrow .tm {
+  font-size: 12px;
+  color: var(--t2);
+  font-variant-numeric: tabular-nums;
+  flex: none;
+  min-width: 76px;
+}
+.mcrow .nm {
+  font-size: 13px;
+  color: var(--t1);
+  flex: none;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mcrow .via {
+  font-size: 12px;
+  color: var(--t3);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mcrow .sp {
+  flex: 1;
+}
+.mcrow .livetag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--t2);
+  white-space: nowrap;
+}
+.mcrow .livetag .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--red);
+}
+/* 这节课记录里还没定日子的待办：缩进到课名下面 */
+.mccls > .row {
+  margin-left: 18px;
+}
+/* 待办行上「来自 ECP 09:43」：替掉笔记名那一格，--acc-t 字，点了到画布笔记那一秒 */
+.acc.mcsrc {
+  color: var(--acc-t);
+  max-width: 180px;
+  margin: -2px -5px;
+  padding: 2px 5px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.acc.mcsrc:hover {
+  background: var(--fill);
 }

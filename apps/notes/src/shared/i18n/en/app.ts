@@ -218,7 +218,6 @@ export const APP: Table = {
   '移到废纸篓（{n}个）': (p) => `Move ${count(p.n, 'item')} to Trash`,
   新文件夹的名字: 'New folder name',
   新文件夹: 'New folder',
-  '打开用它的《{name}》': 'Open “{name}”, which uses it',
   '{path} · 数据库的{n}条记录（磁盘上是一个文件夹）': (p) => `${p.path} · database with ${count(p.n, 'record')} (a folder on disk)`,
   // 树里窄：同文件夹的篇数一样只写数字
   '收起 {name}': 'Collapse {name}',
@@ -252,4 +251,10 @@ export const APP: Table = {
   全部文件: 'All files',
   选中的: 'Selection',
   '已选{n}个': (p) => `${p.n} selected`,
+  '被{n}篇用': (p) => (Number(p.n) === 1 ? 'used in 1 note' : `used in ${p.n} notes`),
+  没用到: 'unused',
+  '在哪用到（{n}篇）': (p) => `Where it's used (${p.n})`,
+  '在哪用到：没有笔记用它': 'Where it’s used: no note',
+  在哪用到: 'Where it’s used',
+  只看没用到的: 'Only unused',
 }

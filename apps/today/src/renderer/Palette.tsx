@@ -69,6 +69,8 @@ export function Palette({ today, onClose, onGo, onSettings, onImport, onAskAi, o
       { key: 'g-inbox', icon: 'inbox', name: t('inbox'), group: 'go', run: () => onGo('lists', 'inbox') },
       { key: 'g-tomorrow', icon: 'arrow-circle-right', name: t('tomorrow'), group: 'go', run: () => onGo('lists', 'tomorrow') },
       { key: 'g-week', icon: 'layers', name: t('week'), group: 'go', run: () => onGo('lists', 'week') },
+      { key: 'g-all', icon: 'list-flat', name: t('all'), group: 'go', run: () => onGo('lists', 'all') },
+      { key: 'g-done', icon: 'pass', name: t('done'), group: 'go', run: () => onGo('lists', 'done') },
       { key: 'g-cal', icon: 'calendar', name: t('calendar'), group: 'go', run: () => onGo('calendar') },
       { key: 'g-quad', icon: 'target', name: t('quad'), group: 'go', run: () => onGo('quad') },
       { key: 'g-focus', icon: 'watch', name: t('focus'), group: 'go', run: () => onGo('focus') },

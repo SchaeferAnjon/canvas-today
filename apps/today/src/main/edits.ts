@@ -109,7 +109,7 @@ export async function applyEdit(v: TaskVault, req: EditReq, today: ISODate): Pro
       switch (e.op) {
         case 'done': {
           if (e.done) {
-            const c = completeTask(text, n, today, newId)
+            const c = completeTask(text, n, today)
             after = c.text
             next = c.next
           } else after = editLine(text, n, (l) => setDone(l, false, today))

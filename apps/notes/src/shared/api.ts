@@ -79,7 +79,10 @@ export type WriteResult =
 
 export interface GitState {
   isRepo: boolean
+  /** 当前分支；同步时 rebase 途中是正在 rebase 的那个分支；检出了某个提交（分离 HEAD）是 null */
   branch: string | null
+  /** 库正在 rebase / merge（同步的 pull --rebase 途中，或终端里做到一半）：底栏写「正在同步」，提交、同步先不让点 */
+  busy: 'rebase' | 'merge' | null
   /** 没提交的文件 */
   changes: { path: string; code: string }[]
   /** 本周（周一起）的提交数 */
@@ -543,6 +546,9 @@ export interface CnApi {
    * AI 对话和读 PDF 共用，记在软件设置目录；开着的 AI 面板收到 onAiPrefsChanged
    */
   aiSetOmni(on: boolean): Promise<void>
+  /** AI 对话最多同时答几段（1–6，默认 3，设置 › AI）：多出来的排队；改了开着的 AI 面板收到 onAiPrefsChanged */
+  aiParallel(): Promise<number>
+  aiSetParallel(n: number): Promise<void>
   /** 给AI的长期说明（设置 › AI）：AI 对话和读 PDF 每一问都带上，记在软件设置目录 ai/settings.json */
   aiPrompt(): Promise<string>
   aiSetPrompt(text: string): Promise<void>

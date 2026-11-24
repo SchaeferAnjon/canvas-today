@@ -105,6 +105,44 @@ export async function currentBranch(dir: string): Promise<string> {
   return (await git(dir, ['symbolic-ref', '--short', 'HEAD'])).trim()
 }
 
+/** 库里正在进行的 rebase / merge（同步时 pull --rebase 那一会儿 HEAD 是分离的，symbolic-ref 会失败） */
+export type GitBusy = 'rebase' | 'merge' | null
+
+/**
+ * 分支和是否正在 rebase / merge：git:state 用，同步途中也不抛错。
+ * rebase 时 HEAD 分离，分支名从 rebase-merge/head-name（或 rebase-apply/head-name）读；别的分离 HEAD（检出了某个提交）分支是 null。
+ */
+export async function headState(dir: string): Promise<{ branch: string | null; busy: GitBusy }> {
+  const [rebaseMerge, rebaseApply, mergeHead] = (await git(dir, ['rev-parse', '--git-path', 'rebase-merge', '--git-path', 'rebase-apply', '--git-path', 'MERGE_HEAD'])).trim().split('\n').map((p) => (isAbsolute(p) ? p : join(dir, p)))
+  const rebaseDir = (await exists(rebaseMerge!)) ? rebaseMerge! : (await exists(rebaseApply!)) ? rebaseApply! : null
+  const busy: GitBusy = rebaseDir ? 'rebase' : (await exists(mergeHead!)) ? 'merge' : null
+  let branch: string | null
+  try {
+    branch = (await git(dir, ['symbolic-ref', '-q', '--short', 'HEAD'])).trim()
+  } catch (e) {
+    // -q：HEAD 分离时不说话、退出码 1；别的失败照样抛
+    if (!(e instanceof GitError) || e.stderr.trim()) throw e
+    branch = null
+  }
+  if (branch === null && rebaseDir) {
+    const name = await readFile(join(rebaseDir, 'head-name'), 'utf8').catch((e: NodeJS.ErrnoException) => {
+      if (e.code === 'ENOENT') return ''
+      throw e
+    })
+    branch = name.trim().replace(/^refs\/heads\//, '') || null
+  }
+  return { branch, busy }
+}
+
+const exists = (p: string) =>
+  stat(p).then(
+    () => true,
+    (e: NodeJS.ErrnoException) => {
+      if (e.code === 'ENOENT') return false
+      throw e
+    },
+  )
+
 export interface FileStatus {
   path: string
   /** 两个字母的状态，同 git status --porcelain：' M'、'??'、'A ' 等 */

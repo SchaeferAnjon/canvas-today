@@ -188,3 +188,22 @@ export function makeId(random: () => number): string {
   for (let i = 0; i < 6; i++) s += abc[Math.floor(random() * abc.length)]
   return s
 }
+
+/** 32 位 FNV-1a（按 UTF-16 码元） */
+function fnv(s: string, seed: number): number {
+  let h = seed >>> 0
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193) >>> 0
+  return h
+}
+
+/** 照一段文字算出来的 6 位编号（和 makeId 同一套字）：几台设备照同样的文字算出同一个 */
+export function hashId(key: string): string {
+  const abc = 'abcdefghijklmnopqrstuvwxyz0123456789'
+  let n = fnv(key, 0x811c9dc5) * 2 ** 21 + (fnv(key, 0x050c5d1f) & 0x1fffff)
+  let s = ''
+  for (let i = 0; i < 6; i++) {
+    s += abc[n % 36]
+    n = Math.floor(n / 36)
+  }
+  return s
+}

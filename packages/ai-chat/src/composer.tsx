@@ -310,6 +310,8 @@ export interface AiInputProps {
   children?: ReactNode
   /** 那一排下面、字上面（读 PDF 排着的几问） */
   above?: ReactNode
+  /** 输入框正下面一句：发不出去、排着队时写为什么（「另一段对话在用 AI · 去看看」） */
+  below?: ReactNode
   /** 输入框里的字只有预填的（或空着）：PDF 那边按 esc 时据此决定连图一起取消（CN-97） */
   own?: boolean
   /** 上面的消息区：输入框长高（材料一排出来）时，原来停在最底下的跟着贴底，不被切掉一截 */
@@ -597,6 +599,7 @@ export function AiInput(p: AiInputProps) {
           )}
         </div>
       </div>
+      {p.below}
       {p.note && <NoteLine {...p.note} />}
       {p.omni && <OmniLine {...p.omni} />}
     </>

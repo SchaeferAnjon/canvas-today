@@ -85,7 +85,22 @@
   color: var(--t3, var(--text-3));
   white-space: nowrap;
 }
-.aiin-alt button {
+.aiin-wait {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 4px 12px 0;
+  font: 12px/18px var(--sans, var(--font-sans));
+  color: var(--t3, var(--text-3));
+  white-space: nowrap;
+}
+.aiin-wait > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.aiin-alt button,
+.aiin-wait button {
   padding: 0 4px;
   border: 0;
   border-radius: 4px;
@@ -94,10 +109,12 @@
   font-weight: 500;
   color: var(--acc-t, var(--accent-text));
 }
-.aiin-alt button:hover {
+.aiin-alt button:hover,
+.aiin-wait button:hover {
   background: var(--fill, var(--fill-1));
 }
-.aiin-alt button:focus-visible {
+.aiin-alt button:focus-visible,
+.aiin-wait button:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px var(--acc-ring, var(--accent-ring));
 }

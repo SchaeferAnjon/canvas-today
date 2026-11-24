@@ -8,6 +8,7 @@
 import { Codicon, type CodiconName } from '@cn/design'
 import aurora from '@notes-assets/covers/aurora.jpg'
 import cave from '@notes-assets/covers/ice-cave.jpg'
+import { MC_LEADS, type McLead } from '../shared/mc'
 import { AppearancePage, Group, type LookSkin, PageHead, Row, Sel, SettingsShell, Toggle, useSaid } from '@cn/design/settings'
 import { FamilySettings } from './family'
 import '@cn/design/settings.css'
@@ -17,6 +18,7 @@ import { themeInfo } from '../../../notes/src/shared/vscode-theme'
 import type { JournalInfo, QuickKeyState, RemList } from '../shared/api'
 import { comboOf, DEFAULT_QUICK_KEY, QUICK_KEY_SUGGEST, quickKeyOften, quickKeyProblem } from '../shared/quick'
 import type { TodayAppearance, TodaySettings } from '../shared/settings'
+import { INBOX_NOTE } from '../shared/brand'
 import { updateError, updateLine } from '../shared/update'
 import { nowMs, refreshAi, reloadState, saveSettings, setLook, useData, useLang } from './store'
 import { type ApiId, SOURCE_LABEL } from '@cn/ai-engines/shared'
@@ -52,7 +54,24 @@ const PAGES: { id: SettingsPage; icon: CodiconName; name: 'sGeneral' | 'sPlan' |
 /**
  * onPage：换了页告诉外面（A 里设置是中间一个标签，从弹窗换成标签、退到后面再点回来时开在同一页）；外面给的 page 变了（底栏「日历已连接」）就翻过去
  */
-export function SettingsDialog({ page: first = 'general', onClose, onImport, appNotice, asTab, onPage }: { page?: SettingsPage; onClose: () => void; onImport: () => void; appNotice?: string | null; asTab?: boolean; onPage?: (p: SettingsPage) => void }) {
+export function SettingsDialog({
+  page: first = 'general',
+  onClose,
+  onImport,
+  onGuide,
+  appNotice,
+  asTab,
+  onPage,
+}: {
+  page?: SettingsPage
+  onClose: () => void
+  onImport: () => void
+  /** 打开日历和提醒事项的设置引导 */
+  onGuide: () => void
+  appNotice?: string | null
+  asTab?: boolean
+  onPage?: (p: SettingsPage) => void
+}) {
   const t = useT()
   const [page, setPageState] = useState<SettingsPage>(first)
   useEffect(() => setPageState(first), [first])
@@ -79,7 +98,7 @@ export function SettingsDialog({ page: first = 'general', onClose, onImport, app
       {page === 'general' && <GeneralPage />}
       {page === 'plan' && <PlanPage />}
       {page === 'look' && <LookPage />}
-      {page === 'calrem' && <CalRemPage onImport={onImport} />}
+      {page === 'calrem' && <CalRemPage onImport={onImport} onGuide={onGuide} />}
       {page === 'ai' && <AiPage />}
       {page === 'vault' && <VaultPage />}
       {page === 'family' && <FamilySettings onGoRow={goRow} />}
@@ -405,10 +424,38 @@ function LookPage() {
   )
 }
 
-function CalRemPage({ onImport }: { onImport: () => void }) {
+function CalRemPage({ onImport, onGuide }: { onImport: () => void; onGuide: () => void }) {
   const t = useT()
+  const change = useChange()
+  const { state, mc } = useData()
+  const all = state!.settings.remindAll
+  const lead = state!.settings.mcLead
   return (
     <>
+      <Group title={t('sRingGroup')}>
+        <Row id="calGuide" label={t('guideRow')} desc={t('guideRowSub')}>
+          <button className="sa-btn" onClick={onGuide}>
+            {t('guideRowBtn')}
+          </button>
+        </Row>
+        <Row id="remindAll" label={t('sRemindAll')} desc={t('sRemindAllDesc')}>
+          <Toggle on={all} label={t('sRemindAll')} onChange={() => change({ remindAll: !all }, { remindAll: all }, !all ? t('sTurnedOn', t('sRemindAll')) : t('sTurnedOff', t('sRemindAll')))} />
+        </Row>
+        {/* MeetCaption 联动：装了 MeetCaption、库里有它记的课表才有这一行（main/mc.ts）；下拉里 -1 是不问 */}
+        {mc?.installed && (
+          <Row id="mcLead" label={t('sMcLead')} desc={t('sMcLeadDesc')}>
+            <Sel
+              label={t('sMcLead')}
+              value={lead ?? -1}
+              options={MC_LEADS.map((n) => [n ?? -1, t('mcLeadOpt', n)] as const)}
+              onChange={(v) => {
+                const next = v === -1 ? null : (v as McLead)
+                change({ mcLead: next }, { mcLead: lead }, t('sSetTo', t('sMcLead'), t('mcLeadOpt', next)))
+              }}
+            />
+          </Row>
+        )}
+      </Group>
       <Group title={t('sCalGroup')}>
         <CalRow />
       </Group>
@@ -580,7 +627,7 @@ function RemRows({ onImport }: { onImport: () => void }) {
         {right}
       </Row>
       {ok && r.icloud && r.mirror && (
-        <Row id="remList" label={t('remListRow')}>
+        <Row id="remList" label={t('remListRow')} desc={t('remListSub', listName, INBOX_NOTE)}>
           <Sel
             label={t('remListRow')}
             value={listName}

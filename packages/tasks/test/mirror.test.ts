@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { nextId } from '../src/recur'
 import {
   alarmOf,
   applyWriteBacks,
@@ -330,10 +331,10 @@ describe('写回库里那一行：按 🆔 找、只改那几个字', () => {
     expect(r.missing).toEqual([])
     expect(r.applied.map((w) => w.op)).toEqual(['tick'])
   })
-  it('勾掉重复的：下面加下一次那一条，编号换新的（下一次同步再镜像它）', () => {
+  it('勾掉重复的：下面加下一次那一条，编号照原编号和日子算（下一次同步再镜像它）', () => {
     const t = '- [ ] 整理读书笔记 📅 2026-11-22 🔔 准时 🔁 每周日 🆔 aaaaaa\n'
     const r = applyWriteBacks(t, [{ op: 'tick', id: 'aaaaaa', path: 'x.md', line: 0, title: '整理读书笔记', date: null }], '2026-11-22', ids())
-    expect(r.text).toBe('- [x] 整理读书笔记 📅 2026-11-22 🔔 准时 🔁 每周日 🆔 aaaaaa ✅ 2026-11-22\n- [ ] 整理读书笔记 📅 2026-11-29 🔔 准时 🔁 每周日 🆔 zzzzz1\n')
+    expect(r.text).toBe(`- [x] 整理读书笔记 📅 2026-11-22 🔔 准时 🔁 每周日 🆔 aaaaaa ✅ 2026-11-22\n- [ ] 整理读书笔记 📅 2026-11-29 🔔 准时 🔁 每周日 🆔 ${nextId('aaaaaa', '2026-11-29')}\n`)
   })
   it('行挪了位置（外面在上面加了几行）：按 🆔 找到；改标题、改时间、去掉 🔔、改回没做完', () => {
     const moved = '加的一行\n\n' + NOTE_TEXT
@@ -369,5 +370,76 @@ describe('写回库里那一行：按 🆔 找、只改那几个字', () => {
     const crlf = NOTE_TEXT.replace(/\n/g, '\r\n')
     const r = applyWriteBacks(crlf, [{ op: 'unremind', id: 'a1b2c3', path: 'x.md', line: 5, title: '交论文初稿' }], '2026-11-22', ids())
     expect(r.text).toBe(crlf.replace(' 🔔 提前1小时', ''))
+  })
+})
+
+describe('提醒所有带钟点的待办（remindAll，默认开）', () => {
+  const NOW = T0 + 120_000
+  const run = (tasks: MirrorSource[], items: RemItem[], b: Record<string, MirrorBase>, remindAll = true, today = '2026-11-23') =>
+    planMirror({ tasks, items, base: b, now: NOW, noteUrl: NOTE, remindAll, today })
+  const bare = (p: Partial<MirrorSource> = {}) => src({ remind: null, ...p })
+
+  it('有钟点没 🔔 的照「准时」镜像（闹钟在到期那一刻）；关了不镜像', () => {
+    const p = run([bare()], [], {})
+    expect(p.create).toHaveLength(1)
+    expect(p.create[0]!.fields.alarms).toEqual([{ offset: 0 }])
+    expect(p.create[0]!.fields.due).toBe('2026-11-23 15:00')
+    expect(run([bare()], [], {}, false).create).toEqual([])
+  })
+  it('写了提前 1 小时的照写的；没钟点没 🔔 的不镜像；没 🆔 的先给编号', () => {
+    expect(run([src()], [], {}).create[0]!.fields.alarms).toEqual([{ offset: -3600 }])
+    expect(run([bare({ time: null })], [], {}).create).toEqual([])
+    const p = run([bare({ id: null })], [], {})
+    expect(p.writeBack).toEqual([{ op: 'assignId', path: '写作/小论文计划.md', line: 7, title: '交论文初稿' }])
+    const out = applyWriteBacks('# 计划\n\n- [ ] 交论文初稿 📅 2026-11-23 15:00\n', [{ ...p.writeBack[0]!, line: 2 } as never], '2026-11-23', () => 'n1')
+    expect(out.text).toBe('# 计划\n\n- [ ] 交论文初稿 📅 2026-11-23 15:00 🆔 n1\n')
+  })
+  it('没 🔔 的只新镜像今天和以后的（多年前没勾的不塞进提醒事项）；写了 🔔 的不限', () => {
+    expect(run([bare({ date: '2026-11-22' })], [], {}).create).toEqual([])
+    expect(run([src({ date: '2026-11-22' })], [], {}).create).toHaveLength(1)
+  })
+  it('关掉开关：镜像着的没 🔔 那条从提醒事项删掉；写了 🔔 的留着', () => {
+    const a = bare()
+    const aFull = { ...a, remind: '准时' }
+    const c = src({ id: 'c1' })
+    const p = run([a, c], [item(aFull), item(c)], { a1b2c3: base(aFull), c1: base(c) }, false)
+    expect(p.remove).toEqual([{ id: 'a1b2c3', rid: 'r-a1b2c3' }])
+    expect(p.mirrored).toEqual(['c1'])
+  })
+  it('没 🔔 的在提醒事项里删掉了：库里不改（没有 🔔 可去）、记 off、不再建、本机也不响（算在 mirrored 里）', () => {
+    const a = bare()
+    const aFull = { ...a, remind: '准时' }
+    const p = run([a], [], { a1b2c3: base(aFull) })
+    expect(p.writeBack).toEqual([])
+    expect(p.notices).toEqual([])
+    expect(p.create).toEqual([])
+    const off = p.base.get('a1b2c3')!
+    expect(off.off).toBe(true)
+    expect(p.mirrored).toEqual(['a1b2c3'])
+    // 下一次同步：还是不建
+    const p2 = run([a], [], { a1b2c3: off })
+    expect(p2.create).toEqual([])
+    expect(p2.base.has('a1b2c3')).toBe(false)
+    expect(p2.mirrored).toEqual(['a1b2c3'])
+    // 写上了 🔔：照写的建回去
+    const p3 = run([src()], [], { a1b2c3: off })
+    expect(p3.create).toHaveLength(1)
+    // 拿掉了钟点：忘掉这一笔
+    const p4 = run([bare({ time: null })], [], { a1b2c3: off })
+    expect(p4.base.get('a1b2c3')).toBeNull()
+    expect(p4.mirrored).toEqual([])
+  })
+  it('记着 off 的不算进「一下子少了好多条」', () => {
+    const offs: Record<string, MirrorBase> = {}
+    const tasks: MirrorSource[] = []
+    for (const i of [1, 2, 3, 4, 5, 6]) {
+      const t = bare({ id: 'o' + i })
+      tasks.push(t)
+      offs['o' + i] = { ...base({ ...t, remind: '准时' }), rid: '', off: true }
+    }
+    const c = src({ id: 'c1' })
+    const p = run([...tasks, c], [], { ...offs, c1: base(c) })
+    expect(p.notices).toEqual([{ kind: 'deleted', id: 'c1', title: '交论文初稿' }])
+    expect(p.create).toEqual([])
   })
 })

@@ -87,7 +87,8 @@ async function connect(page: Page, l: (typeof L)['zh']) {
 for (const lang of ['zh', 'en'] as const) {
   test(`${lang}：连上提醒事项 → 带提醒的镜像过去、本机不再排通知 → 在提醒事项里勾掉、改时间、改标题写回那一行 → 删掉只去 🔔 → 我们这边勾掉、删掉同步过去`, async () => {
     const l = L[lang]
-    const run = await launch({ settings: lang === 'zh' ? LOOK('sky', 'b', 'zh') : LOOK('petrol', 'a', 'en') })
+    // 这一条测的是写了 🔔 的那几条；「提醒所有带钟点的待办」（默认开）另在 t23
+    const run = await launch({ settings: { ...(lang === 'zh' ? LOOK('sky', 'b', 'zh') : LOOK('petrol', 'a', 'en')), remindAll: false } })
     const { page } = run
     try {
       const s = await connect(page, l)
@@ -384,7 +385,7 @@ test('关掉镜像：提醒事项里镜像的删掉、本机照响；再打开�
 })
 
 test('重复的只镜像下一次那一条：在这边勾掉「交房租」，提醒事项里那条勾上、下个月那条另建一条；在提醒事项里勾掉下个月那条，库里再生成下一次', async () => {
-  const run = await launch()
+  const run = await launch({ settings: { remindAll: false } })
   const { page } = run
   try {
     await connect(page, L.zh)
@@ -444,6 +445,70 @@ test('两台设备各镜像出一份：靠 🆔 认出、留先建的', async ()
   try {
     await connect(run.page, L.zh)
     await expect.poll(() => mem(run).items.map((i) => i.rid), { timeout: 10_000 }).toEqual(['from-iphone'])
+  } finally {
+    await run.close()
+  }
+})
+
+test('在提醒事项「画布今日」列表里新建的：写进 收件箱/待办.md、那一条补上链接成镜像（不删不重建）、勾掉写回；别的列表不碰；设置里写着', async () => {
+  const files = { '收件箱/待办.md': '# 待办\n\n- [ ] 交水电费 📅 2026-11-30\n' }
+  const run = await launch({
+    files,
+    reminders: {
+      lists: [
+        { id: 'L-ct', title: '画布今日', icloud: true },
+        { id: 'L-shop', title: '购物', icloud: true },
+      ],
+      items: [{ rid: 'shop1', list: 'L-shop', title: '鸡蛋', created: 1 }],
+    },
+  })
+  const { page } = run
+  try {
+    const s = await connect(page, L.zh)
+    // 设置里写一句：在这个列表里新建的也会写进哪一篇
+    await expect(s.locator('[data-row="remList"]')).toContainText('在提醒事项「画布今日」列表里新建的，也会写进 收件箱/待办.md')
+    await page.keyboard.press('Escape')
+
+    // 像在 iPhone 提醒事项里加了两条：一条带闹钟和备注、一条什么都没有
+    const a = await external(run, { op: 'add', list: 'L-ct', fields: { title: '交论文初稿', due: '2026-11-25 15:00', alarms: [{ offset: -3600 }], priority: 1, notes: '找王老师签字' } })
+    const b = await external(run, { op: 'add', list: 'L-ct', fields: { title: '买牛奶' } })
+    const ridA = (a as { rid: string }).rid
+    const ridB = (b as { rid: string }).rid
+    await expect.poll(() => run.read('收件箱/待办.md'), { timeout: 10_000 }).toMatch(/- \[ \] 买牛奶 🆔 [a-z0-9]{6}\n/)
+    const text = run.read('收件箱/待办.md')
+    expect(text).toMatch(/^# 待办\n\n- \[ \] 交水电费 📅 2026-11-30\n/)
+    expect(text).toMatch(/- \[ \] 交论文初稿 📅 2026-11-25 15:00 🔔 提前1小时 ⏫ 🆔 [a-z0-9]{6}\n {4}> 找王老师签字\n/)
+    const idA = idOf(text, '交论文初稿')!
+    const idB = idOf(text, '买牛奶')!
+    await expect.poll(() => uncommitted(run), { timeout: 10_000 }).toBe('')
+    expect(commits(run.vault).join('\n')).toContain('画布今日：从提醒事项加了')
+
+    // 提醒事项里还是原来那两条（rid 没变，没删了重建），补上了链接；标题、到期、闹钟、优先级没动，备注上面人写的留着
+    await expect.poll(() => mem(run).items.find((i) => i.rid === ridB)?.url, { timeout: 10_000 }).toBe(`canvas-today://task/${idB}?from=reminders`)
+    const ra = mem(run).items.find((i) => i.rid === ridA)!
+    expect(ra).toMatchObject({ title: '交论文初稿', due: '2026-11-25 15:00', alarms: [{ offset: -3600 }], priority: 1, url: `canvas-today://task/${idA}?from=reminders` })
+    expect(ra.notes).toMatch(/^找王老师签字\n来自《待办》· 收件箱\ncanvas-notes:\/\/open\?.*\ncanvas-today:\/\/task\/[a-z0-9]{6}\?from=reminders$/)
+    expect(mem(run).items.filter((i) => i.list === 'L-ct').map((i) => i.rid).sort()).toEqual([ridA, ridB].sort())
+    // 别的列表不碰
+    const shop = mem(run).items.find((i) => i.rid === 'shop1')!
+    expect([shop.title, shop.url ?? null, shop.notes ?? null]).toEqual(['鸡蛋', null, null])
+    expect(run.read('收件箱/待办.md')).not.toContain('鸡蛋')
+
+    // 在提醒事项里勾掉没写 🔔 的那条 → 库里那一行勾上
+    await external(run, { op: 'complete', task: idB, at: '2026-11-24T10:00' })
+    await expect.poll(() => run.read('收件箱/待办.md'), { timeout: 10_000 }).toContain(`- [x] 买牛奶 🆔 ${idB} ✅ 2026-11-24\n`)
+    // 再同步几遍：库里只有这一份，提醒事项里也还是这两条
+    await page.waitForTimeout(1500)
+    expect(run.read('收件箱/待办.md').match(/买牛奶/g)).toHaveLength(1)
+    expect(mem(run).items.filter((i) => i.list === 'L-ct')).toHaveLength(2)
+    // 我们这边改标题 → 提醒事项那条跟着改
+    await page.locator('.nav[data-k="week"]').click()
+    await row(page, '交论文初稿').click()
+    const title = page.locator('[data-part="详情"] .dtitle input')
+    await expect(title).toHaveValue('交论文初稿')
+    await title.fill('交论文终稿')
+    await title.press('Enter')
+    await expect.poll(() => mem(run).items.find((i) => i.rid === ridA)?.title, { timeout: 10_000 }).toBe('交论文终稿')
   } finally {
     await run.close()
   }

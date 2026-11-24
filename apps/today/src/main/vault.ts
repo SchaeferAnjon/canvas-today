@@ -9,9 +9,10 @@ import { type FSWatcher, watch } from 'node:fs'
 import { mkdir, readdir, readFile, rm, stat } from 'node:fs/promises'
 import { atomicWrite, ChangedOutsideError, type FileStamp, readStamped } from '@cn/atomic'
 import { basename, dirname, join, relative, resolve, sep } from 'node:path'
-import { merge3 } from '@cn/format'
+import { isMcRecord, merge3, prop } from '@cn/format'
 import { type FileTask, type Habit, isHabitPath, keyOf, parseHabit, type RingBy, sameTasks, scanTasks } from '@cn/tasks'
 import type { HabitView, NoteView, Snapshot, TaskView } from '../shared/api'
+import { mcSrcOf } from '../shared/mc'
 
 const SKIP_DIRS = new Set(['.git', 'node_modules', '.trash', '.obsidian'])
 
@@ -45,6 +46,9 @@ export function decode(bytes: Uint8Array): { text: string; readOnly: boolean } {
 }
 
 export class TaskVault {
+  /** 联动开关 mc-todo 开着没有（index.ts 接到家族的开关上） */
+  static mcTodosOn: () => boolean = () => true
+
   readonly root: string
   readonly name: string
   private files = new Map<string, FileEntry>()
@@ -132,6 +136,10 @@ export class TaskVault {
       const dir = f.path.includes('/') ? f.path.slice(0, f.path.lastIndexOf('/')) : ''
       notes.push({ path: f.path, title: f.path.replace(/^.*\//, '').replace(/\.md$/i, ''), folder: dir.split('/').filter(Boolean).join(' › '), mtimeMs: f.mtimeMs })
       const key = (line: number) => `${f.path}#${line}`
+      // MeetCaption 的上课记录：属性里有 meetcaption 那一行（shared/mc.ts）
+      const mc = f.text.includes('meetcaption:') && isMcRecord(f.text) ? { course: prop(f.text, '课程') ?? null, date: prop(f.text, '日期') ?? null } : null
+      // 设置 › 软件家族「MeetCaption说到的待办进清单」（mc-todo）关着：上课记录里的待办不进清单
+      if (mc && !TaskVault.mcTodosOn()) continue
       for (const t of f.tasks) {
         tasks.push({
           key: key(t.line),
@@ -161,6 +169,7 @@ export class TaskVault {
           headingLine: t.heading?.line ?? null,
           // 谁来响：镜像进系统提醒事项的标成 reminders，我们自己就不排通知
           ringBy: this.ringByOf(t.task.id),
+          mc: mc && mcSrcOf(t.raw, t.task.title, mc),
         })
       }
     }

@@ -6,29 +6,39 @@
  * 一次同步：从小助手读那个列表 → @cn/tasks 的 planMirror 算两边各改什么 → 写回库里那一行（applyWriteBacks，只改那几个字，提交）
  * → 提醒事项那边新建、改、删 → 记下「上次同步完两边是什么样」（userData/reminders-mirror.json，每个库一份，每台设备各记各的）。
  * 什么时候同步：库里变了（0.6 秒后）、提醒事项在外面改了（小助手说一声）、每分钟一次兜底、连上 / 开镜像 / 换列表时。
+ * 在那个列表里直接新建的（没有我们的链接）：写进 收件箱/待办.md（快速添加没写 # 的去处）、提醒事项那条补上链接认领成镜像（claim）。
  * 「导入提醒事项」也在这里：读几个列表 → rem-import 换成行尾写法 → 一次提交（能撤回）→ 界面问过再删原条目。
  */
 import { mkdirSync, readFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import {
+  appendLines,
   applyWriteBacks,
+  claimId,
+  claimLines,
+  claimPatch,
+  cleanTitle,
   type ImportItem,
   importFile,
   importPath,
+  isInbound,
   makeId,
   MIRROR_LIST,
   type MirrorBase,
   type MirrorNotice,
   mirrorSource,
   planMirror,
+  remindOf,
   type RecurRule,
   type RemAlarm,
   type RemFields,
   type RemItem,
+  toClaim,
+  UNTITLED,
   type WriteBack,
 } from '@cn/tasks'
 import type { ImportPreview, ImportResult, Notice, RemAuth, RemList, RemState } from '../shared/api'
-import { noteUrl } from '../shared/brand'
+import { INBOX_NOTE, noteUrl } from '../shared/brand'
 import { type Args, type Key, type Lang, tr } from '../shared/i18n'
 import type { RemSettings, TodaySettings } from '../shared/settings'
 import { HelperError, type RemHelper } from './rem-helper'
@@ -121,7 +131,19 @@ function importItem(x: Record<string, unknown>): ImportItem {
   return { ...r, rules: Array.isArray(x.rules) ? (x.rules as RecurRule[]).filter((u) => u && typeof u.freq === 'string' && typeof u.interval === 'number') : [] }
 }
 
-const baseOf = (f: RemFields, rid: string, at: number): MirrorBase => ({ rid, title: f.title, due: f.due, done: f.completed, priority: f.priority, alarms: JSON.stringify(f.alarms), notes: f.notes, at })
+const baseOf = (f: RemFields, rid: string, at: number): MirrorBase => ({
+  rid,
+  title: f.title,
+  due: f.due,
+  done: f.completed,
+  priority: f.priority,
+  alarms: JSON.stringify(f.alarms),
+  notes: f.notes,
+  at,
+  ...(isInbound(f) ? { inbound: true as const } : {}),
+})
+
+const claimTitle = (r: RemItem) => cleanTitle(r.title) || UNTITLED
 
 /** 提交说明里怎么说（提交说明一律中文，和画布今日别的提交一样） */
 function say(w: WriteBack): string {
@@ -151,6 +173,8 @@ export class RemMirror {
   private error: string | null = null
   private running: Promise<void> | null = null
   private again = false
+  /** 这一轮同步里认领过的那几条（rid）：补的链接万一没写上，这一轮里不再认领它、不一直转；下一轮再来 */
+  private tried = new Set<string>()
   private timer: NodeJS.Timeout | null = null
   private tick: NodeJS.Timeout | null = null
   /** 这次打开以后顶上提示要不要出 */
@@ -327,6 +351,7 @@ export class RemMirror {
       return this.running
     }
     this.running = (async () => {
+      this.tried.clear()
       do {
         this.again = false
         try {
@@ -366,12 +391,19 @@ export class RemMirror {
         return this.setMirrored(new Set())
       } else throw e
     }
+    // 在这个列表里直接新建的：先写进库、认领过来，再从头同步一遍（那时它们已经有链接了）
+    if (toClaim(items).some((r) => !this.tried.has(r.rid)) && (await this.claim(v, s.listId!))) {
+      this.again = true
+      return
+    }
     const snap = v.snapshot()
     const done = new Set(snap.tasks.filter((t) => t.done || t.cancelled).map((t) => t.key))
     // 抄了好几遍的同一条只镜像显示的那一份
-    const tasks = snap.tasks.filter((t) => (t.id || t.remind) && !t.dupOf).map((t) => mirrorSource(t, (k) => done.has(k), v.mtime(t.path)))
+    // 设置「提醒所有带钟点的待办」开着：有钟点、没写 🔔 的也照「准时」镜像（没 🆔 的先加编号）
+    const all = this.deps.settings().remindAll
+    const tasks = snap.tasks.filter((t) => (t.id || remindOf(t, all)) && !t.dupOf).map((t) => mirrorSource(t, (k) => done.has(k), v.mtime(t.path)))
     const now = Date.now()
-    const plan = planMirror({ tasks, items, base: vs.base, now, pendingGone: vs.pendingGone, noteUrl })
+    const plan = planMirror({ tasks, items, base: vs.base, now, pendingGone: vs.pendingGone, noteUrl, remindAll: all, today: this.deps.today() })
 
     // 1. 写回库里那一行；真加上了 🆔 的，马上再同步一遍把它们建过去（没加上的，比如只读的那篇，不再转圈）
     const { failed, undos, assigned } = await this.writeBack(plan.writeBack)
@@ -423,6 +455,79 @@ export class RemMirror {
     this.setMirrored(new Set(Object.keys(vs.base)))
   }
 
+  /**
+   * 在镜像的那个列表里直接新建的（没有我们的链接、没勾掉）：写进 收件箱/待办.md 成一行（一次提交），提醒事项那条补上链接认领成镜像（不删不重建）。
+   * 两台 Mac 同时开着不各写一份：写之前再读一遍那个列表，已经有链接的（另一台认领了）不写；🆔 照那一条算（claimId），
+   * 两台写出来的是一样的一行、补的是一样的链接；库里已经有这个 🆔 的（另一台写的、同步过来了）只补链接不再写。返回认领了没有
+   */
+  private async claim(v: TaskVault, list: string): Promise<boolean> {
+    const fresh = toClaim((await this.helper.request<{ items: Record<string, unknown>[] }>('fetch', { list })).items.map(remItem)).filter((r) => !this.tried.has(r.rid))
+    if (!fresh.length) return false
+    for (const r of fresh) this.tried.add(r.rid)
+    const path = INBOX_NOTE
+    const have = new Map(v.snapshot().tasks.flatMap((t) => (t.id ? [[t.id, t] as const] : [])))
+    const ids = new Map<string, string>()
+    const write: RemItem[] = []
+    for (const r of fresh) {
+      let id = claimId(r)
+      const hit = have.get(id)
+      if (hit && hit.title === claimTitle(r)) {
+        ids.set(r.rid, id)
+        continue
+      }
+      // 撞上了库里别的待办的 🆔（极少）：换一个随机的
+      if (hit) id = makeId(Math.random)
+      ids.set(r.rid, id)
+      write.push(r)
+    }
+    if (write.length) {
+      try {
+        await v.change([path], '画布今日：从提醒事项加了' + write.map((r) => `「${claimTitle(r)}」`).join(''), (now) => {
+          let text = now.get(path) ?? `# ${path.replace(/^.*\//, '').replace(/\.md$/i, '')}\n\n`
+          for (const r of write) {
+            const id = ids.get(r.rid)!
+            if (!text.includes(`🆔 ${id}`)) text = appendLines(text, claimLines(r, id)).text
+          }
+          return { out: new Map([[path, text]]), result: true }
+        })
+      } catch (e) {
+        if (e instanceof ReadOnlyError) this.readonly(path)
+        else console.error('把提醒事项里新建的写进库里没成', e)
+        return false
+      }
+    }
+    const snap = v.snapshot()
+    const done = new Set(snap.tasks.filter((t) => t.done || t.cancelled).map((t) => t.key))
+    const all = this.deps.settings().remindAll
+    const now = Date.now()
+    const update: { rid: string; fields: Partial<RemFields> }[] = []
+    const bases: [string, MirrorBase][] = []
+    for (const r of fresh) {
+      const id = ids.get(r.rid)!
+      const t = snap.tasks.find((x) => x.id === id && !x.dupOf)
+      if (!t) continue
+      const c = claimPatch(r, mirrorSource(t, (k) => done.has(k), v.mtime(t.path)), noteUrl, now, all)
+      update.push({ rid: r.rid, fields: c.patch })
+      bases.push([id, c.base])
+    }
+    if (!update.length) return false
+    const res = await this.helper.request<{ created: Record<string, string>; missing: string[] }>('save', { list, create: [], update })
+    const vs = this.vs()
+    for (const [id, b] of bases) if (!res.missing.includes(b.rid)) vs.base[id] = b
+    this.persist()
+    return true
+  }
+
+  /** 那一篇只读（不是 UTF-8、换行不规整）：提示一次 */
+  private readonly(path: string) {
+    const vs = this.vs()
+    const key = `readonly:${path}`
+    if (vs.noticed.includes(key)) return
+    vs.noticed.push(key)
+    this.persist()
+    this.deps.notice({ msg: this.t('remReadonly', path.replace(/^.*\//, '').replace(/\.md$/i, '')), sub: this.t('remReadonlySub'), bg: true })
+  }
+
   private notify(n: MirrorNotice, undos: Map<string, string>) {
     const vs = this.vs()
     if (n.kind === 'massGone') return this.deps.notice({ msg: this.t('remMassGone', n.n), sub: this.t('remMassGoneSub'), bg: true })
@@ -470,14 +575,8 @@ export class RemMirror {
         if (r?.undo && list.some((w) => w.op === 'assignId')) assigned = true
       } catch (e) {
         ids.forEach((id) => failed.add(id))
-        if (e instanceof ReadOnlyError) {
-          const vs = this.vs()
-          const key = `readonly:${path}`
-          if (!vs.noticed.includes(key)) {
-            vs.noticed.push(key)
-            this.deps.notice({ msg: this.t('remReadonly', path.replace(/^.*\//, '').replace(/\.md$/i, '')), sub: this.t('remReadonlySub'), bg: true })
-          }
-        } else console.error('写回库里没成', e)
+        if (e instanceof ReadOnlyError) this.readonly(path)
+        else console.error('写回库里没成', e)
       }
     }
     return { failed, undos, assigned }

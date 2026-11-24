@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { deviceDir, eventLine, fireAt, formatRemind, keyOf, logPath, parseEvents, parseRemind, planReminders, reminderNext, snoozeUntil } from '../src/remind'
+import { deviceDir, eventLine, fireAt, formatRemind, keyOf, logPath, parseEvents, parseRemind, planReminders, reminderNext, remindOf, snoozeUntil } from '../src/remind'
 
 describe('提醒的说法', () => {
   it('认得', () => {
@@ -84,6 +84,32 @@ describe('提醒记录（每台设备一份 jsonl）', () => {
     expect(p.fire.map((x) => x.task.key)).toEqual(['a'])
     expect(p.next?.task.key).toBe('b')
     expect(p.next?.at).toBe('2026-11-23T15:00')
+  })
+  it('提醒所有带钟点的待办（默认开）：有钟点没 🔔 的照准时排；关了不排；写了提前 1 小时照写的；没钟点的不算', () => {
+    const base = { title: '交报告', path: '收件箱/待办.md', done: false, date: '2026-11-25' }
+    const tasks = [
+      { ...base, key: 'a', time: '08:00', remind: null }, // 没写 🔔
+      { ...base, key: 'b', time: '10:00', remind: '提前1小时' }, // 写了提前 1 小时
+      { ...base, key: 'c', time: null, remind: null }, // 没钟点
+    ]
+    const now = '2026-11-25T07:00:00'
+    const on = planReminders(tasks, [], now, 60, true)
+    expect(on.next).toMatchObject({ due: '2026-11-25T08:00', at: '2026-11-25T08:00' })
+    expect(on.next?.task.key).toBe('a')
+    const off = planReminders(tasks, [], now, 60, false)
+    expect(off.next?.task.key).toBe('b')
+    expect(off.next?.at).toBe('2026-11-25T09:00')
+    // 到 8 点：开着时补响 a，关了没有
+    expect(planReminders(tasks, [], '2026-11-25T08:00:10', 60, true).fire.map((x) => x.task.key)).toEqual(['a'])
+    expect(planReminders(tasks, [], '2026-11-25T08:00:10', 60, false).fire).toEqual([])
+    // 写了提前 1 小时的开着关着都照写的 9:00 响
+    expect(planReminders(tasks, [], '2026-11-25T09:00:10', 60, false).fire.map((x) => [x.task.key, x.at])).toEqual([['b', '2026-11-25T09:00']])
+    expect(planReminders(tasks, [], '2026-11-25T09:00:10', 30, true).fire.map((x) => [x.task.key, x.at])).toEqual([['b', '2026-11-25T09:00']])
+    expect(remindOf({ date: '2026-11-25', time: '08:00', remind: null }, true)).toBe('准时')
+    expect(remindOf({ date: '2026-11-25', time: '08:00', remind: null }, false)).toBeNull()
+    expect(remindOf({ date: '2026-11-25', time: null, remind: null }, true)).toBeNull()
+    expect(remindOf({ date: null, time: '08:00', remind: null }, true)).toBeNull()
+    expect(remindOf({ date: '2026-11-25', time: '08:00', remind: '提前1小时' }, true)).toBe('提前1小时')
   })
   it('没有编号的用路径、标题、日子算一个稳定的名字', () => {
     expect(keyOf('收件箱/待办.md', '甲', '2026-11-23')).toBe(keyOf('收件箱/待办.md', '甲', '2026-11-23'))

@@ -3,7 +3,7 @@
  * 一条「没做完」= 没勾、没取消；子任务（挂在别的待办下面的）不单独列，除非它自己写了日子。
  */
 import type { CalItem } from '@cn/calendar'
-import { diffDays, type ISODate } from '@cn/tasks'
+import { byDoneDate, diffDays, doneDays, foldersInOrder, isTodoNotePath, type ISODate, notesInOrder } from '@cn/tasks'
 import type { NoteView, Snapshot, TaskView } from './api'
 import { INBOX_NOTE } from './brand'
 import { isoPlus } from './when'
@@ -16,12 +16,13 @@ export const open = (t: TaskView) => !t.done && !t.cancelled
  */
 export const listed = (t: Pick<TaskView, 'parent' | 'date' | 'dupOf'>) => (t.parent === null || t.date !== null) && !t.dupOf
 
-export type Nav = 'inbox' | 'today' | 'tomorrow' | 'week' | `list:${string}`
+/** all：全部没做完的（含没写日子的），按文件夹、笔记分；done：已完成，按完成那天倒着（和画布笔记左栏「待办」格的「全部」「已完成」同一份规则，@cn/tasks lists.ts） */
+export type Nav = 'inbox' | 'today' | 'tomorrow' | 'week' | 'all' | 'done' | `list:${string}`
 
 export interface Group {
   name: string
   /** 名字从哪来：要翻译的键，或者原样（## 标题、日期） */
-  kind: 'overdue' | 'today' | 'tomorrow' | 'doneToday' | 'noDate' | 'day' | 'heading' | 'none'
+  kind: 'overdue' | 'today' | 'tomorrow' | 'doneToday' | 'noDate' | 'day' | 'heading' | 'none' | 'folder' | 'note' | 'doneDay' | 'doneFold'
   date?: ISODate
   items: TaskView[]
   /** 拖到组名上改成哪天（date:2026-11-23） */
@@ -34,7 +35,19 @@ export interface Group {
   done?: boolean
   /** 空的时候画「收件箱是空的」 */
   empty?: boolean
+  /** 组名右边的数（不是 items 的条数时：文件夹那一行是它下面没做完的几条） */
+  count?: number
+  /** 笔记那一组：点组名打开这一篇（name 是路径） */
+  note?: string
 }
+
+/** 画布笔记自带分类的先后（categories.ts 的 CATEGORIES）：「全部」里文件夹照它排，和画布笔记左栏一样 */
+const CATS = ['收件箱', '课程', '阅读', '剪藏', '周记', '写作', '项目', '生活']
+const catRank = (folder: string) => {
+  const i = CATS.indexOf(folder.split('/')[0]!)
+  return i === -1 ? 99 : i
+}
+export const INBOX_FOLDER = INBOX_NOTE.slice(0, INBOX_NOTE.lastIndexOf('/'))
 
 const byTime = (a: TaskView, b: TaskView) => (a.time ?? '99').localeCompare(b.time ?? '99') || a.path.localeCompare(b.path) || a.line - b.line
 const byPlace = (a: TaskView, b: TaskView) => a.path.localeCompare(b.path) || a.line - b.line
@@ -42,6 +55,7 @@ const byPlace = (a: TaskView, b: TaskView) => a.path.localeCompare(b.path) || a.
 export const cntToday = (ts: readonly TaskView[], today: ISODate) => ts.filter((t) => open(t) && listed(t) && t.date !== null && t.date <= today).length
 export const cntInbox = (ts: readonly TaskView[]) => ts.filter((t) => open(t) && t.path === INBOX_NOTE && t.parent === null && !t.date).length
 export const cntTomorrow = (ts: readonly TaskView[], today: ISODate) => ts.filter((t) => open(t) && listed(t) && t.date === isoPlus(today, 1)).length
+export const cntAll = (ts: readonly TaskView[]) => ts.filter((t) => open(t) && listed(t)).length
 export const cntWeek = (ts: readonly TaskView[], today: ISODate) => ts.filter((t) => open(t) && listed(t) && t.date !== null && diffDays(t.date, today) < 7).length
 
 /** 一篇里没做完的最上层待办有几条 */
@@ -68,6 +82,17 @@ export function groupsOf(nav: Nav, ts: readonly TaskView[], today: ISODate): Gro
   }
   if (nav === 'tomorrow') return [{ name: 'tomorrow', kind: 'tomorrow', date: tom, items: live.filter((t) => t.date === tom).sort(byTime), drop: 'date:' + tom }]
   if (nav === 'inbox') return [{ name: 'noDate', kind: 'noDate', items: live.filter((t) => t.path === INBOX_NOTE && t.parent === null && !t.date).sort(byPlace), empty: true }]
+  if (nav === 'all') {
+    // 文件夹一组（只是组名，数是它下面没做完的），下面每篇笔记一组；收件箱在最前，有「待办」那篇的文件夹在前
+    const todoNotes = new Set(ts.filter((t) => isTodoNotePath(t.path)).map((t) => t.path))
+    const out: Group[] = []
+    for (const f of foldersInOrder(live, { inbox: INBOX_FOLDER, todoNotes, rank: catRank })) {
+      out.push({ name: f.folder, kind: 'folder', items: [], count: f.items.length })
+      for (const n of notesInOrder(f.items)) out.push({ name: n.path, kind: 'note', items: n.items, note: n.path })
+    }
+    return out
+  }
+  if (nav === 'done') return doneDays(ts.filter((t) => t.done && listed(t))).map((g) => ({ name: g.day ?? '', kind: 'doneDay', ...(g.day ? { date: g.day } : {}), items: g.items, done: true }))
   if (nav === 'week') {
     const out: Group[] = []
     for (let i = 0; i < 7; i++) {
@@ -76,9 +101,11 @@ export function groupsOf(nav: Nav, ts: readonly TaskView[], today: ISODate): Gro
     }
     return out
   }
-  // 一篇笔记：照文件里的先后，按 ## 标题分组；勾掉的也列（划掉），子任务不单列
+  // 一篇笔记：没做完的照文件里的先后，按 ## 标题分组，子任务不单列；勾掉的收成最后一行「已完成 N 条 ›」（点开列出来，完成日子倒着），
+  // 和画布笔记左栏「按文件夹」里一样（2026-11-24「记得把canvas today也改了」）
   const path = nav.slice(5)
-  const mine = ts.filter((t) => t.path === path && t.parent === null).sort(byPlace)
+  const all = ts.filter((t) => t.path === path && t.parent === null)
+  const mine = all.filter((t) => !t.done).sort(byPlace)
   const out: Group[] = []
   let cur: (Group & { at: number | null }) | null = null
   for (const t of mine) {
@@ -88,6 +115,8 @@ export function groupsOf(nav: Nav, ts: readonly TaskView[], today: ISODate): Gro
     }
     cur.items.push(t)
   }
+  const done = all.filter((t) => t.done).sort(byDoneDate)
+  if (done.length) out.push({ name: 'doneFold', kind: 'doneFold', items: done, done: true })
   return out
 }
 

@@ -12,6 +12,7 @@ import { type ChatSummary, type ConvoRow, type ConvPages, firstAsk, LEGACY, type
 import { t } from '../../shared/i18n'
 import type { ChatSide, EngineId, StoredMsg } from '../../shared/agent'
 import type { NoteTarget } from '../../shared/ai-note'
+import { PARALLEL_DEFAULT, PARALLEL_MAX } from '../../shared/agent'
 import { type AiPick, type AiPrefs, CLAUDE_DEFAULT, normalizePick, normalizePrefs, resolvePick } from '@cn/ai-engines/shared'
 import { atomicWriteSync } from '@cn/atomic'
 import { ALL_IDS, API_DEFAULT, type CliId, CLI_IDS, isApi, isCli, isLocal, KEY_JUDGE } from '@cn/ai-engines/shared'
@@ -372,6 +373,16 @@ export class AgentStore {
 
   setOmni(on: boolean) {
     this.write('settings.json', { ...this.read<object>('settings.json', {}), omni: on })
+  }
+
+  /** AI 对话最多同时答几段（设置 › AI「同时答几段对话」，AI 对话同时跑）：1–6，默认 3；多出来的排队 */
+  parallel(): number {
+    const n = this.read<{ parallel?: unknown }>('settings.json', {}).parallel
+    return typeof n === 'number' && Number.isInteger(n) && n >= 1 && n <= PARALLEL_MAX ? n : PARALLEL_DEFAULT
+  }
+
+  setParallel(n: number) {
+    this.write('settings.json', { ...this.read<object>('settings.json', {}), parallel: n })
   }
 
   /** 给AI的长期说明（设置 › AI，2026-11-21 方向 A 新加）：AI 对话和读 PDF 每一问都带上；空串是没有 */

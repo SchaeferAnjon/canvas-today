@@ -10,6 +10,10 @@ import type { WebSeen } from './web-pages'
 export type { EngineId, EngineInfo } from '@cn/ai-engines/shared'
 import type { EngineId } from '@cn/ai-engines/shared'
 
+/** AI 对话最多同时答几段（设置 › AI，AI 对话同时跑）：默认 3，最多 6；多出来的排队 */
+export const PARALLEL_DEFAULT = 3
+export const PARALLEL_MAX = 6
+
 /** AI 这一轮能看到、能动手的地方：当前标签和网页 */
 export interface AgentContext {
   tab: {
