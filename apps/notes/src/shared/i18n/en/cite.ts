@@ -43,7 +43,7 @@ export const CITE: Table = {
   // ---------- ⌘点以后右栏留在原来那段对话（ai-head.tsx、命令表） ----------
   '切到《{name}》的 AI': 'Switch to AI for “{name}”',
   '右栏切到这篇的 AI': 'Switch AI to this note',
-  '从 AI 回答里 ⌘点开一篇以后，右栏还在原来那段对话': 'After you Command-click a note in an AI answer, the AI sidebar stays on the earlier chat',
+  '换了页面，右栏还在原来那段对话时': 'When you switched pages and the AI sidebar is still on the earlier chat',
 
   // ---------- 按住 ⌘ 悬停弹出那一篇（peek/peek.tsx，task-hqula） ----------
   '这种文件在浮窗里看不了，打开再看': 'This kind of file can’t be previewed here; open it to see it',

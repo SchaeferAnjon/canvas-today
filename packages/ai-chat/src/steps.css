@@ -29,6 +29,13 @@
 .am .tstep.err .ci {
   color: var(--red);
 }
+/* 等用户点头（网页上提交、登录、付款、上传先问）：黄色问号、字 --t1，这一下没做，不能像做完的绿勾 */
+.am .tstep.ask {
+  color: var(--t1, var(--text));
+}
+.am .tstep.ask .ci {
+  color: var(--yellow, #c69026);
+}
 /* 命令、库外的路径：等宽一段，和前面的字之间 3px（不手打空格），放不下省略号 */
 .am .tstep .sc {
   min-width: 0;

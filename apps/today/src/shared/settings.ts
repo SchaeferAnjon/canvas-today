@@ -8,7 +8,7 @@ import type { Lang } from './i18n'
 import { DEFAULT_QUICK_KEY, isCombo } from './quick'
 
 /** 外观和画布笔记同一套（task-aph2j：主题渐变、浓淡、动不动也一样）；画布今日不能从电脑选图 */
-export type TodayAppearance = Pick<Appearance, 'followSystem' | 'day' | 'night' | 'skin' | 'frame' | 'winBg' | 'wallMix' | 'wallMove' | 'wallSpeed' | 'glass'>
+export type TodayAppearance = Pick<Appearance, 'followSystem' | 'day' | 'night' | 'skin' | 'frame' | 'winBg' | 'wallMix' | 'wallMove' | 'wallSpeed' | 'glassLevel'>
 
 /**
  * 提醒事项（每台设备各记各的）：连上了没有、镜像开没开、镜像进哪个列表（名字；id 是这台设备上 EventKit 给的）。
@@ -83,7 +83,7 @@ export const DEFAULT_TODAY: TodaySettings = {
     wallMix: notesLook.wallMix,
     wallMove: notesLook.wallMove,
     wallSpeed: notesLook.wallSpeed,
-    glass: notesLook.glass,
+    glassLevel: notesLook.glassLevel,
   },
   tray: true,
   quickKey: DEFAULT_QUICK_KEY,
@@ -142,7 +142,7 @@ export function normalizeToday(raw: unknown, sysLang: Lang = 'zh', user: readonl
       wallMix: WALL_MIXES.includes(a.wallMix as WallMix) ? (a.wallMix as WallMix) : d.wallMix,
       wallMove: typeof a.wallMove === 'boolean' ? a.wallMove : d.wallMove,
       wallSpeed: WALL_SPEEDS.includes(a.wallSpeed as WallSpeed) ? (a.wallSpeed as WallSpeed) : d.wallSpeed,
-      glass: normalizeGlass(a.glass),
+      glassLevel: normalizeGlass(a.glassLevel, a.glass),
     },
     tray: typeof r.tray === 'boolean' ? r.tray : DEFAULT_TODAY.tray,
     quickKey: isCombo(r.quickKey) ? r.quickKey : DEFAULT_TODAY.quickKey,
@@ -172,6 +172,6 @@ export function lookFromNotes(raw: unknown, user: readonly SkinInfo[] = []): Tod
     wallMix: a.wallMix,
     wallMove: a.wallMove,
     wallSpeed: a.wallSpeed,
-    glass: a.glass,
+    glassLevel: a.glassLevel,
   }
 }

@@ -1,14 +1,16 @@
 /** AI 浮窗和主进程之间来回传的东西（引擎、流式事件、对话记录、当前看的是什么） */
 
 import type { Material } from './materials'
+import type { Mention } from '@cn/ai-chat/mentions'
 import type { ActLines, ActTally } from './ai-act'
 import type { AiCommitFailed, CommitInfo } from './api'
 import type { NoteTarget } from './ai-note'
+import type { WebSeen } from './web-pages'
 
 export type { EngineId, EngineInfo } from '@cn/ai-engines/shared'
 import type { EngineId } from '@cn/ai-engines/shared'
 
-/** AI 这一轮能看到、能动手的地方：当前标签和右栏网页 */
+/** AI 这一轮能看到、能动手的地方：当前标签和网页 */
 export interface AgentContext {
   tab: {
     type: 'home' | 'inbox' | 'topic' | 'note' | 'folder' | 'none'
@@ -23,7 +25,8 @@ export interface AgentContext {
     /** 这篇是白板（frontmatter 里 type: board） */
     board?: boolean
   }
-  web: { open: boolean; url: string | null }
+  /** 右栏网页开着没有、网址；pages：AI 能操纵的每一个网页（右栏、中间栏、分屏的那一格），默认的那个标着（shared/web-pages.ts） */
+  web: { open: boolean; url: string | null; pages?: WebSeen[] }
   /** 文档里选中的字（截短） */
   selection?: string
   /** @ 点名的笔记 */
@@ -38,14 +41,20 @@ export interface AgentContext {
 
 export type AiEvent =
   | { type: 'text'; delta: string }
-  | { type: 'tool'; id: string; label: string; code?: string; status: 'run' | 'ok' | 'err'; detail?: string; paths?: string[] }
+  | { type: 'tool'; id: string; label: string; code?: string; status: 'run' | 'ok' | 'err' | 'ask'; risk?: WebRisk; detail?: string; paths?: string[] }
+
+/** 网页上要先问用户的那几下（提交表单、登录、付款、上传文件） */
+export type WebRisk = 'submit' | 'login' | 'pay' | 'upload'
 
 export interface ToolStep {
   id: string
   label: string
   /** 跟在说法后面的一段等宽字（全能模式下跑的命令、库外的路径），不和中文手打空格 */
   code?: string
-  status: 'run' | 'ok' | 'err'
+  /** ask：这一下要先问用户，没做（网页上提交、登录、付款、上传，黄色问号「等你点头：…」） */
+  status: 'run' | 'ok' | 'err' | 'ask'
+  /** ask 的那一下是什么：回答下面换成「可以，<动作> · 不要」两颗按钮 */
+  risk?: WebRisk
   detail?: string
   /** 这一步读过、写过、搜到的库里文件（相对库根）：回答里光写了它们的名字也认成链接（task-3e53q） */
   paths?: string[]
@@ -105,6 +114,8 @@ export interface StoredMsg {
   pasted?: string[]
   /** 用户这句引用的材料（多段引用方向 B）：text 里的 ①② 是它们的位置；消息里画成小圆点编号和下面一行一条 */
   mats?: Material[]
+  /** 用户这句里 @ 点名的文档（@文档胶囊）：text 里的「@标题」是它们，消息里画成胶囊 */
+  mentions?: Mention[]
   engine?: EngineId
   /** 哪家哪个模型答的（「Claude Code · Opus 5.5」，CN-54） */
   by?: string
@@ -186,11 +197,12 @@ export interface SideTurnRequest {
  * 主进程请界面做的事（只有界面拿得到的东西：编辑器、标签、右栏）。
  * closeTabs：AI 要删这篇 / 这个文件夹，开着的标签先关（编辑器接着存字会把删掉的建回来）；moved：AI 改了名、挪了，标签和编辑器跟过去
  */
-export type BridgeOp = 'saveAll' | 'context' | 'openWeb' | 'measure' | 'docRead' | 'docInsert' | 'docReplace' | 'onScreen' | 'accent' | 'closeTabs' | 'moved'
+export type BridgeOp = 'saveAll' | 'context' | 'openWeb' | 'openWide' | 'webPages' | 'measure' | 'docRead' | 'docInsert' | 'docReplace' | 'onScreen' | 'accent' | 'closeTabs' | 'moved'
 
 /**
  * AI 动手看得见（DESIGN.v3 2.3）：主进程发给界面的 ai:act。
- * start：这一轮开始整块动这一块（白板、文档、右栏网页），四边一道光绕圈、顶上提示条出来；
+ * start：这一轮开始整块动这一块（白板、文档、右栏网页），四边一道光绕圈、顶上提示条出来；文档的这一篇以白板看法开着时白板那一格也亮，
+ *   docOnly 的（白板工具改的，白板那一格自己画整块或那张卡）只亮文档看法那一格；
  * spot：只动一处（只加一张卡、只写一段），只亮那一处，「停下 esc」跟在它下面（白板给卡的 id；文档那一段界面插的时候自己知道）；
  * grab：去拿这几样（卡片、列的 id），指针移过去、那几样外面跑一圈光；
  * wrote：AI 写了这一篇（全能模式下自己用命令、Edit 写的，笔记工具写的，AI 命令改的；紧接着 note:changed 之前发）：
@@ -199,7 +211,7 @@ export type BridgeOp = 'saveAll' | 'context' | 'openWeb' | 'measure' | 'docRead'
  */
 export type AiActArea = 'board' | 'doc' | 'web'
 export type AiAct =
-  | { turn: number; kind: 'start'; area: AiActArea; path: string | null }
+  | { turn: number; kind: 'start'; area: AiActArea; path: string | null; docOnly?: true }
   | { turn: number; kind: 'spot'; area: 'board' | 'doc'; path: string; ids?: string[] }
   | { turn: number; kind: 'grab'; area: AiActArea; path: string | null; ids: string[]; ms: number }
   | { turn: number; kind: 'wrote'; path: string }

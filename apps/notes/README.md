@@ -2,6 +2,7 @@
 
 Canvas Today 的样子和 Canvas Notes（画布笔记）一样，下面这些文件原样拷自 [SchaeferAnjon/canvas-notes](https://github.com/SchaeferAnjon/canvas-notes) 的同一路径（导出时顺着 Canvas Today 源码的 import 自动找出来的）。要改请去那边改，这里在下一次导出时会被换掉。
 
+- `apps/notes/src/main/agent/recover.ts`
 - `apps/notes/src/main/agent/store.ts`
 - `apps/notes/src/main/family.ts`
 - `apps/notes/src/main/themes.ts`
@@ -92,4 +93,5 @@ Canvas Today 的样子和 Canvas Notes（画布笔记）一样，下面这些文
 - `apps/notes/src/shared/sources.ts`
 - `apps/notes/src/shared/vault-roles.ts`
 - `apps/notes/src/shared/vscode-theme.ts`
+- `apps/notes/src/shared/web-pages.ts`
 - `apps/notes/src/shared/when-ai.ts`

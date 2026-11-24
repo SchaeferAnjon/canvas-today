@@ -3,7 +3,7 @@
 import type { AutoApi } from './automation'
 import type { SourcesApi } from './sources'
 import type { AiAct, AiEvent, BridgeOp, ChatSide, EngineId, EngineInfo, SideTurnRequest, StoredMsg, TurnRequest, TurnResult } from './agent'
-import type { ChatSummary } from './ai-chats'
+import type { ChatSummary, ConvoRow, ConvPages, OlderSummary } from './ai-chats'
 import type { AiFeature, AiPick, AiPrefs, ModelOption } from '@cn/ai-engines/shared'
 import type { NoteTarget } from './ai-note'
 import type { ApiId, LocalId } from '@cn/ai-engines/shared'
@@ -587,6 +587,20 @@ export interface CnApi {
   aiChatClear(place: string): Promise<void>
   /** 对话菜单：这个库问过的地方，连读 PDF 那一套的，按最后问的时间（新的在前） */
   aiChats(): Promise<ChatSummary[]>
+  /** 「全部对话」：每段一行（点「+」收起来的也是），连读 PDF 的，新的在前 */
+  aiConvos(): Promise<ConvoRow[]>
+  /** 点「+」：问过的现在这段收起来，开一段空的（AI 对话绑页面第二步） */
+  aiChatShelve(place: string): Promise<void>
+  /** 收起来的那几段（新的在前） */
+  aiChatOlder(place: string): Promise<OlderSummary[]>
+  /** 切回收起来的一段（现在这段问过就收起来）；没有这段是 false */
+  aiChatSwitch(place: string, id: number): Promise<boolean>
+  /** 现在这段搬成单独一段（conv:<编号>，名字 label），这里开一段空的；返回新 key，没问过是 null */
+  aiChatDetach(place: string, label: string): Promise<string | null>
+  /** 「这段 → 那页」表（AI 对话绑页面，ConvPages）：只记搬过家的 */
+  aiPages(): Promise<ConvPages>
+  /** 这段挂到那页；null 是回到挂在自己那一页 */
+  aiSetPage(convo: string, to: { page: string; label: string } | null): Promise<void>
   onAiEvent(cb: (id: number, e: AiEvent) => void): () => void
   /** AI 动手看得见：开始动哪一块、去拿哪几样、做完（白板、文档、网页上画外圈、提示条、AI 指针） */
   onAiAct(cb: (e: AiAct) => void): () => void

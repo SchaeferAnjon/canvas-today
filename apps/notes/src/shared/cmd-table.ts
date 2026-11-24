@@ -134,7 +134,7 @@ export const KEYMAP: readonly KeyDef[] = [
   T('zoom-fit', '适合窗口', 'app', 'view', { keys: ['⇧⌘1'], noForward: true, hint: '白板整块放进窗口，PDF 适合整页' }),
   T('board-inbox', '打开 / 收起收件箱', 'app', 'view', { keys: ['⇧⌘I'], hint: '白板上：右上角「收件箱」那个弹窗' }),
   // 在这一页里找（2026-11-22 用户定：⇧⌘F 在当前这一页里找，⌘F 照旧是全库搜索）：焦点在哪一栏就找哪一栏（renderer/find/find-hub.ts）
-  T('find-in-page', '在这一页里找', 'app', 'view', { keys: ['⇧⌘F'], home: 'go', hint: '文档、网页、PDF、白板、导图里找字；全库搜是 ⌘K / ⌘F' }),
+  T('find-in-page', '在这一页里找', 'app', 'view', { keys: ['⇧⌘F'], home: 'go', hint: '文档、网页、PDF、白板、导图、AI 对话里找字；全库搜是 ⌘K / ⌘F' }),
   T('settings', '设置', 'app', 'view', { keys: ['⌘,'], home: 'app' }),
   T('keys-settings', '快捷键设置', 'app', 'view', { home: 'app', hint: '设置 › 快捷键' }),
   T('theme', '换主题…', 'app', 'view', { home: 'app', hint: '设置 · 外观' }),
@@ -144,9 +144,9 @@ export const KEYMAP: readonly KeyDef[] = [
   T('ask-ai', '问AI', 'app', 'ai', { keys: ['⌘J'], home: 'ai', hint: '文档里选了字就带着这段问' }),
   T('ai-new-chat', '新对话', 'app', 'ai', { home: 'more', hint: 'AI 那一格换一段新的对话' }),
   T('quote', '引用进输入框', 'app', 'ai', { keys: ['⇧⌘L'], hint: 'AI 回答里选了字、PDF 上框着一块时' }),
-  // 从 AI 回答里的引用 ⌘点开一篇以后右栏留在原来那段对话（task-3e53q 已定 3）：按它右栏换成中间那一篇的 AI。
+  // 换了页面右栏留在原来那段对话（AI 对话绑页面方向 A，2026-11-24）：按它右栏换成中间那一页的 AI。
   // ⌘J 是开关 AI，⌥⌘J 没人用（系统、显示菜单里的「开发者工具」是 ⌥⌘I）
-  T('ai-follow', '右栏切到这篇的 AI', 'app', 'ai', { keys: ['⌥⌘J'], hint: '从 AI 回答里 ⌘点开一篇以后，右栏还在原来那段对话' }),
+  T('ai-follow', '右栏切到这篇的 AI', 'app', 'ai', { keys: ['⌥⌘J'], hint: '换了页面，右栏还在原来那段对话时' }),
   T('tidy-inbox', '整理收件箱', 'app', 'ai', { home: 'ai', hint: '分进课程、周记、剪藏，点同意才挪' }),
   T('sum-board', '总结这块白板', 'app', 'ai', { home: 'ai', hint: '写成几句话' }),
   T('article', '写成文章', 'app', 'ai', { home: 'ai', hint: '按白板写一篇草稿' }),

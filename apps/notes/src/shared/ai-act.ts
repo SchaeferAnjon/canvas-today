@@ -47,7 +47,7 @@ const md = (p: string) => (/\.md$/i.test(p) ? p : `${p}.md`)
  * 这个工具在哪动手：只是看（board_list、doc_read）不算，光只在 AI 真动手的地方；
  * 只加一张卡（board_add_card）只亮那一张；别的改白板的整块亮；改开着的这篇（写一段 doc_insert、换掉选中的一段、整篇改写 note_write）
  * 整篇四边亮（2026-11-24 用户：AI 改文档时也要白板那样的边），改到的那一段另有竖线（ai-spot.ts）；
- * 网页的每一步都算整块（右栏网页）。null：不画。
+ * 网页的每一步都算整块（亮哪一页由主进程 webGlow 认，path 是那一页）。null：不画。
  */
 export function actScope(name: string, args: Record<string, unknown>, tab: ActTab): ActScope | null {
   if (name.startsWith('web_')) return { area: 'web', whole: true, path: null }

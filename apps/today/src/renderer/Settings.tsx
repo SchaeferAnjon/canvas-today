@@ -12,7 +12,6 @@ import { AppearancePage, Group, type LookSkin, PageHead, Row, Sel, SettingsShell
 import { FamilySettings } from './family'
 import '@cn/design/settings.css'
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
-import { glassPct } from '@cn/design/glass'
 import { activeSkin, allSkins, panelsGlass, SKINS, skinOf } from '../../../notes/src/shared/appearance'
 import { themeInfo } from '../../../notes/src/shared/vscode-theme'
 import type { JournalInfo, QuickKeyState, RemList } from '../shared/api'
@@ -375,9 +374,9 @@ function LookPage() {
                 on: t('sGlassOn'),
                 off: t('sGlassOff'),
               },
-              value: own.glass,
+              value: own.glassLevel,
               enabled: panelsGlass(own),
-              onChange: (glass) => setLookTo({ ...own, glass }, t('sSetTo', t('sGlass'), t('sGlassValue', glassPct(glass)))),
+              onChange: (glassLevel) => setLookTo({ ...own, glassLevel }, t('sSetTo', t('sGlass'), t('sGlassValue', glassLevel))),
             }}
             importTheme={{
               label: t('sImportTheme'),

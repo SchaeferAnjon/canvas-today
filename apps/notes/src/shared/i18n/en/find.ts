@@ -17,6 +17,7 @@ export const FIND: Table = {
   '在这份 PDF 里找': 'Find in this PDF',
   '正在一页页找…': 'Searching page by page…',
   在这个网页里找: 'Find on this page',
+  在这段对话里找: 'Find in this chat',
 
   // ---------- 菜单栏「编辑」 ----------
   '菜单栏::编辑': 'Edit',
@@ -25,5 +26,5 @@ export const FIND: Table = {
 
   // ---------- 命令表 ----------
   在这一页里找: 'Find in page',
-  '文档、网页、PDF、白板、导图里找字；全库搜是 ⌘K / ⌘F': 'Find text in the doc, web page, PDF, board or mind map; ⌘K / ⌘F searches the whole vault',
+  '文档、网页、PDF、白板、导图、AI 对话里找字；全库搜是 ⌘K / ⌘F': 'Find text in the doc, web page, PDF, board, mind map or AI chat; ⌘K / ⌘F searches the whole vault',
 }

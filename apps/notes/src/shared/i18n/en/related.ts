@@ -65,12 +65,16 @@ export const RELATED: Table = {
   点开在新标签: 'click for a new tab',
   // 梦游 Wiki 化（task-h7oy8，设计页 24 W 节）：词条页、嵌一段、报告里的账
   '《{name}》里没有这一段了（块编号 ^{id} 找不到）': '“{name}” no longer has this paragraph (block ^{id} not found)',
-  提到它的: 'Mentioned in',
+  '提到它的{n}篇': 'Mentioned in {n} notes',
+  左边一直是这篇: 'This one stays on the left',
   '等{n}篇': 'and more ({n} notes)',
   '建好了词条页《{name}》：开头几句是 AI 起草的，下面嵌进库里讲它的段': 'Created the page “{name}”: the opening sentences are drafted by AI, below are the paragraphs from your notes that cover it',
   '词条页撤销了，几篇原文回到建之前，一字不差': 'Page undone; the notes are back exactly as they were',
   '正在起草…': 'Drafting…',
   建词条页: 'Create page',
+  // 梦游对照复审：中间条目头上词条页那条的一句、两篇并排下面一句
+  '点了才建，建好后底栏能撤销': 'Nothing is created until you click; you can undo it from the status bar',
+  '浅色底的几段都提到{name}。': 'The shaded paragraphs all mention {name}.',
   'Wiki 链接：问了{n}次AI，链上{link}处': 'Wiki links: asked AI {n} times, linked {link} places',
   '拿不准{n}处': '{n} unsure',
   '{n}处对不上原文作废': '{n} dropped because they didn’t match the text',

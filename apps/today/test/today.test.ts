@@ -167,11 +167,13 @@ describe('设置', () => {
     expect(lookFromNotes({ appearance: { frame: 'a', winBg: 'wall', wallMix: 'soft', wallMove: true, wallSpeed: 'mid' } })).toMatchObject({ frame: 'a', winBg: 'wall', wallMix: 'soft', wallMove: true, wallSpeed: 'mid' })
   })
 
-  it('面板透明度（task-jgely）：自己的设置收到两头；跟画布笔记时用它的', () => {
-    expect(normalizeToday({}).appearance.glass).toBe(0)
-    expect(normalizeToday({ appearance: { glass: 6 } }).appearance.glass).toBe(6)
-    expect(normalizeToday({ appearance: { glass: 999 } }).appearance.glass).toBe(GLASS_MAX)
-    expect(lookFromNotes({ appearance: { glass: -4 } }).glass).toBe(-4)
-    expect(lookFromNotes({ appearance: { glass: 'x' } }).glass).toBe(0)
+  it('面板透明度（task-jgely）：自己的设置收到两头；跟画布笔记时用它的；老键 glass 换成新数', () => {
+    expect(normalizeToday({}).appearance.glassLevel).toBe(50)
+    expect(normalizeToday({ appearance: { glassLevel: 6 } }).appearance.glassLevel).toBe(6)
+    expect(normalizeToday({ appearance: { glassLevel: 999 } }).appearance.glassLevel).toBe(GLASS_MAX)
+    expect(normalizeToday({ appearance: { glass: 12 } }).appearance.glassLevel).toBe(88)
+    expect(lookFromNotes({ appearance: { glassLevel: 30 } }).glassLevel).toBe(30)
+    expect(lookFromNotes({ appearance: { glass: -4 } }).glassLevel).toBe(40)
+    expect(lookFromNotes({ appearance: { glassLevel: 'x' } }).glassLevel).toBe(50)
   })
 })

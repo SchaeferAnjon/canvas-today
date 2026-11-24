@@ -120,8 +120,8 @@ export interface Appearance {
   wallMix: WallMix
   wallMove: boolean
   wallSpeed: WallSpeed
-  /** 面板透明度：有窗口背景时半透明面板在主题默认上再透几个百分点（正数更透，@cn/design/glass） */
-  glass: number
+  /** 面板透明度：有窗口背景时半透明面板透多少，0 实、50 主题默认、100 最透（@cn/design/glass；2026-11-24 前存在 glass 里，是另一种数） */
+  glassLevel: number
 }
 
 export interface AppSettings {
@@ -187,7 +187,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     wallMix: 'mid',
     wallMove: WALL_MOVE_DEFAULT,
     wallSpeed: 'slow',
-    glass: GLASS_DEFAULT,
+    glassLevel: GLASS_DEFAULT,
   },
   autoCommitMinutes: 10,
   archiveDays: DEFAULT_ARCHIVE_DAYS,
@@ -237,7 +237,7 @@ export function normalizeSettings(raw: unknown, user: readonly SkinInfo[] = []):
       wallMix: WALL_MIXES.includes(a.wallMix as WallMix) ? (a.wallMix as WallMix) : d.wallMix,
       wallMove: typeof a.wallMove === 'boolean' ? a.wallMove : d.wallMove,
       wallSpeed: WALL_SPEEDS.includes(a.wallSpeed as WallSpeed) ? (a.wallSpeed as WallSpeed) : d.wallSpeed,
-      glass: normalizeGlass(a.glass),
+      glassLevel: normalizeGlass(a.glassLevel, a.glass),
     },
     autoCommitMinutes: Number.isFinite(mins) && mins >= 0 && mins <= 24 * 60 ? Math.round(mins) : DEFAULT_SETTINGS.autoCommitMinutes,
     archiveDays: isArchiveDays(r.archiveDays) ? r.archiveDays : DEFAULT_SETTINGS.archiveDays,

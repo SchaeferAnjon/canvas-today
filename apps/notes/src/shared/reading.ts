@@ -203,7 +203,7 @@ export interface AskResult {
 }
 
 /** 边答边给：字，和动手的每一步（同 AI 对话的 AiEvent） */
-export type AskEvent = { type: 'text'; delta: string } | { type: 'tool'; id: string; label: string; code?: string; status: 'run' | 'ok' | 'err'; detail?: string; paths?: string[] }
+export type AskEvent = { type: 'text'; delta: string } | { type: 'tool'; id: string; label: string; code?: string; status: 'run' | 'ok' | 'err' | 'ask'; detail?: string; paths?: string[] }
 
 // ---------------------------------------------------------------- 出卡送 Anki（task-tz7y3，方向 B「AI 先改成卡，一张张过」）
 

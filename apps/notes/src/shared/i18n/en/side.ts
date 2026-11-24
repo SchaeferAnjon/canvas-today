@@ -54,4 +54,9 @@ export const SIDE: Table = {
   '收起旁支后，在输入框下面那行改': 'close the side thread and change it under the input',
   '从最近里去掉': 'Remove from Recent',
   '开配对的笔记「{name}」': 'Open the paired note “{name}”',
+  // ---------- AI 输入框里 @ 点名的文档（@cn/ai-chat 的 mention.tsx，@文档胶囊） ----------
+  引用笔记: 'Mention a note',
+  '先选好字，再按 Tab 或 ↵ 选中': 'Finish typing, then press Tab or ↵ to pick',
+  '↑↓ 选择 · Tab / ↵ 选中 · esc 关闭': '↑↓ select · Tab / ↵ pick · esc close',
+  剪藏的网页: 'Clipped web page',
 }

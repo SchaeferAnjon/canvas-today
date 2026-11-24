@@ -5,7 +5,10 @@
 import { expect, type Page, test } from '@playwright/test'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { GLASS_MAX, GLASS_MIN } from '../../../packages/design/src/glass'
+import { GLASS_DEFAULT, GLASS_MAX, GLASS_MIN } from '../../../packages/design/src/glass'
+
+/** 透明度 v 时面板的不透明度：0 到 50 从 100% 匀着降到主题默认 k，50 到 100 再匀着降 16 个百分点（@cn/design/glass） */
+const op = (k: number, v: number) => Math.round(v <= GLASS_DEFAULT ? 100 - ((100 - k) * v) / GLASS_DEFAULT : k - (16 * (v - GLASS_DEFAULT)) / (GLASS_MAX - GLASS_DEFAULT))
 import { launch, LOOK, quit, type Running } from './app'
 
 const dlg = (page: Page) => page.getByRole('dialog', { name: '设置' })
@@ -37,12 +40,12 @@ test('跟着画布笔记：那边拉了透明度，这边跟着变', async () =>
   const { page, root } = run
   const notes = join(root, 'notes-data', 'settings.json')
   try {
-    writeFileSync(notes, JSON.stringify({ appearance: { followSystem: false, skin: 'sky', frame: 'b', winBg: 'aurora', glass: GLASS_MAX } }))
-    await expect.poll(() => alphas(page), { timeout: 5000 }).toEqual({ left: 80 - GLASS_MAX, center: 80 - GLASS_MAX, right: 80 - GLASS_MAX })
+    writeFileSync(notes, JSON.stringify({ appearance: { followSystem: false, skin: 'sky', frame: 'b', winBg: 'aurora', glassLevel: GLASS_MAX } }))
+    await expect.poll(() => alphas(page), { timeout: 5000 }).toEqual({ left: op(80, GLASS_MAX), center: op(80, GLASS_MAX), right: op(80, GLASS_MAX) })
     await shot(run, 'today-sky-max')
-    writeFileSync(notes, JSON.stringify({ appearance: { followSystem: false, skin: 'petrol', frame: 'b', winBg: 'aurora', glass: GLASS_MIN } }))
+    writeFileSync(notes, JSON.stringify({ appearance: { followSystem: false, skin: 'petrol', frame: 'b', winBg: 'aurora', glassLevel: GLASS_MIN } }))
     await expect(page.locator('html')).toHaveAttribute('data-skin', 'petrol', { timeout: 5000 })
-    await expect.poll(() => alphas(page), { timeout: 5000 }).toEqual({ left: 82 - GLASS_MIN, center: 82 - GLASS_MIN, right: 82 - GLASS_MIN })
+    await expect.poll(() => alphas(page), { timeout: 5000 }).toEqual({ left: 100, center: 100, right: 100 })
     // 画布笔记回到默认：这边也回到用户认可的那版
     writeFileSync(notes, JSON.stringify({ appearance: { followSystem: false, skin: 'petrol', frame: 'b', winBg: 'aurora' } }))
     await expect.poll(() => alphas(page), { timeout: 5000 }).toEqual({ left: 82, center: 82, right: 82 })
@@ -63,20 +66,20 @@ test('不跟画布笔记：自己外观页里拖透明度，存下、重开记�
     await dlg(page).getByRole('navigation', { name: '设置分页' }).getByRole('button', { name: '外观' }).click()
     const slider = dlg(page).getByRole('slider', { name: '面板透明度' })
     await slider.scrollIntoViewIfNeeded()
-    await expect(slider).toHaveValue('0')
+    await expect(slider).toHaveValue(String(GLASS_DEFAULT))
     const b = (await slider.boundingBox())!
     await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2)
     await page.mouse.down()
     await page.mouse.move(b.x + b.width + 30, b.y + b.height / 2, { steps: 8 })
     await page.mouse.up()
     await expect(slider).toHaveValue(String(GLASS_MAX))
-    expect(await alphas(page)).toEqual({ left: 80 - GLASS_MAX, center: 80 - GLASS_MAX, right: 80 - GLASS_MAX })
+    expect(await alphas(page)).toEqual({ left: op(80, GLASS_MAX), center: op(80, GLASS_MAX), right: op(80, GLASS_MAX) })
     // 停手后存进自己的设置，底下提示条说改成了多少
-    await expect.poll(() => JSON.parse(readFileSync(join(userData, 'settings.json'), 'utf8')).appearance.glass).toBe(GLASS_MAX)
-    await expect(page.getByText(`「面板透明度」改成「透 ${20 + GLASS_MAX}%」`)).toBeVisible()
+    await expect.poll(() => JSON.parse(readFileSync(join(userData, 'settings.json'), 'utf8')).appearance.glassLevel).toBe(GLASS_MAX)
+    await expect(page.getByText(`「面板透明度」改成「透 ${GLASS_MAX}%」`)).toBeVisible()
     await quit(run)
     again = await launch({ root })
-    expect(await alphas(again.page)).toEqual({ left: 80 - GLASS_MAX, center: 80 - GLASS_MAX, right: 80 - GLASS_MAX })
+    expect(await alphas(again.page)).toEqual({ left: op(80, GLASS_MAX), center: op(80, GLASS_MAX), right: op(80, GLASS_MAX) })
   } finally {
     if (again) await again.close()
     else await run.close()

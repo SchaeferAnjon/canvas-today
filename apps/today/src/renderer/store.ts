@@ -87,7 +87,7 @@ function applyLook() {
   r.dataset.tone = skin.tone
   r.dataset.tabmark = skin.tab
   r.dataset.frame = look.frame
-  applyGlass(look.glass, r)
+  applyGlass(look.glassLevel, r)
   const photo = look.winBg === 'aurora' ? aurora : look.winBg === 'cave' ? cave : null
   if (photo) {
     r.style.setProperty('--frame-photo', `url("${photo}")`)

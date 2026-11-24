@@ -11,6 +11,8 @@
     "./context": "./src/context.tsx",
     "./composer": "./src/composer.tsx",
     "./materials": "./src/materials.ts",
+    "./mentions": "./src/mentions.ts",
+    "./mention": "./src/mention.tsx",
     "./paste": "./src/paste.ts",
     "./ai-picker": "./src/ai-picker.tsx",
     "./engine-logo": "./src/engine-logo.tsx",

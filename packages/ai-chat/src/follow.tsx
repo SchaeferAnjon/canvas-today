@@ -75,7 +75,11 @@ export function useFollow(list: RefObject<HTMLElement | null>, hold = false): Fo
     let top = el.scrollTop
     let h = el.scrollHeight
     let ch = el.clientHeight
+    /** 上面还有滚出去的：格子上记 data-above（宿主照它在上沿画渐隐，最上面那一行不像被头部切了半截） */
+    const mark = () => el.toggleAttribute('data-above', el.scrollTop > 1)
+    mark()
     const onScroll = () => {
+      mark()
       const t = el.scrollTop
       const nh = el.scrollHeight
       const nc = el.clientHeight

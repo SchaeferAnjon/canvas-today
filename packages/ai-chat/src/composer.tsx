@@ -15,6 +15,8 @@ import { createPortal } from 'react-dom'
 import { type AiPick, CLAUDE_DEFAULT, convPick, DEFAULT_EFFORT, ENGINE_LABEL, type EngineId, type EngineInfo, hasEffort, isEngineId, pickLabel, pickReq, t as tNow } from '@cn/ai-engines/shared'
 import { AiPicker, engineFamily } from './ai-picker'
 import { countLine, MAX_MATERIALS, markOf, type Material, numberOf, renumberMarks, shiftMarks } from './materials'
+import { type AtItem, atQuery, eraseMention, liveMentions, type Mention, snapOut, tokenOf } from './mentions'
+import { AtMenu, MentionLayers, MentionText } from './mention'
 import { clipText, imageFiles, MAX_PASTED, toBytes } from './paste'
 import { useDismiss } from './use-dismiss'
 import { following, NEAR } from './follow'
@@ -34,8 +36,11 @@ let matSeq = 0
 export interface Composer {
   text: string
   mats: Mat[]
+  /** 字里 @ 点名的文档（画成胶囊；删掉、改坏了的自己去掉） */
+  mentions: Mention[]
   ta: RefObject<HTMLTextAreaElement | null>
-  setText(t: string | ((v: string) => string)): void
+  /** at：光标放在哪（不给不动） */
+  setText(t: string | ((v: string) => string), at?: number): void
   /** 加一块：编号插在光标处，光标落在编号后面；doc：文档里带进来的，是第一块（已经有一块就换掉它） */
   add(m: Material, o?: { doc?: { tab: string | null } }): boolean
   remove(id: number): void
@@ -43,7 +48,9 @@ export interface Composer {
   move(id: number, to: number): void
   /** 换了标签：别的标签带进来的那一块拿掉（自己打的字留着） */
   dropDocQuotes(tab: string | null): void
-  /** 发出去了：字和材料都清掉 */
+  /** @ 候选选上一篇：from 到 to（「@几个字」）换成「@标题 」，光标在空格后面 */
+  mention(m: Mention, from: number, to: number): void
+  /** 发出去了：字、材料、点名的都清掉 */
   clear(): void
   /** 排着的那一问不发了：它的字接在后面（空一行），材料接在后面（字里的编号跟着往后挪） */
   restore(text: string, mats: Material[]): void
@@ -61,14 +68,14 @@ export interface Composer {
 
 export function useComposer(onNotice: (text: string) => void): Composer {
   const chat = useChat()
-  const st = useRef<{ text: string; mats: Mat[] }>({ text: '', mats: [] })
+  const st = useRef<{ text: string; mats: Mat[]; ments: Mention[] }>({ text: '', mats: [], ments: [] })
   const ta = useRef<HTMLTextAreaElement>(null)
   const [, render] = useReducer((x: number) => x + 1, 0)
   const caret = useRef<{ at: number; focus: boolean } | null>(null)
   const notice = useRef(onNotice)
   notice.current = onNotice
-  const set = (text: string, mats: Mat[], at?: { at: number; focus: boolean }) => {
-    st.current = { text, mats }
+  const set = (text: string, mats: Mat[], at?: { at: number; focus: boolean }, ments: readonly Mention[] = st.current.ments) => {
+    st.current = { text, mats, ments: ments.length ? liveMentions(text, ments) : [] }
     if (at) caret.current = at
     render()
   }
@@ -98,8 +105,11 @@ export function useComposer(onNotice: (text: string) => void): Composer {
     get mats() {
       return st.current.mats
     },
+    get mentions() {
+      return st.current.ments
+    },
     ta,
-    setText: (t) => set(typeof t === 'function' ? t(st.current.text) : t, st.current.mats),
+    setText: (t, at) => set(typeof t === 'function' ? t(st.current.text) : t, st.current.mats, at === undefined ? undefined : { at, focus: false }),
     add(m, o = {}) {
       const { text, mats } = st.current
       if (o.doc) {
@@ -167,7 +177,13 @@ export function useComposer(onNotice: (text: string) => void): Composer {
       )
       set(r.text.replace(/^\n+/, ''), mats.filter((x) => !gone(x)))
     },
-    clear: () => set('', []),
+    mention(m, from, to) {
+      const { text, mats, ments } = st.current
+      const rest = text.slice(to)
+      const ins = tokenOf(m) + (rest.startsWith(' ') ? '' : ' ')
+      set(text.slice(0, from) + ins + rest, mats, { at: from + ins.length + (rest.startsWith(' ') ? 1 : 0), focus: true }, [...ments, m])
+    },
+    clear: () => set('', [], undefined, []),
     restore(text, add) {
       const cur = st.current
       const keep = add.slice(0, MAX_MATERIALS - cur.mats.length)
@@ -199,7 +215,7 @@ export function useComposer(onNotice: (text: string) => void): Composer {
     pasteAsImages(at, text, files) {
       const cur = st.current.text
       if (cur.slice(at, at + text.length) === text) {
-        st.current = { text: cur.slice(0, at) + cur.slice(at + text.length), mats: st.current.mats }
+        st.current = { ...st.current, text: cur.slice(0, at) + cur.slice(at + text.length) }
         // 光标先放回贴的地方：图的编号插在光标处（add 读 selectionStart）
         if (ta.current) {
           ta.current.value = st.current.text
@@ -303,6 +319,11 @@ export interface AiInputProps {
   /** 全能模式上面那一排「记笔记 ·《记进哪篇》▾ ｜ 旁支」（AI 对话记笔记开关，shared/ai-note.ts）；旁支里不放 */
   note?: NoteLineProps | null
   /**
+   * @ 点名文档（@文档胶囊）：打「@几个字」时列哪几篇（最多列 8 篇，已经点了的不再列）；不给就没有 @。
+   * 候选第一条亮着，Tab、↵ 选上，选上的在字里是一颗胶囊；↵ 选的时候不发送。点胶囊打开走 ChatHost.openMention
+   */
+  at?: ((q: string) => AtItem[]) | null
+  /**
    * 开着旁支（task-4edsc 方向 A「就地展开」）：缩成一行灰字（打了的字或占位字），不和旁支的输入框摞着；
    * 点它 onWake（收起旁支），光标回到这里。字和材料都留着
    */
@@ -365,6 +386,74 @@ export function AiInput(p: AiInputProps) {
   }, [p.list, !!p.slim])
   const hint = p.hintNow ?? (c.mats.length ? matsHint(c.mats) : p.hint)
   const row = useTightRow()
+  // ---------- @ 点名文档 ----------
+  /** 光标在哪（@ 候选按光标前面那段认）、上一次在哪（光标进了胶囊往哪头挪） */
+  const [caret, setCaret] = useState(0)
+  const prevCaret = useRef(0)
+  /** 输入法开始组字的地方（组着字时 ↵ 和 Tab 是输入法的） */
+  const [ime, setIme] = useState<number | null>(null)
+  const [atOn, setAtOn] = useState(0)
+  /** esc 收起的那一次 @（从哪儿起的）：接着打字也不再弹，换一个 @ 再弹 */
+  const [atShut, setAtShut] = useState<number | null>(null)
+  const query = p.at ? atQuery(c.text, Math.min(caret, c.text.length)) : null
+  const atItems = query && p.at ? p.at(query.q).filter((x) => !c.mentions.some((m) => m.path === x.path)).slice(0, 8) : []
+  const atOpen = !!query && atItems.length > 0 && atShut !== query.from
+  const atAt = Math.min(atOn, Math.max(0, atItems.length - 1))
+  useEffect(() => setAtOn(0), [query?.from, query?.q])
+  const putCaret = (at: number) => {
+    prevCaret.current = at
+    setCaret(at)
+  }
+  const pickAt = (i: number) => {
+    const n = atItems[i]
+    if (!n || !query) return
+    const { sub, ...m } = n
+    void sub
+    c.mention(m, query.from, query.from + 1 + query.q.length)
+    // 光标落在「@标题 」的空格后面（c.mention 也放在那里）
+    putCaret(query.from + 1 + m.title.length + 1)
+  }
+  const composingKey = (e: React.KeyboardEvent) => e.nativeEvent.isComposing || e.keyCode === 229
+  const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (!composingKey(e)) {
+      if (atOpen) {
+        const n = atItems.length
+        if (e.key === 'ArrowDown') return (e.preventDefault(), setAtOn((atAt + 1) % n))
+        if (e.key === 'ArrowUp') return (e.preventDefault(), setAtOn((atAt - 1 + n) % n))
+        const plain = !e.shiftKey && !e.metaKey && !e.altKey && !e.ctrlKey
+        if ((e.key === 'Enter' || e.key === 'Tab') && plain) return (e.preventDefault(), pickAt(atAt))
+        // esc 只收这个菜单，不往下传（不关 AI 那一格、不清字）
+        if (e.key === 'Escape') return (e.preventDefault(), e.stopPropagation(), setAtShut(query!.from))
+      }
+      // 退格、Delete 碰到胶囊：整个删掉
+      const el = e.currentTarget
+      if ((e.key === 'Backspace' || e.key === 'Delete') && c.mentions.length && el.selectionStart === el.selectionEnd && !e.metaKey && !e.altKey) {
+        const r = eraseMention(c.text, c.mentions, el.selectionStart, e.key === 'Backspace' ? 'back' : 'forward')
+        if (r) {
+          e.preventDefault()
+          c.setText(r.text, r.at)
+          putCaret(r.at)
+          p.onChange?.(r.text)
+          return
+        }
+      }
+    }
+    p.onKeyDown(e)
+  }
+  const onSelect = (e: React.SyntheticEvent<HTMLTextAreaElement>) => {
+    const el = e.currentTarget
+    let at = el.selectionStart
+    if (c.mentions.length && el.selectionStart === el.selectionEnd) {
+      const out = snapOut(el.value, c.mentions, at, prevCaret.current)
+      if (out !== at) {
+        el.setSelectionRange(out, out)
+        at = out
+      }
+    }
+    prevCaret.current = at
+    if (at !== caret) setCaret(at)
+  }
+  const ments = c.mentions.length > 0
   if (p.slim) {
     const wake = p.slim.onWake
     const go = () => {
@@ -434,9 +523,12 @@ export function AiInput(p: AiInputProps) {
             {t('松手附上这张图')}
           </div>
         )}
+        {atOpen && <AtMenu items={atItems} on={atAt} composing={ime !== null} onPick={pickAt} onHover={setAtOn} />}
         {p.children}
         {shelf && <Shelf c={c} lead={p.lead ?? null} />}
         {p.above}
+        <div className={'aiin-tx' + (ments ? ' ment' : '')}>
+        {ments && <MentionLayers ta={c.ta} text={c.text} mentions={c.mentions} ime={ime === null ? null : { from: ime, to: caret }} />}
         <textarea
           ref={c.ta}
           rows={1}
@@ -446,9 +538,14 @@ export function AiInput(p: AiInputProps) {
           data-own={p.own ? '1' : undefined}
           onChange={(e) => {
             c.setText(e.target.value)
+            putCaret(e.target.selectionStart)
+            if (atShut !== null && !atQuery(e.target.value, e.target.selectionStart)) setAtShut(null)
             p.onChange?.(e.target.value)
           }}
-          onKeyDown={p.onKeyDown}
+          onSelect={onSelect}
+          onCompositionStart={(e) => setIme(e.currentTarget.selectionStart)}
+          onCompositionEnd={() => setIme(null)}
+          onKeyDown={onKeyDown}
           onPaste={(e) => {
             const files = imageFiles([...e.clipboardData.items].filter((i) => i.kind === 'file').map((i) => i.getAsFile()))
             if (!files.length) return
@@ -463,6 +560,7 @@ export function AiInput(p: AiInputProps) {
             setAlt({ at, text, files, after: el.value })
           }}
         />
+        </div>
         {/* 贴成字之后：字原样在（没再打字、没发出去）就一直给，8 秒后收起 */}
         {alt && c.text === alt.after && (
           <div className="aiin-alt" data-testid="ai-paste-alt">
@@ -950,13 +1048,17 @@ function withDots(text: string, count: number): ReactNode[] {
 }
 
 /** 带材料的那一条：字里的编号是 15 的小圆点数字，下面一行一条列出每块（引用：原文省略号 + 「· 来源」；图：36 高小图 + 来源） */
-export function MatMsg(p: { text: string; mats: Material[]; lead?: ReactNode; onContextMenu?(e: React.MouseEvent<HTMLElement>): void }) {
+export function MatMsg(p: { text: string; mats: Material[]; mentions?: readonly Mention[]; lead?: ReactNode; onContextMenu?(e: React.MouseEvent<HTMLElement>): void }) {
   const chat = useChat()
   const { pastedUrl } = chat
   return (
     <div className="um mq" onContextMenu={p.onContextMenu}>
       {p.lead}
-      {p.text && <div className="mt">{withDots(p.text, p.mats.length)}</div>}
+      {p.text && (
+        <div className="mt">
+          <MentionText text={p.text} {...(p.mentions ? { mentions: p.mentions } : {})} plain={(s) => withDots(s, p.mats.length)} />
+        </div>
+      )}
       <div className="fnl">
         {p.mats.map((m, i) => (
           <div key={i} className="fni" title={m.kind === 'quote' ? m.text : m.src}>

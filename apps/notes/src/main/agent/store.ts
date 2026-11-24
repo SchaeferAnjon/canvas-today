@@ -5,9 +5,10 @@
  * 以前全库只存一份（chat-<库>.json）：第一次用到时迁成一个地方「以前的对话」，不丢。
  */
 import { createHash } from 'node:crypto'
-import { mkdirSync, readFileSync, rmSync, statSync } from 'node:fs'
+import { mkdirSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs'
+import type { Found } from './recover'
 import { dirname, join } from 'node:path'
-import { type ChatSummary, LEGACY } from '../../shared/ai-chats'
+import { type ChatSummary, type ConvoRow, type ConvPages, firstAsk, LEGACY, type OlderSummary } from '../../shared/ai-chats'
 import { t } from '../../shared/i18n'
 import type { ChatSide, EngineId, StoredMsg } from '../../shared/agent'
 import type { NoteTarget } from '../../shared/ai-note'
@@ -39,13 +40,45 @@ export interface PlaceChat {
   sideSessions?: Record<string, Partial<Record<EngineId, string>>>
   /** 这段对话记进哪篇（AI 对话记笔记开关，shared/ai-note.ts；没选过没有：文档记进挂在下面的 AI 笔记，没开东西先问）；新对话清掉 */
   noteTo?: NoteTarget
+  /** 点「+」收起来的几段（AI 对话绑页面第二步，照读 PDF 的 older）：旧的在前；以前的文件没有，读成没有之前的对话 */
+  older?: OlderChat[]
 }
 
-/** 对话菜单要的：每个地方叫什么、问了几问、最后什么时候问的（只记问过的） */
-type ChatIndex = Record<string, { label: string; asks: number; at: number }>
+/** 收起来的一段：现在这段的全部（问答、会话号、旁支、选的模型、记进哪篇），点了原样放回来 */
+type OlderChat = { id: number } & Pick<PlaceChat, 'msgs' | 'sessions' | 'sv' | 'sides' | 'sideSessions' | 'pick' | 'noteTo'>
+
+/** 对话菜单要的：每个地方叫什么、问了几问（收起来的也算）、最后什么时候问的、几段、现在这段第一问（只记问过的） */
+type ChatIndex = Record<string, { label: string; asks: number; at: number; n?: number; first?: string }>
 
 const sha = (s: string, n: number) => createHash('sha1').update(s).digest('hex').slice(0, n)
 const asksOf = (msgs: StoredMsg[]) => msgs.filter((m) => m.role === 'user').length
+const lastAt = (msgs: StoredMsg[]) => msgs.reduce((t, m) => Math.max(t, m.time ?? 0), 0)
+/** 「全部对话」里的一行 */
+export const convoRow = (key: string, label: string, msgs: readonly { role: string; text?: string; time?: number }[], id?: number): ConvoRow => {
+  const asks = msgs.filter((m) => m.role === 'user')
+  return {
+    key,
+    ...(id !== undefined ? { id } : {}),
+    first: firstAsk(msgs) ?? '',
+    label,
+    at: msgs.reduce((t, m) => Math.max(t, m.time ?? 0), 0),
+    asks: asks.length,
+    hay: asks.map((m) => m.text ?? '').join('\n').slice(0, 4000),
+  }
+}
+/** 现在这段收起来的样子 */
+const olderOf = (c: PlaceChat): OlderChat => ({
+  id: Date.now(),
+  msgs: c.msgs,
+  sessions: c.sessions,
+  ...(c.sv ? { sv: c.sv } : {}),
+  ...(c.sides?.length ? { sides: c.sides } : {}),
+  ...(c.sideSessions ? { sideSessions: c.sideSessions } : {}),
+  ...(c.pick ? { pick: c.pick } : {}),
+  ...(c.noteTo ? { noteTo: c.noteTo } : {}),
+})
+/** 这个地方换成一段空的（名字、库、地方留着；收起来的几段调用的人自己给） */
+const empty = (c: PlaceChat): PlaceChat => ({ vault: c.vault, place: c.place, label: c.label, msgs: [], sessions: {}, at: c.at })
 
 export class AgentStore {
   constructor(private dir: string) {}
@@ -193,9 +226,78 @@ export class AgentStore {
     const at = times.length ? Math.max(...times) : cur.at || Date.now()
     const ids = new Set(kept.map((m) => m.id))
     const keptSides = sides ? sides.filter((s) => ids.has(s.msg) && s.msgs.length).slice(-100) : cur.sides
-    this.write(this.placeFile(vault, place), { ...cur, vault, place, label, msgs: kept, at, ...(keptSides ? { sides: keptSides } : {}) } satisfies PlaceChat)
-    const asks = asksOf(kept)
-    this.writeIndex(vault, place, asks ? { label, asks, at } : null)
+    const next: PlaceChat = { ...cur, vault, place, label, msgs: kept, at, ...(keptSides ? { sides: keptSides } : {}) }
+    this.write(this.placeFile(vault, place), next)
+    this.indexChat(vault, next)
+  }
+
+  /** 菜单里这个地方那一条：问数、段数算上收起来的；一问都没有就不列 */
+  private indexChat(vault: string, c: PlaceChat) {
+    const older = (c.older ?? []).filter((o) => asksOf(o.msgs))
+    const asks = asksOf(c.msgs) + older.reduce((n, o) => n + asksOf(o.msgs), 0)
+    const n = (asksOf(c.msgs) ? 1 : 0) + older.length
+    const at = Math.max(c.at, ...older.map((o) => lastAt(o.msgs)))
+    const first = firstAsk(c.msgs) ?? firstAsk(older[older.length - 1]?.msgs ?? [])
+    this.writeIndex(vault, c.place, asks ? { label: c.label, asks, at, ...(n > 1 ? { n } : {}), ...(first ? { first } : {}) } : null)
+  }
+
+  /** 点「+」：问过的现在这段收起来（原样，能切回），开一段空的；没问过不收 */
+  shelve(vault: string, place: string) {
+    const c = this.chat(vault, place)
+    const older = [...(c.older ?? []), ...(asksOf(c.msgs) ? [olderOf(c)] : [])].slice(-50)
+    const next: PlaceChat = { ...empty(c), older }
+    this.write(this.placeFile(vault, place), next)
+    this.indexChat(vault, next)
+  }
+
+  /** 「全部对话」：问过的每个地方，现在这段和收起来的各一行 */
+  rows(vault: string): ConvoRow[] {
+    return Object.entries(this.index(vault))
+      .filter(([, e]) => e.asks > 0)
+      .flatMap(([key, e]) => {
+        const c = this.chat(vault, key)
+        return [...(c.older ?? []).map((o) => ({ ...o, older: true })), { id: 0, msgs: c.msgs, older: false }]
+          .filter((o) => asksOf(o.msgs))
+          .map((o) => convoRow(key, e.label, o.msgs, o.older ? o.id : undefined))
+      })
+  }
+
+  /** 收起来的那几段（新的在前） */
+  olderList(vault: string, place: string): OlderSummary[] {
+    return [...(this.chat(vault, place).older ?? [])].reverse().map((o) => ({ id: o.id, label: firstAsk(o.msgs) ?? '', at: lastAt(o.msgs), asks: asksOf(o.msgs) }))
+  }
+
+  /** 切回收起来的一段：现在这段问过就收起来，那段原样放回来（会话号也回来，接着那个会话问） */
+  switchOlder(vault: string, place: string, id: number): boolean {
+    const c = this.chat(vault, place)
+    const pick = c.older?.find((o) => o.id === id)
+    if (!pick) return false
+    const older = [...(c.older ?? []).filter((o) => o !== pick), ...(asksOf(c.msgs) ? [olderOf(c)] : [])]
+    const { id: _id, ...back } = pick
+    void _id
+    const next: PlaceChat = { ...empty(c), ...back, older, at: lastAt(pick.msgs) || c.at }
+    this.write(this.placeFile(vault, place), next)
+    this.indexChat(vault, next)
+    return true
+  }
+
+  /**
+   * 把这个地方现在这段搬成单独一段（挂到别页、不挂任何页时：一页的 key 留给这页自己，搬走的另起 key「conv:<编号>」），
+   * 这个地方开一段空的（收起来的几段留着）。返回新 key；没有问过的不搬，返回 null
+   */
+  detach(vault: string, place: string, label: string): string | null {
+    const c = this.chat(vault, place)
+    if (!asksOf(c.msgs)) return null
+    const key = `conv:${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
+    const { older: _o, ...rest } = c
+    void _o
+    const moved: PlaceChat = { ...rest, place: key, label }
+    this.write(this.placeFile(vault, key), moved)
+    this.indexChat(vault, moved)
+    const left: PlaceChat = { ...empty(c), ...(c.older ? { older: c.older } : {}) }
+    this.write(this.placeFile(vault, place), left)
+    this.indexChat(vault, left)
+    return key
   }
 
   /** version：这个会话开的时候用的系统提示版本 */
@@ -310,20 +412,69 @@ export class AgentStore {
   /** 文件改了名、挪了地方：这个地方的对话跟过去（换成新名字） */
   move(vault: string, from: string, to: string, label: string) {
     if (from === to) return
+    // 「这段 → 那页」表里这段、挂到这篇上的几段跟着改名
+    const pages = this.pages(vault)
+    if (Object.entries(pages).some(([k, v]) => k === from || v.page === from)) {
+      const moved: ConvPages = {}
+      for (const [k, v] of Object.entries(pages)) moved[k === from ? to : k] = v.page === from ? { ...v, page: to } : v
+      this.write(`${this.vaultDir(vault)}/pages.json`, moved)
+    }
     const c = this.chat(vault, from)
-    if (!c.msgs.length && !Object.keys(c.sessions).length && !c.pick && !c.noteTo) return
+    if (!c.msgs.length && !Object.keys(c.sessions).length && !c.pick && !c.noteTo && !c.older?.length) return
     this.write(this.placeFile(vault, to), { ...c, place: to, label })
     rmSync(join(this.dir, this.placeFile(vault, from)), { force: true })
     this.writeIndex(vault, from, null)
-    const asks = asksOf(c.msgs)
-    if (asks) this.writeIndex(vault, to, { label, asks, at: c.at })
+    this.indexChat(vault, { ...c, place: to, label })
+  }
+
+  /** 这个库的对话文件（找回清掉的对话时认哪些会话号软件还记着） */
+  chatFiles(vault: string): string[] {
+    const dir = join(this.dir, this.vaultDir(vault))
+    try {
+      return readdirSync(dir).filter((n) => n.endsWith('.json')).map((n) => join(dir, n))
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return []
+      throw e
+    }
+  }
+
+  /**
+   * 找回清掉的对话（main/agent/recover.ts）：每个库只做一次（recovered.json 记着做过、收了哪几个会话）。
+   * 找到的各收进那一处的「之前的对话」（按时间排进去，会话号带着：切回去接着那个会话问）；返回收了几段
+   */
+  recoverOnce(vault: string, find: () => Found[]): number {
+    const mark = `${this.vaultDir(vault)}/recovered.json`
+    if (this.read<{ at?: number } | null>(mark, null)) return 0
+    const found = find()
+    for (const [i, f] of found.entries()) {
+      const c = this.chat(vault, f.place.key)
+      const older = [...(c.older ?? []), { id: (f.at || Date.now()) + i, msgs: f.msgs, sessions: { claude: f.session } }].sort((a, b) => lastAt(a.msgs) - lastAt(b.msgs))
+      const next: PlaceChat = { ...c, label: c.label === f.place.key ? f.place.label : c.label, older }
+      this.write(this.placeFile(vault, f.place.key), next)
+      this.indexChat(vault, next)
+    }
+    this.write(mark, { at: Date.now(), sessions: found.map((f) => f.session) })
+    return found.length
+  }
+
+  /** 「这段 → 那页」表（shared/ai-chats.ts ConvPages）：只记搬过家的 */
+  pages(vault: string): ConvPages {
+    return this.read<ConvPages>(`${this.vaultDir(vault)}/pages.json`, {})
+  }
+
+  /** 这段挂到 page；null 是回到挂在自己那一页（从表里拿掉） */
+  setPage(vault: string, convo: string, to: { page: string; label: string } | null) {
+    const all = this.pages(vault)
+    if (to && to.page !== convo) all[convo] = { page: to.page, label: to.label, at: Date.now() }
+    else delete all[convo]
+    this.write(`${this.vaultDir(vault)}/pages.json`, all)
   }
 
   /** 这个库问过的地方（按最后问的时间，新的在前） */
   list(vault: string): ChatSummary[] {
     return Object.entries(this.index(vault))
       .filter(([, e]) => e.asks > 0)
-      .map(([key, e]) => ({ key, label: e.label, asks: e.asks, at: e.at }))
+      .map(([key, e]) => ({ key, label: e.label, asks: e.asks, at: e.at, ...(e.n ? { n: e.n } : {}), ...(e.first ? { first: e.first } : {}) }))
       .sort((a, b) => b.at - a.at)
   }
 }
