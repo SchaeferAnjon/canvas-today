@@ -8,8 +8,7 @@ export const SIDE: Table = {
   // ---------- 选中一句的小框（side/AskBox.tsx；英文提示字只留 Ask about this…，后半句进悬停提示） ----------
   选中的这句: 'Selected sentence',
   问这句: 'Ask about this',
-  '问这句…（空着 ↵ 就是打开旁支自己打）': 'Ask about this…',
-  '空着 ↵ 就是打开旁支自己打': '↵ on empty opens a side thread to type in',
+  这句还能做什么: 'More for this sentence',
   // ---------- 就地展开的旁支（side/SideInline.tsx） ----------
   旁支: 'Side thread',
   '· {n} 条，在第 {i} 条': '· {i} of {n}',

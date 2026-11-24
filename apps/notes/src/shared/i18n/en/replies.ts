@@ -104,6 +104,5 @@ export const REPLIES: Table = {
   '在「更多…」里': 'In “More…”',
   '还没存过命令：在 AI 对话里调出满意的样子后点「存成命令」，或者上面「加一颗」': 'No commands yet: once the AI chat gets it right, click “Save as command”, or use “Add a button” above',
   '照存的先后露前 {n} 条，其余在「更多…」里。新存的命令默认勾着。': 'The first {n} in saved order are shown, the rest go under “More…”. New commands are checked by default.',
-  '更多…': 'More…',
   '调整…': 'Adjust…',
 }

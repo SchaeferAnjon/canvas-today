@@ -12,6 +12,9 @@ export const AI: Table = {
   '这张 SVG 图画不出来': 'Couldn’t render this SVG image',
   '这张图读不出来': 'Couldn’t read this image',
   松手附上这张图: 'Drop to attach this image',
+  同时有一张图: 'Also has an image',
+  '同时有{n}张图': 'Also has {n} images',
+  改贴图片: 'Paste as image instead',
   网页上的图: 'Image from the web',
   '{count} · 字里的 ①② 是它们的位置': '{count} · ①② in the text mark where they go',
   '{n}段引用': (p) => count(p.n, 'quote'),
@@ -70,6 +73,9 @@ export const AI: Table = {
   这里: 'Here',
   还没问过: 'No questions yet',
   最近在别处问的: 'Recent elsewhere',
+  之前的对话: 'Earlier chats',
+  答完再切: 'Switch after the answer finishes',
+  框着问的一块: 'A boxed region',
   '这是在「{name}」问的': 'Asked in “{name}”',
   '回到「{name}」': 'Back to “{name}”',
   '留在这个对话': 'Stay in this chat',
@@ -96,6 +102,26 @@ export const AI: Table = {
   // ---------- 快捷命令一排（renderer/ai-quick.tsx） ----------
   全部命令: 'All commands',
 
+  // ---------- 改动卡（renderer/ai-change.tsx）：回答下面「改了 N 个文件」，文件行点开就地看改动 ----------
+  '改动卡::新': 'New',
+  '改动卡::改': 'Edited',
+  '改动卡::改名': 'Renamed',
+  '改动卡::移动': 'Moved',
+  '改动卡::删': 'Deleted',
+  已撤回: 'Undone',
+  '改了{n}个文件': (p) => `Changed ${count(p.n, 'file')}`,
+  '收起改动：{path}': 'Hide changes: {path}',
+  '展开改动：{path}': 'Show changes: {path}',
+  '又做了一次反向提交，文件回到了AI改之前': 'Undone with a reverse commit; files are back to before the AI changed them',
+  自动提交收进去的: 'Picked up by auto-commit',
+  已提交到main: 'Committed to main',
+  '这篇现在已经不在原处了（挪走或删了）': 'This note is no longer here (moved or deleted)',
+  拷贝这一版全文: 'Copy this version',
+  '读不出这次改动：{err}': 'Couldn’t read these changes: {err}',
+  内容没变: 'Content unchanged',
+  这次提交里读不到这个文件的改动: 'This commit has no changes to show for this file',
+  '这种文件在这里看不了，打开看': 'Can’t preview this file here; open it to view',
+
   // ---------- 动手（renderer/ai-act.tsx、ai-spot.ts、shared/ai-act.ts；「 · 」后面接着说的小写） ----------
   'AI 正在整理这块白板': 'AI is tidying this board',
   'AI 正在改这篇': 'AI is editing this note',
@@ -119,6 +145,7 @@ export const AI: Table = {
   '做好了 · 剪了{n}段': (p) => `Done · clipped ${count(p.n, 'passage')}`,
   '停下了 · 做完的{n}步留着': (p) => `Stopped · kept ${count(p.n, 'finished step')}`,
   '停下了 · 什么也没改': 'Stopped · nothing changed',
+  '停下了 · 改的留着': 'Stopped · changes kept',
   '没做完（软件关了）': 'Didn’t finish (the app was closed)',
 
   // ---------- 出错（shared/ai-errors.ts、@cn/ai-chat 的 ai-error.tsx） ----------

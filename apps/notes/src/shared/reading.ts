@@ -80,6 +80,8 @@ export interface ReadingMsg {
   noteError?: string
   /** AI 觉得这一处适合做个可视化（回答最后那行标记，界面上不显示） */
   vizOk?: boolean
+  /** AI 标了这一问讲的是论文外的前置知识（回答最后那行〔前置知识〕，界面上不显示）：记进笔记时那一问带标签 */
+  pre?: true
   /** 做个可视化：在做、做好了（库里的 HTML）、没做成 */
   viz?: { state: 'making' } | { state: 'done'; path: string; title: string } | { state: 'error'; error: string }
   /** AI 这一问动手的每一步（我们的工具、全能模式下它自己跑命令、写文件……），和 AI 对话的步骤行一样 */
@@ -129,9 +131,23 @@ export interface ReadingState {
   threads: ReadingThread[]
   /** 旁支（CN-90） */
   sides?: ReadingSide[]
-  /** 点过「新对话」的时间：AI 从这之后重新开会话 */
+  /** 点过「新对话」（或切回以前的一段）的时间：AI 从这之后重新开会话；这之前的问答开旁支不从主会话分叉 */
   newChatAt?: number
   /** 这份 PDF 的对话自己选的模型、effort（输入框底行，CN-91 方向 C：只管这个对话）；没选过没有，用设置 › AI「AI 对话」那一行 */
+  pick?: AiPick
+  /**
+   * 点「+」收起来的以前那几段对话（新的在后）：头上对话菜单「之前的对话」里列，点了切回。问过的地方（threads）不分段，一直在上面。
+   * 没有这一项的是旧记录：newChatAt 之前的问答读进来时挪成一段（以前「+」只插一条分隔线）
+   */
+  older?: ReadingChat[]
+}
+
+/** 收起来的一段对话 */
+export interface ReadingChat {
+  /** 收起的时间（毫秒），也是它的编号 */
+  id: number
+  msgs: ReadingMsg[]
+  sides?: ReadingSide[]
   pick?: AiPick
 }
 
@@ -398,6 +414,9 @@ export function readLine(page: number, answer: string, sections: AskSection[]): 
 /** AI 回答最后这一行：这一处适合做个可视化（界面上不显示这行，换成「做个可视化」按钮） */
 export const VIZ_MARK = '〔可以做个可视化〕'
 
+/** AI 回答最后这一行：这一问讲的是论文外的前置知识（界面上不显示，笔记里那一问带「#前置知识」标签，偏好「前置知识就地加标签」） */
+export const PRE_MARK = '〔前置知识〕'
+
 /**
  * 发给 AI 的公式写法（读 PDF、AI 对话、/ 命令都带）：回答里的公式用 KaTeX 排，行内 $…$ 的 $ 内侧有空格就不认、原样露着
  * （真 AI 写过 `$dV/dt = $ 输入`）。渲染那边不放宽（「$5 和 $6」这种钱数会被当成公式），在提示词里说清楚
@@ -405,12 +424,13 @@ export const VIZ_MARK = '〔可以做个可视化〕'
 export const MATH_RULE = '公式用 LaTeX：行内写 $…$，$ 里面紧贴公式、开头结尾都不留空格（写 $dV/dt$，不写 $ dV/dt $ 或 $dV/dt = $），一整条公式放在同一对 $ 里；单独一行的写 $$…$$。'
 
 /** 回答里去掉可视化标记（边生成边显示时半截的也去掉） */
-export function withoutVizMark(text: string): { text: string; viz: boolean; figure: FigureBox | null } {
+export function withoutVizMark(text: string): { text: string; viz: boolean; figure: FigureBox | null; pre: boolean } {
   const viz = text.includes(VIZ_MARK)
-  // 配图的框那一行（CN-60）也不显示
+  const pre = text.includes(PRE_MARK)
+  // 配图的框那一行（CN-60）、前置知识那一行也不显示
   const figure = parseFigureMark(text)
   const t = stripFigureMark(text)
-  return { text: t.replace(/\n*〔可以做个可视化〕\s*$/, '').replace(VIZ_MARK, '').replace(/\n*〔[^〕\n]{0,8}$/, '').trimEnd(), viz, figure }
+  return { text: t.replace(/\n*〔可以做个可视化〕\s*$/, '').replace(VIZ_MARK, '').replace(/\n*〔前置知识〕[ \t]*/g, '').replace(/\n*〔[^〕\n]{0,8}$/, '').trimEnd(), viz, figure, pre }
 }
 
 /** 问到第几页：问过的最大页码 */

@@ -26,6 +26,7 @@ export const CITE: Table = {
   白板里没有这张卡了: 'This card is no longer on the board',
   这一行已经不是待办了: 'This line is no longer a to-do',
   翻到这页: 'Go to page',
+  翻到这段: 'Go to passage',
   白板里的一张卡: 'A card on the board',
   打开白板: 'Open board',
   '数据库::一行': 'One row',

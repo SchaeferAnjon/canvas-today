@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest'
 import { decodeNote, splitDoc } from '../src'
 import { FIXTURES } from './fixtures'
-import { type NoteAsk, appendAsk, askColumns, askUnits, hasAsk, insertAfterAsk, insertSide, newReadingNote, pastAsk, parseChatLink, parseReadingNote, pdfSrc, removeAsk, renderAsk, UNPLACED, renderSection, setCalloutWords, EN_CALLOUT_WORDS, ZH_CALLOUT_WORDS, webSrc, withDerived, chatLink } from '../src'
+import { type NoteAsk, appendAsk, askColumns, askUnits, hasAsk, insertAfterAsk, insertSide, newReadingNote, pastAsk, parseChatLink, parseReadingNote, pdfSrc, removeAsk, renderAsk, UNPLACED, PREREQ, renderSection, setCalloutWords, EN_CALLOUT_WORDS, ZH_CALLOUT_WORDS, webSrc, withDerived, chatLink } from '../src'
 
 const PDF = '课程/ecpc/Lecture05.pdf'
 const NOTE = '课程/ecpc/Lecture05 笔记.md'
@@ -377,5 +377,67 @@ describe('可视化挂在那一处最后一问后面', () => {
     // 最后一问在文末：接在文末
     const tail = insertAfterAsk(appendAsk(newReadingNote(PDF), NOTE, FIRST, at), NOTE, 'Lecture05-p28-1', line)
     expect(tail.endsWith('> - 积\n\n' + line + '\n')).toBe(true)
+  })
+})
+
+describe('前置知识（偏好「前置知识就地加标签」）', () => {
+  const PRE = main(50, '这个 O 是怎么算的', '大 O 记的是随 n 变大时……', { pre: true, th: 'Lecture05-p2-1', src: pdfSrc(NOTE, PDF, 2) })
+  const bare = (o: Partial<NoteAsk>): NoteAsk => {
+    const { src: _s, ...rest } = { ...PRE, ...o }
+    void _s
+    return rest
+  }
+  it('小标题末尾一个 #前置知识，读回来问的原话不带它、带 pre', () => {
+    const md = renderAsk(PRE, NOTE)
+    expect(md.split('\n')[0]).toBe('### 这个 O 是怎么算的 #前置知识')
+    const u = askUnits(md, NOTE)[0]!
+    expect(u.ask.q).toBe('这个 O 是怎么算的')
+    expect(u.ask.pre).toBe(true)
+    // 旁支也能带
+    const s = renderAsk({ ...side(51, '那 n² 呢', '答', 50), pre: true }, NOTE)
+    expect(s.split('\n')[0]).toBe('#### 旁支：那 n² 呢 #前置知识')
+    expect(askUnits(s, NOTE)[0]!.ask).toMatchObject({ q: '那 n² 呢', pre: true })
+  })
+  it('英文库写 #prerequisite，两种都认', () => {
+    setCalloutWords(EN_CALLOUT_WORDS)
+    try {
+      expect(renderAsk(PRE, NOTE).split('\n')[0]).toBe('### 这个 O 是怎么算的 #prerequisite')
+    } finally {
+      setCalloutWords(ZH_CALLOUT_WORDS)
+    }
+    expect(askUnits(renderAsk(PRE, NOTE).replace('#前置知识', '#prerequisite'), NOTE)[0]!.ask.pre).toBe(true)
+  })
+  it('由论文某处引出的记在那一页那一节；收成 AskSection 后那一问带 pre；打开再保存不变', () => {
+    let md = appendAsk(newReadingNote(PDF), NOTE, main(12, '给我讲解一下', '答', { th: 'Lecture05-p2-1', src: pdfSrc(NOTE, PDF, 2) }), { heading: '第 2 页 · Method', page: 2 })
+    md = appendAsk(md, NOTE, bare({}), { heading: '第 2 页 · Method', page: 2 })
+    expect(md.match(/^## /gm)!.length).toBe(1)
+    const s = parseReadingNote(md, NOTE).find((x) => x.page === 2)!
+    expect(s.qas!.map((q) => !!q.pre)).toEqual([false, true])
+    expect(decodeNote(new TextEncoder().encode(md)).text).toBe(md)
+    // 再记一问（只往后加）：前面带标签那一问一字不动
+    const more = appendAsk(md, NOTE, main(70, '再问', '答', { th: 'Lecture05-p2-1' }), { heading: '第 2 页 · Method', page: 2 })
+    expect(more.startsWith(md.replace(/\n+$/, ''))).toBe(true)
+  })
+  it('不挂在任何一处的进最后的「## 前置知识」：在「没定位的问答」后面，后来按页的一节插在两节前面', () => {
+    let md = appendAsk(newReadingNote(PDF), NOTE, bare({ msg: 60, th: 'Lecture05-p0-1' }), { heading: PREREQ })
+    md = appendAsk(md, NOTE, bare({ msg: 61, q: '这张图讲什么', th: 'Lecture05-p0-2', pre: undefined }), { heading: UNPLACED })
+    md = appendAsk(md, NOTE, main(62, '第三页', '答', { th: 'Lecture05-p3-1' }), { heading: '第 3 页', page: 3 })
+    md = appendAsk(md, NOTE, bare({ msg: 63, q: '什么是 softmax', th: 'Lecture05-p0-3' }), { heading: PREREQ })
+    expect(md.match(/^## .*$/gm)).toEqual(['## 第 3 页', `## ${UNPLACED}`, `## ${PREREQ}`])
+    const pre = parseReadingNote(md, NOTE).filter((s) => s.qas?.some((q) => q.pre))
+    expect(pre.flatMap((s) => s.qas!.map((q) => q.q))).toEqual(['这个 O 是怎么算的', '什么是 softmax'])
+    // 两问都拿掉这一节没了，别的不动
+    const gone = removeAsk(removeAsk(md, KEY, 60), KEY, 63)
+    expect(gone.match(/^## .*$/gm)).toEqual(['## 第 3 页', `## ${UNPLACED}`])
+  })
+  it('白板一问一列：列头带 pre', () => {
+    const md = appendAsk(newReadingNote(PDF), NOTE, PRE, { heading: '第 2 页', page: 2 })
+    const from = md.indexOf('## 第 2 页')
+    expect(askColumns(md, from, md.length, NOTE).columns[0]).toMatchObject({ title: '这个 O 是怎么算的', pre: true })
+  })
+  it('旧写法（ParaRead 写的那种）问题那一行末尾同一个标签，读写都认', () => {
+    const md = renderSection(withDerived({ id: '.canvas-notes/对话/x-p2-1.md', file: PDF, page: 2, title: 't', figures: [], doubts: [], good: '', points: [], failed: [], rounds: 0, links: [], qas: [{ q: '这个 O 是怎么算的', a: '答', sides: [], pre: true }], recap: '' }), NOTE)
+    expect(md).toContain('> [!question] 这个 O 是怎么算的 #前置知识')
+    expect(parseReadingNote(md, NOTE)[0]!.qas![0]).toMatchObject({ q: '这个 O 是怎么算的', pre: true })
   })
 })

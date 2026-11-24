@@ -106,6 +106,8 @@ export interface DocColumn {
   ask: boolean
   /** 问过 AI 的那一列：问的是第几页（那一页「划的线」并进来） */
   page?: number
+  /** 一问一列（7a）那一问讲的是前置知识：列头带小标签 */
+  pre?: true
   cards: DocUnit[]
   /** 摆在自己位置上的列：标题前面那一行 `<!-- column id=… x=… y=… -->` 的范围和坐标 */
   place?: { id: string; x: number; y: number; from: number; to: number }
@@ -362,7 +364,7 @@ export function splitDoc(text: string): DocBoard {
           const cards: DocUnit[] = []
           if (k === 0 && qs.lead) cards.push({ kind: 'ask', from: qs.lead.from, to: qs.lead.to, text: text.slice(qs.lead.from, qs.lead.to), ask: { part: 'more', head } })
           for (const x of c.cards) cards.push({ kind: 'ask', from: x.from, to: x.to, text: text.slice(x.from, x.to), ask: { part: x.part, head } })
-          const col: DocColumn = { title: c.page !== undefined ? `第 ${c.page} 页 · ${c.title}` : c.title, head: null, end: c.end, ask: true, cards, ...(c.page !== undefined ? { page: c.page } : {}) }
+          const col: DocColumn = { title: c.page !== undefined ? `第 ${c.page} 页 · ${c.title}` : c.title, head: null, end: c.end, ask: true, cards, ...(c.page !== undefined ? { page: c.page } : {}), ...(c.pre ? { pre: true as const } : {}) }
           if (k === 0 && s.place) col.place = s.place
           columns.push(col)
           total += cards.length

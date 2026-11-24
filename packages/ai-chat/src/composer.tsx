@@ -15,7 +15,7 @@ import { createPortal } from 'react-dom'
 import { type AiPick, CLAUDE_DEFAULT, convPick, DEFAULT_EFFORT, ENGINE_LABEL, type EngineId, type EngineInfo, hasEffort, isEngineId, pickLabel, pickReq, t as tNow } from '@cn/ai-engines/shared'
 import { AiPicker, engineFamily } from './ai-picker'
 import { countLine, MAX_MATERIALS, markOf, type Material, numberOf, renumberMarks, shiftMarks } from './materials'
-import { imageFiles, MAX_PASTED, toBytes } from './paste'
+import { clipText, imageFiles, MAX_PASTED, toBytes } from './paste'
 import { useDismiss } from './use-dismiss'
 import { following, NEAR } from './follow'
 import { Icon, useChat, useUi } from './context'
@@ -49,6 +49,8 @@ export interface Composer {
   restore(text: string, mats: Material[]): void
   /** 粘贴、拖进来的文件：图变成材料；没有图返回 false（字照常粘） */
   addFiles(files: (File | null)[]): Promise<boolean>
+  /** 字和图一起粘、先贴成了字，点「改贴图片」：at 处贴进去的那段字拿掉，图从那里附上 */
+  pasteAsImages(at: number, text: string, files: File[]): Promise<boolean>
   /** 网页上的一张图（拖进来的、右键「问 AI 这张图」的）：取回来、SVG 画成 PNG，成为一块材料，来源「图 6.2.1 · zh.d2l.ai」 */
   addWebImage(img: WebImg): Promise<boolean>
   /** 底行「+」：系统选图框 */
@@ -194,6 +196,19 @@ export function useComposer(onNotice: (text: string) => void): Composer {
       }
       return true
     },
+    pasteAsImages(at, text, files) {
+      const cur = st.current.text
+      if (cur.slice(at, at + text.length) === text) {
+        st.current = { text: cur.slice(0, at) + cur.slice(at + text.length), mats: st.current.mats }
+        // 光标先放回贴的地方：图的编号插在光标处（add 读 selectionStart）
+        if (ta.current) {
+          ta.current.value = st.current.text
+          ta.current.setSelectionRange(at, at)
+        }
+        render()
+      }
+      return c.addFiles(files)
+    },
     async addWebImage(img) {
       if (images() >= MAX_PASTED) {
         notice.current(tNow('最多{n}张', { n: MAX_PASTED }))
@@ -311,6 +326,13 @@ export function AiInput(p: AiInputProps) {
   const { t, inputGlow: glow } = useUi()
   const chat = useChat()
   const [drop, setDrop] = useState(false)
+  /** 字和图一起粘、贴成了字：贴在哪、贴的什么、那几张图、贴完输入框里的字（不一样了就不再给「改贴图片」） */
+  const [alt, setAlt] = useState<{ at: number; text: string; files: File[]; after: string } | null>(null)
+  useEffect(() => {
+    if (!alt) return
+    const id = setTimeout(() => setAlt(null), 8000)
+    return () => clearTimeout(id)
+  }, [alt])
   const root = useRef<HTMLDivElement>(null)
   const latest = useRef(c)
   latest.current = c
@@ -428,12 +450,36 @@ export function AiInput(p: AiInputProps) {
           }}
           onKeyDown={p.onKeyDown}
           onPaste={(e) => {
-            const files = [...e.clipboardData.items].filter((i) => i.kind === 'file').map((i) => i.getAsFile())
-            if (!imageFiles(files).length) return
+            const files = imageFiles([...e.clipboardData.items].filter((i) => i.kind === 'file').map((i) => i.getAsFile()))
+            if (!files.length) return
             e.preventDefault()
-            void c.addFiles(files)
+            const text = clipText(e.clipboardData)
+            if (!text) return void c.addFiles(files)
+            // 字和图都有（微信多条聊天记录）：贴字，下面一行「同时有一张图 · 改贴图片」。
+            // 用 insertText 写进去（⌘Z 撤得掉；照浏览器自己的粘贴，合成的粘贴事件也一样）
+            const el = e.currentTarget
+            const at = el.selectionStart
+            if (!document.execCommand('insertText', false, text)) c.setText((v) => v.slice(0, at) + text + v.slice(el.selectionEnd))
+            setAlt({ at, text, files, after: el.value })
           }}
         />
+        {/* 贴成字之后：字原样在（没再打字、没发出去）就一直给，8 秒后收起 */}
+        {alt && c.text === alt.after && (
+          <div className="aiin-alt" data-testid="ai-paste-alt">
+            <span>{alt.files.length > 1 ? t('同时有{n}张图', { n: alt.files.length }) : t('同时有一张图')}</span>
+            <span aria-hidden="true">·</span>
+            <button
+              data-testid="ai-paste-alt-go"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                setAlt(null)
+                void c.pasteAsImages(alt.at, alt.text, alt.files)
+              }}
+            >
+              {t('改贴图片')}
+            </button>
+          </div>
+        )}
         <div className={'ft' + (row.tight ? ' tight' : '')} ref={row.ref}>
           <button className="pick add" aria-label={t('加图')} data-tip={t('加图')} data-side="above" onClick={() => void c.pickImages()}>
             <Icon name="add" size={14} />

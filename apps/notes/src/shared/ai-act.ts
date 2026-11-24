@@ -20,6 +20,12 @@ export interface ActTally {
 
 export const noTally = (): ActTally => ({ moved: 0, added: 0, changed: 0, clipped: 0 })
 
+/** 这一轮改到的一篇在这次提交里加减了几行（文档栏收尾「改好了 · +20 −0」，和改动卡同一个数） */
+export interface ActLines {
+  added: number
+  removed: number
+}
+
 /** 当前标签：哪篇、现在是白板看法还是文档看法、这篇是不是白板 */
 export interface ActTab {
   path: string | null
@@ -39,7 +45,8 @@ const md = (p: string) => (/\.md$/i.test(p) ? p : `${p}.md`)
 
 /**
  * 这个工具在哪动手：只是看（board_list、doc_read）不算，光只在 AI 真动手的地方；
- * 只加一张卡（board_add_card）、只写一段（doc_insert）、换掉选中的一段只亮那一处；别的改白板的、整篇改写开着的这篇（note_write）整块亮；
+ * 只加一张卡（board_add_card）只亮那一张；别的改白板的整块亮；改开着的这篇（写一段 doc_insert、换掉选中的一段、整篇改写 note_write）
+ * 整篇四边亮（2026-11-24 用户：AI 改文档时也要白板那样的边），改到的那一段另有竖线（ai-spot.ts）；
  * 网页的每一步都算整块（右栏网页）。null：不画。
  */
 export function actScope(name: string, args: Record<string, unknown>, tab: ActTab): ActScope | null {
@@ -50,7 +57,7 @@ export function actScope(name: string, args: Record<string, unknown>, tab: ActTa
     const path = str(args.path) ?? boardHere
     return path ? { area: 'board', whole: name !== 'board_add_card', path } : null
   }
-  if (name === 'doc_insert' || name === 'doc_replace_selection') return tab.path && tab.mode !== 'board' ? { area: 'doc', whole: false, path: tab.path } : null
+  if (name === 'doc_insert' || name === 'doc_replace_selection') return tab.path && tab.mode !== 'board' ? { area: 'doc', whole: true, path: tab.path } : null
   if (name === 'note_write') {
     const p = str(args.path)
     if (!p || !tab.path || md(p) !== tab.path) return null
@@ -70,6 +77,11 @@ export function actDoneText(area: AiActArea, t: ActTally): string {
     return [tNow('改好了'), ...parts].join(' · ')
   }
   return t.clipped ? tNow('做好了 · 剪了{n}段', { n: t.clipped }) : tNow('做好了')
+}
+
+/** 文档栏收尾那句的前半（后面跟这一篇加减的行数「+20 −0」，数字照改动卡上色）：做完「改好了」，停下「停下了 · 改的留着」 */
+export function docLinesHead(stopped: boolean): string {
+  return stopped ? tNow('停下了 · 改的留着') : tNow('改好了')
 }
 
 /** 停下以后（这一步做完了）提示条上的话 */
