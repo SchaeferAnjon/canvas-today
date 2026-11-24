@@ -221,3 +221,21 @@ describe('parseStatus', () => {
     expect(parseStatus('')).toEqual([])
   })
 })
+
+it('原子写的临时文件、崩溃残留的回收处不进 Git（task-8dula）：状态里没有、全部提交也不带，写在 .git/info/exclude', async () => {
+  writeFileSync(join(dir, 'a.md'), 'a\n')
+  writeFileSync(join(dir, '.a.md.cn-123-abc.tmp'), '半截')
+  mkdirSync(join(dir, '.canvas-notes', '回收', '2026-11-23'), { recursive: true })
+  writeFileSync(join(dir, '.canvas-notes', '回收', '2026-11-23', 'a.md.cn-1-x.tmp'), '半截')
+  writeFileSync(join(dir, '.canvas-notes', '首页.json'), '{}')
+  expect((await status(dir)).map((s) => s.path).sort()).toEqual(['.canvas-notes/首页.json', 'a.md'])
+  await commitAll(dir, '第一次')
+  const files = (await git(dir, ['show', '--name-only', '--format=', 'HEAD'])).trim().split('\n').sort()
+  expect(files).toEqual(['.canvas-notes/首页.json', 'a.md'])
+  const exclude = readFileSync(join(dir, '.git', 'info', 'exclude'), 'utf8')
+  expect(exclude).toContain('.*.cn-*.tmp')
+  expect(exclude).toContain('/.canvas-notes/回收/')
+  // 只写一次：再查状态不再追加
+  await status(dir)
+  expect(readFileSync(join(dir, '.git', 'info', 'exclude'), 'utf8')).toBe(exclude)
+})

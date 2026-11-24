@@ -1,7 +1,11 @@
 /** 小零件：图标、勾选框、一句话的提示条 */
 import { Codicon, type CodiconName } from '@cn/design'
+import { UndoButton } from '@cn/design/answer-bar'
+import '@cn/design/answer-bar.css'
 import claude from '@notes-assets/engine-logos/claude.svg?raw'
 import codex from '@notes-assets/engine-logos/codex.svg?raw'
+import deepseek from '@notes-assets/engine-logos/deepseek.svg?raw'
+import openrouter from '@notes-assets/engine-logos/openrouter.svg?raw'
 import gemini from '@notes-assets/engine-logos/gemini.png'
 import type { TaskView } from '../shared/api'
 import { type Args, type Key, tr } from '../shared/i18n'
@@ -18,6 +22,10 @@ export function ClaudeLogo({ s = 18 }: { s?: number }) {
 
 /** 用的是哪一家 AI 就画哪一家的标志（偏好「AI 图标用引擎标志」，同画布笔记 engine-logo.tsx）；OpenCode 没有标志，用终端图标 */
 export function EngineLogo({ id, s = 14 }: { id: string | undefined; s?: number }) {
+  // Claude API 画 Claude 的，OpenAI API 画 OpenAI 的（和 Codex 同一个）；本机模型画芯片（task-587os）
+  const svg = id === 'openai' ? codex : id === 'deepseek' ? deepseek : id === 'openrouter' ? openrouter : null
+  if (svg) return <span className="ci eng" data-engine={id} style={{ width: s, height: s, display: 'inline-grid' }} dangerouslySetInnerHTML={{ __html: svg.replace('<svg', `<svg width="${s}" height="${s}"`) }} />
+  if (id === 'ollama' || id === 'lmstudio') return <Ic n="chip" s={s} />
   if (id === 'codex') return <span className="ci eng" style={{ width: s, height: s, display: 'inline-grid' }} dangerouslySetInnerHTML={{ __html: codex.replace('<svg', `<svg width="${s}" height="${s}"`) }} />
   if (id === 'gemini') return <img className="ci eng" src={gemini} width={s} height={s} alt="" />
   if (id === 'opencode') return <Ic n="terminal" s={s} />
@@ -67,11 +75,8 @@ export function Toast({ toast, onUndo }: { toast: ToastData | null; onUndo: (id:
         {toast.msg}
         {toast.sub && <span>{toast.sub}</span>}
       </div>
-      {toast.undo && (
-        <button className="btn ghost sm" onClick={() => onUndo(toast.undo!)}>
-          {tr(lang, 'undo')}
-        </button>
-      )}
+      {/* 撤回：和画布笔记同一颗（无边框、discard 图标，task-eavzx） */}
+      {toast.undo && <UndoButton label={tr(lang, 'undo')} onClick={() => onUndo(toast.undo!)} />}
     </div>
   )
 }

@@ -32,6 +32,8 @@ export interface CalText {
   seeAll: string
   /** 日程上悬停的字 */
   readonly: string
+  /** 待办块下沿那一条（拉着改多长） */
+  resize: string
   /** 待办首页格子悬停：「11月25日 周三：点一下只看这天，拖一条到这里改到这天」 */
   dayTip: (day: string) => string
   /** 月格子悬停：「 · 2条没做（过期）」「 · 日程1个」 */
@@ -75,6 +77,7 @@ export const CAL_TEXT: Record<CalLang, CalText> = {
     only: (day) => `只看 ${day}`,
     seeAll: '看全部',
     readonly: '系统日历 · 只读',
+    resize: '拖动改多长',
     dayTip: (day) => `${day}：点一下只看这天，拖一条到这里改到这天`,
     undoneTip: (n, overdue) => ` · ${n}条没做${overdue ? '（过期）' : ''}`,
     eventsTip: (n) => ` · 日程${n}个`,
@@ -113,6 +116,7 @@ export const CAL_TEXT: Record<CalLang, CalText> = {
     only: (day) => `Only ${day}`,
     seeAll: 'Show all',
     readonly: 'System calendar · read-only',
+    resize: 'Drag to change how long',
     dayTip: (day) => `${day}: click to show only this day, drop a to-do here to move it`,
     undoneTip: (n, overdue) => ` · ${n} to do${overdue ? ' (overdue)' : ''}`,
     eventsTip: (n) => ` · ${n} ${n === 1 ? 'event' : 'events'}`,

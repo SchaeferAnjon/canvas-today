@@ -6,7 +6,8 @@
  * 日子从哪来就改哪（📅、⏳、Dataview 的 due::）；拿掉日子时这几样都拿掉（不然拿掉 📅 以后 ⏳ 又顶上来）。
  */
 import { type ISODate } from './dates'
-import { EMOJI, type Field, type FieldKind, isDvDue, ORDER, parseTaskLine, type Prio, PRIO_EMOJI, type TaskLine } from './line'
+import { DURATION_KEYS, minutesTextLike } from './duration'
+import { EMOJI, type Field, type FieldKind, isDuration, isDvDue, ORDER, parseTaskLine, type Prio, PRIO_EMOJI, type TaskLine } from './line'
 
 const splice = (s: string, from: number, to: number, put: string) => s.slice(0, from) + put + s.slice(to)
 
@@ -71,7 +72,36 @@ export function setDone(line: string, done: boolean, today: ISODate): string {
     return field(t, 'done') ? marked : setField(marked, 'done', today)
   }
   if (!t.done && !t.cancelled) return line
-  return setField(splice(line, t.markAt, t.markAt + 1, ' '), 'done', null)
+  // 改回没做完：✅ 和 ❌ 的日子都拿掉
+  return setField(setField(splice(line, t.markAt, t.markAt + 1, ' '), 'done', null), 'cancel', null)
+}
+
+/** 不做了：[-] 加 ❌ 今天（Obsidian Tasks 的取消写法）；已经取消的原样 */
+export function setCancelled(line: string, today: ISODate): string {
+  const t = parseTaskLine(line)
+  if (!t || t.cancelled) return line
+  const marked = splice(line, t.markAt, t.markAt + 1, '-')
+  return setField(setField(marked, 'done', null), 'cancel', today)
+}
+
+/**
+ * 估时（分钟，duration.ts）：有估时字段就换它的值（别人写的英文 30m 照英文写回）；没有就加「[估时:: 30分钟]」，
+ * 照 Dataview 字段的位置放在别的记号前面（标题后面、📅 前面）；null 拿掉
+ */
+export function setDuration(line: string, minutes: number | null): string {
+  const t = parseTaskLine(line)
+  if (!t) return line
+  const fs = t.fields.filter(isDuration)
+  if (minutes === null) return dropFields(line, fs)
+  const f = fs[fs.length - 1]
+  if (f) {
+    const v = minutesTextLike(minutes, f.value)
+    return f.value === v ? line : splice(line, f.valueStart, f.valueEnd, v)
+  }
+  const at = insertAt(t, 'dv')
+  // 后面紧贴着记号（「（第二次）📅 2026-09-22」这种没空格的）：补一个空格，不写成「]📅」
+  const gap = at < line.length && !/\s/.test(line[at]!) ? ' ' : ''
+  return splice(line, at, at, ` [${DURATION_KEYS[0]}:: ${minutesTextLike(minutes, '')}]${gap}`)
 }
 
 /** 改日子：日子从哪个记号来就改哪个；没有就加 📅；null 拿掉 📅、⏳ 和 Dataview 的 due */

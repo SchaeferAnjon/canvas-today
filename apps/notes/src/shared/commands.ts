@@ -11,6 +11,7 @@ import { isCombo } from './cmd-keys'
 import { canShare, keyProblemFor } from './cmd-table'
 import { emptySlash, normalizeSlash, type SlashConfig } from './ai-cmds'
 import { barJson, type BarConfig, defaultBar, dropFromBar, normalizeBar } from './sel-bar'
+import { defaultReplies, dropReply, normalizeReplies, type ReplyConfig, repliesJson } from './replies'
 
 export const COMMANDS_FILE = '.canvas-notes/命令.json'
 export const COMMANDS_VERSION = 1
@@ -102,6 +103,8 @@ export interface CmdConfig {
   slash: SlashConfig
   /** 选中小条（task-26nz7）：条上 / 收进 ⋯ / 不出现、总开关、不弹的网站（shared/sel-bar.ts） */
   bar: BarConfig
+  /** 回答下面那排的快捷回复（task-eavzx）：排上 / 收进 ⋯ / 不出现（shared/replies.ts） */
+  replies: ReplyConfig
   /** 不认识的字段：原样写回 */
   rest: Record<string, unknown>
 }
@@ -138,7 +141,7 @@ export interface CnCmdsApi {
 /** 网页「⋯」里一直在的（从菜单回到调整得先有入口） */
 export const WEB_LOCKED = 'extensions'
 
-export const defaultCommands = (): CmdConfig => ({ groups: null, hidden: [], alias: {}, keys: {}, homes: {}, own: [], web: { hidden: [], order: {} }, slash: emptySlash(), bar: defaultBar(), rest: {} })
+export const defaultCommands = (): CmdConfig => ({ groups: null, hidden: [], alias: {}, keys: {}, homes: {}, own: [], web: { hidden: [], order: {} }, slash: emptySlash(), bar: defaultBar(), replies: defaultReplies(), rest: {} })
 
 const uniq = (xs: string[]) => [...new Set(xs)]
 const strings = (v: unknown, max = 500): string[] => (Array.isArray(v) ? uniq(v.filter((x): x is string => typeof x === 'string' && x.length > 0 && x.length <= max)) : [])
@@ -187,7 +190,7 @@ function withNewGroups(L: GroupEntry[] | null, raw: unknown, homes: Record<strin
 /** 读 命令.json：坏的、手改错的只留对的那几样，整个读不出当没改过 */
 export function normalizeCommands(raw: unknown): CmdConfig {
   const o = record(raw)
-  const known = new Set(['version', 'groups', 'hidden', 'alias', 'keys', 'homes', 'own', 'webMenu', 'slash', 'bar'])
+  const known = new Set(['version', 'groups', 'hidden', 'alias', 'keys', 'homes', 'own', 'webMenu', 'slash', 'bar', 'replies'])
   const rest = Object.fromEntries(Object.entries(o).filter(([k]) => !known.has(k)))
   const alias: Record<string, string> = {}
   for (const [k, v] of Object.entries(record(o.alias))) if (isCmdId(k) && typeof v === 'string' && v.trim() && v.trim().length <= 20) alias[k] = v.trim()
@@ -217,6 +220,7 @@ export function normalizeCommands(raw: unknown): CmdConfig {
     web: { hidden: strings(wm.hidden, 60).filter((x) => x !== WEB_LOCKED), order },
     slash: normalizeSlash(o.slash),
     bar: normalizeBar(o.bar),
+    replies: normalizeReplies(o.replies),
     rest,
   }
 }
@@ -234,6 +238,8 @@ export function commandsJson(c: CmdConfig): string {
   if (c.slash.hidden.length || c.slash.order.length) out.slash = { ...(c.slash.hidden.length ? { hidden: c.slash.hidden } : {}), ...(c.slash.order.length ? { order: c.slash.order } : {}) }
   const bar = barJson(c.bar)
   if (bar) out.bar = bar
+  const replies = repliesJson(c.replies)
+  if (replies) out.replies = replies
   return JSON.stringify({ ...out, ...c.rest }, null, 2) + '\n'
 }
 
@@ -400,7 +406,7 @@ export function updateOwn(c: CmdConfig, avail: readonly Avail[], cmd: OwnCommand
 export function deleteOwn(c: CmdConfig, id: string): CmdConfig {
   const drop = <T>(r: Record<string, T>) => Object.fromEntries(Object.entries(r).filter(([k]) => k !== id))
   const groups = c.groups ? prune(c.groups.map((g) => ({ ...g, items: g.items.filter((x) => x !== id) }))) : null
-  return { ...c, own: c.own.filter((o) => o.id !== id), groups, hidden: c.hidden.filter((x) => x !== id), alias: drop(c.alias), keys: drop(c.keys), homes: drop(c.homes), bar: dropFromBar(c.bar, id) }
+  return { ...c, own: c.own.filter((o) => o.id !== id), groups, hidden: c.hidden.filter((x) => x !== id), alias: drop(c.alias), keys: drop(c.keys), homes: drop(c.homes), bar: dropFromBar(c.bar, id), replies: dropReply(c.replies, id) }
 }
 
 // ---------------------------------------------------------------- 网页「⋯」

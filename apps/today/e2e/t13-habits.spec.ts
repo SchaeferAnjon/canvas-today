@@ -58,7 +58,7 @@ test('习惯：最近七天、连续几次；今天打卡写一行、撤销回�
     expect(execFileSync('git', ['-C', run.vault, 'check-attr', 'merge', '--', BEI], { encoding: 'utf8' }).trim()).toBe(`${BEI}: merge: union`)
 
     // 撤销：回到原来的字节，.gitattributes 也拿掉
-    await page.locator('.toast').getByRole('button', { name: '撤销' }).click()
+    await page.locator('.toast').getByRole('button', { name: '撤回' }).click()
     await expect.poll(() => run.read(BEI)).toBe(before)
     await expect.poll(() => existsSync(join(run.vault, '.gitattributes'))).toBe(false)
     await expect(bei.locator('.hcheck')).toHaveAttribute('aria-pressed', 'false')
@@ -125,7 +125,7 @@ test('习惯：加一个（工作日，今天周日是「休」）；右键改�
     await expect(page.locator('.toast')).toContainText('删掉了习惯「早起」')
     await expect.poll(() => existsSync(join(run.vault, '习惯/早起.md'))).toBe(false)
     await expect(zao).toHaveCount(0)
-    await page.locator('.toast').getByRole('button', { name: '撤销' }).click()
+    await page.locator('.toast').getByRole('button', { name: '撤回' }).click()
     await expect.poll(() => existsSync(join(run.vault, '习惯/早起.md'))).toBe(true)
     await expect(zao).toHaveCount(1)
 

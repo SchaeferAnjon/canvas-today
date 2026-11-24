@@ -32,7 +32,6 @@ export const MENUS: Table = {
 
   // ---------- AI 对话里一条消息的右键（ctx/message-menu.ts） ----------
   '拷贝为 Markdown': 'Copy as Markdown',
-  插进了文档光标处: 'Inserted at the cursor',
 
   // ---------- 「移到」子菜单（ctx/move-menu.ts） ----------
 }

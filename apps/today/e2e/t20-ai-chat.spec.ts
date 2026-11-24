@@ -79,7 +79,7 @@ test('排进空着的时间：右栏开对话、日历上虚线框、去掉一�
     await card(page).getByRole('button', { name: '收下' }).click()
     await expect(page.locator('.toast')).toContainText('AI改了3条：都写进了笔记，一次提交')
     await expect(page.locator('.toast')).toContainText('照改动卡改了钟点')
-    await expect(card(page)).toContainText('收下了：改了3条一次提交 · 能撤销')
+    await expect(card(page)).toContainText('收下了：改了3条一次提交 · 能撤回')
     await expect(page.locator('.cal-blk.ghost')).toHaveCount(0)
     await expect.poll(() => run.read('课程/线性代数/作业.md')).toBe(hw.replace('第三章习题 1–10 📅 2026-11-24 ⏫', '第三章习题 1–10 📅 2026-11-24 10:00 ⏫'))
     expect(run.read('课程/ecp/Lecture06 笔记.md')).toBe(l06.replace('推一遍链式法则 📅 2026-11-26', '推一遍链式法则 📅 2026-11-26 10:00').replace('做第 6 讲的练习 📅 2026-11-27', '做第 6 讲的练习 📅 2026-11-27 11:00'))
@@ -87,10 +87,10 @@ test('排进空着的时间：右栏开对话、日历上虚线框、去掉一�
     await expect(page.locator('.cal-col[data-drop="day:2026-11-27"] .cal-blk:not(.ev):not(.ghost)', { hasText: '做第 6 讲的练习' })).toBeVisible()
 
     // 撤销：几篇一次全回去，卡上写撤销了
-    await page.locator('.toast').getByRole('button', { name: '撤销' }).click()
+    await page.locator('.toast').getByRole('button', { name: '撤回' }).click()
     await expect.poll(() => run.read('课程/线性代数/作业.md')).toBe(hw)
     await expect.poll(() => run.read('课程/ecp/Lecture06 笔记.md')).toBe(l06)
-    await expect(card(page)).toContainText('撤销了：3条改回原样')
+    await expect(card(page)).toContainText('撤回了：3条改回原样')
 
     // 存在画布笔记的对话目录里（和画布笔记的 AI 对话同一种文件），对话菜单列得出
     const s = stored(root)
@@ -107,7 +107,7 @@ test('排进空着的时间：右栏开对话、日历上虚线框、去掉一�
     await openAi(page)
     await expect(panel(page).locator('.aim-h .ttl')).toHaveText('把这周的作业排进空着的时间')
     await expect(panel(page).locator('.aim-u')).toHaveText('把这周的作业排进空着的时间')
-    await expect(card(page)).toContainText('撤销了：3条改回原样')
+    await expect(card(page)).toContainText('撤回了：3条改回原样')
     // 新对话「+」：空的；对话菜单里点回刚才那一段
     await panel(page).getByRole('button', { name: '新对话' }).click()
     await expect(panel(page).locator('.aim-empty')).toBeVisible()
@@ -238,7 +238,7 @@ test('换一家只管这一段：画布笔记设置不动、新对话回到跟�
     // 谁来答：四家（装在哪）
     await p.getByRole('button', { name: '谁来答' }).click()
     const menu = p.locator('.aim-in .aim-menu')
-    await expect(menu.locator('.it .nm')).toHaveText(['Claude Code', 'Codex', 'Gemini', 'OpenCode'])
+    await expect(menu.locator('.it .nm')).toHaveText(['Claude Code', 'Codex', 'Gemini', 'OpenCode', 'Claude API', 'OpenAI API', 'DeepSeek API', 'OpenRouter API'])
     await expect(menu).toContainText('跟画布笔记 设置 › AI 里「AI对话」那一行；这里换的只管这一段')
     await menu.locator('.it', { hasText: 'Codex' }).click()
     await expect(menu).toHaveCount(0)

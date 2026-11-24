@@ -1,7 +1,7 @@
 /**
  * 梦游补双链的 AI 判断（task-h7oy8）：一篇笔记 A 带几篇候选 B 一起问一次，每对判成一档、给一句理由、两边各摘一句原文、给把握。
  * 软件逐字核对摘的原文真在笔记里，对不上的整条作废；过线（LINK_PASS）的提，差一点（LINK_ASK）的进「拿不准，你来定」。
- * 走订阅（claude -p）和本机模型（OpenAI 兼容接口）用同一份提示词。不依赖 Electron 和 Node，评测脚本（eval/dream-real）直接用。
+ * 走订阅的各家命令行（Claude Code、Codex）用同一份提示词。不依赖 Electron 和 Node，评测脚本（eval/dream-real）直接用。
  * 版本和每版改了什么记在 JUDGE_VERSION 旁边；改提示词要在真库评测（pnpm eval:dream-real）上重跑一遍再提交。
  */
 
@@ -21,16 +21,25 @@ export const JUDGE_VERSION = 'v2'
 
 /**
  * 判断默认用哪个模型（真库评测：用户 Obsidian 库 181 题、约 1000 对，设计页 42-梦游模型对比）。
- * 走订阅：Sonnet 5.5 · medium。和 Haiku low 准确率一样（约 97.5%），但更稳、「拿不准」少四成、每次 10 秒比 Haiku 的 16 秒还快。
+ * 走 Claude Code：Sonnet 5.5 · medium。和 Haiku low 准确率一样（约 97.5%），但更稳、「拿不准」少四成、每次 10 秒比 Haiku 的 16 秒还快。
  * 设置里可换 Sonnet high、Haiku low（省额度，线用 LINK_PASS_HAIKU）。
- * 本机模型（前 60 题，关了「想」）：Gemma 4 12B 准确率 64%、Qwen3.5-9B 50%，几乎每对都给 0.8 以上的把握、从不说拿不准，
- * 不能自动连：走本机时判成「同一主题」的全进「拿不准，你来定」（LOCAL_AUTO_LINK = false）。
+ * 走 Codex：GPT-6.1 Terra · medium（2026-11-23 同一批题、同一版提示词实测 5 种：Terra medium / high、Astra、Reserve、Luna）。
+ * OpenAI 这几个都比 Sonnet 松：判「同一主题」几乎都给 0.85 以上、很少说拿不准，0.8 的线上准确率 78% 到 84%；
+ * Terra 把线提到 0.95（LINK_PASS_CODEX）后 60 题上准确率 87%（Sonnet 同样 60 题 95%），每次 17 秒，是里面最快、最省的。
+ * 软件自己跑的本地模型试过（Gemma 4 12B 准确率 64%、Qwen3.5-9B 50%），2026-11-23 用户定去掉这条路。
  */
 export const JUDGE_DEFAULT = { engine: 'claude', model: 'sonnet', effort: 'medium' } as const
+/** 每一家的推荐（设置里换到这一家时默认选它）；没写的家用它自己的默认模型 */
+export const JUDGE_DEFAULTS: Readonly<Record<string, { model: string; effort: string }>> = {
+  claude: { model: JUDGE_DEFAULT.model, effort: JUDGE_DEFAULT.effort },
+  codex: { model: 'gpt-6.1-terra', effort: 'medium' },
+}
+/** 设置里那句说明写的 Codex 推荐（模型名不翻） */
+export const CODEX_PICK = 'GPT-6.1 Terra · Medium'
 /** Haiku 的把握偏乐观：用 Haiku 时「提」的线提到 0.85（错的 1 到 4 对 / 121 题，连的少三成） */
 export const LINK_PASS_HAIKU = 0.85
-/** 走本机模型时不自动连，过线的也只进「你来定」 */
-export const LOCAL_AUTO_LINK = false
+/** Codex（OpenAI 的模型）把握给得更满：线提到 0.95，过不了的进「拿不准，你来定」 */
+export const LINK_PASS_CODEX = 0.95
 
 export const JUDGE_SYSTEM = '你替一个人整理笔记库，判断两篇笔记之间值不值得加一条双链。只根据给你的原文判断，不编造。只输出 JSON。'
 

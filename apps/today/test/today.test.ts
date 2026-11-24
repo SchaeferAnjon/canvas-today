@@ -1,3 +1,4 @@
+import { GLASS_MAX } from '@cn/design/glass'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -24,6 +25,7 @@ function task(p: Partial<TaskView>): TaskView {
     doing: false,
     dupOf: null,
     dups: [],
+    minutes: null,
     date: null,
     time: null,
     remind: null,
@@ -156,5 +158,20 @@ describe('设置', () => {
     expect(normalizeToday(raw, 'zh').appearance).toMatchObject({ skin: 'mint', night: 'pine' })
     expect(lookFromNotes({ appearance: { followSystem: false, skin: 'vsc-monokai' } }, [mono]).skin).toBe('vsc-monokai')
     expect(lookFromNotes({ appearance: { followSystem: false, skin: 'vsc-monokai' } }).skin).toBe('mint')
+  })
+
+  it('主题渐变（task-aph2j）：和画布笔记同一套——渐变、浓淡、动不动、快慢；跟画布笔记时全照它；旧设置里的 A 当纯色', () => {
+    expect(normalizeToday({ appearance: { winBg: 'wall', wallMix: 'rich', wallMove: true, wallSpeed: 'fast' } }).appearance).toMatchObject({ winBg: 'wall', wallMix: 'rich', wallMove: true, wallSpeed: 'fast' })
+    expect(normalizeToday({ appearance: { wallMix: 'x', wallSpeed: 'y' } }).appearance).toMatchObject({ wallMix: 'mid', wallMove: true, wallSpeed: 'slow' })
+    expect(normalizeToday({ appearance: { frame: 'a', winBg: 'aurora' } }).appearance.winBg).toBe('none')
+    expect(lookFromNotes({ appearance: { frame: 'a', winBg: 'wall', wallMix: 'soft', wallMove: true, wallSpeed: 'mid' } })).toMatchObject({ frame: 'a', winBg: 'wall', wallMix: 'soft', wallMove: true, wallSpeed: 'mid' })
+  })
+
+  it('面板透明度（task-jgely）：自己的设置收到两头；跟画布笔记时用它的', () => {
+    expect(normalizeToday({}).appearance.glass).toBe(0)
+    expect(normalizeToday({ appearance: { glass: 6 } }).appearance.glass).toBe(6)
+    expect(normalizeToday({ appearance: { glass: 999 } }).appearance.glass).toBe(GLASS_MAX)
+    expect(lookFromNotes({ appearance: { glass: -4 } }).glass).toBe(-4)
+    expect(lookFromNotes({ appearance: { glass: 'x' } }).glass).toBe(0)
   })
 })

@@ -3,9 +3,11 @@
  * （格子不从头底下滚过去：宿主的面板半透明时头不用垫底色，也看不到下面滚过去的字）。
  * 今天那一列淡底和一道红色的现在线；待办块左边一道强调色，系统日程用它自己日历的颜色、带锁（只读，data-ev），
  * AI 排的是虚线框（ghosts；没有钟点的画在「全天」那一行）。叠在一起的块分几列并排。拖放目标：每一列 day:<日子>、「全天」每一格 allday:<日子>（model.ts parseDrop）
+ * 天数随 days 走（画布今日「排一天」右边只画今天一列，--cal-days）。给了 onResize 时待办块下沿能按住拖改多长（一刻钟一格，松手交给宿主写估时）
  */
-import { type CSSProperties, useEffect, useRef, useState } from 'react'
+import { type CSSProperties, type PointerEvent as RPointerEvent, useEffect, useRef, useState } from 'react'
 import { Codicon } from '@cn/design'
+import { trackDrag } from '@cn/design/drag-end'
 import { type ISODate, minutesOf, weekday } from '@cn/tasks'
 import { type CalEvent, type CalGhost, type CalItem, columns, DEFAULT_MINUTES, eventsOn, eventTime, itemSpan, itemsOn, type Span } from './model'
 import { CAL_TEXT, type CalLang } from './text'
@@ -29,6 +31,8 @@ export interface WeekGridProps {
   sel?: string | null
   /** 打开时滚到几点，默认 8 */
   startHour?: number
+  /** 拖块的下沿改多长（分钟，一刻钟一格、至少 15）：不给就不能拉 */
+  onResize?: (key: string, minutes: number) => void
 }
 
 const colStyle = (top: number, height: number, c: { col: number; cols: number } | undefined): CSSProperties =>
@@ -36,7 +40,7 @@ const colStyle = (top: number, height: number, c: { col: number; cols: number } 
 
 const hhmm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
 
-export function WeekGrid({ lang, days, today, nowMin, items, events = [], ghosts = [], sel = null, startHour = 8 }: WeekGridProps) {
+export function WeekGrid({ lang, days, today, nowMin, items, events = [], ghosts = [], sel = null, startHour = 8, onResize }: WeekGridProps) {
   const T = CAL_TEXT[lang]
   const root = useRef<HTMLDivElement>(null)
   const grid = useRef<HTMLDivElement>(null)
@@ -61,7 +65,7 @@ export function WeekGrid({ lang, days, today, nowMin, items, events = [], ghosts
     }
   }, [])
   return (
-    <div className="cal-wk" ref={root} data-part="周视图">
+    <div className="cal-wk" ref={root} data-part="周视图" style={{ '--cal-days': days.length } as CSSProperties}>
       <div className="cal-stick">
         <div className="cal-head">
           <div />
@@ -111,7 +115,7 @@ export function WeekGrid({ lang, days, today, nowMin, items, events = [], ghosts
             })}
           </div>
           {days.map((d) => (
-            <DayColumn key={d} lang={lang} d={d} today={today} nowMin={nowMin} items={items} events={events} ghosts={ghosts} sel={sel} />
+            <DayColumn key={d} lang={lang} d={d} today={today} nowMin={nowMin} items={items} events={events} ghosts={ghosts} sel={sel} onResize={onResize} />
           ))}
         </div>
       </div>
@@ -119,14 +123,36 @@ export function WeekGrid({ lang, days, today, nowMin, items, events = [], ghosts
   )
 }
 
-function DayColumn({ lang, d, today, nowMin, items, events, ghosts, sel }: { lang: CalLang; d: ISODate; today: ISODate; nowMin: number; items: readonly CalItem[]; events: readonly CalEvent[]; ghosts: readonly CalGhost[]; sel: string | null }) {
+function DayColumn({ lang, d, today, nowMin, items, events, ghosts, sel, onResize }: { lang: CalLang; d: ISODate; today: ISODate; nowMin: number; items: readonly CalItem[]; events: readonly CalEvent[]; ghosts: readonly CalGhost[]; sel: string | null; onResize?: (key: string, minutes: number) => void }) {
   const T = CAL_TEXT[lang]
+  /** 正在拉的那一块：拉到多少分钟（松手前只改样子） */
+  const [rs, setRs] = useState<{ key: string; minutes: number } | null>(null)
+  const startResize = (e: RPointerEvent, x: CalItem) => {
+    if (e.button !== 0 || !onResize) return
+    e.preventDefault()
+    e.stopPropagation()
+    const y0 = e.clientY
+    const m0 = x.minutes ?? DEFAULT_MINUTES
+    const at = (ev: PointerEvent) => Math.max(15, Math.min(1440 - minutesOf(x.time!), m0 + Math.round(((ev.clientY - y0) / HOUR) * 4) * 15))
+    setRs({ key: x.key, minutes: m0 })
+    trackDrag<PointerEvent>(e.nativeEvent, {
+      move: (ev) => setRs({ key: x.key, minutes: at(ev) }),
+      // 松手没送到页面（窗口外、失焦）：当没拉过
+      end: (how, ev) => {
+        setRs(null)
+        if (how === 'up' && ev) {
+          const m = at(ev)
+          if (m !== m0) onResize(x.key, m)
+        }
+      },
+    })
+  }
   const evs = eventsOn(events, d).timed
   const its = itemsOn(items, d).timed
   const gh = ghosts.filter((g) => g.date === d && g.time)
   const spans: Span[] = [
     ...evs.map((s) => ({ id: `e:${s.ev.id}`, from: s.from, to: s.to })),
-    ...its.map((x) => ({ id: `i:${x.key}`, ...itemSpan(x) })),
+    ...its.map((x) => ({ id: `i:${x.key}`, ...itemSpan(rs?.key === x.key ? { ...x, minutes: rs.minutes } : x) })),
     ...gh.map((g) => {
       const from = minutesOf(g.time)
       return { id: `g:${g.key}`, from, to: Math.min(1440, from + (g.minutes ?? DEFAULT_MINUTES)) }
@@ -153,11 +179,14 @@ function DayColumn({ lang, d, today, nowMin, items, events, ghosts, sel }: { lan
         </div>
       ))}
       {its.map((x) => {
-        const s = itemSpan(x)
+        const live = rs?.key === x.key ? { ...x, minutes: rs.minutes } : x
+        const s = itemSpan(live)
+        const tm = onResize ? `${x.time}–${hhmm(s.to % 1440)}` : x.time
         return (
-          <div key={x.key} className={`cal-blk${x.done ? ' done' : ''}${sel === x.key ? ' on' : ''}`} data-drag={x.key} style={colStyle(px(s.from), px(s.to - s.from) - 2, cols.get(`i:${x.key}`))}>
+          <div key={x.key} className={`cal-blk${x.done ? ' done' : ''}${sel === x.key ? ' on' : ''}${rs?.key === x.key ? ' rsz' : ''}`} data-drag={x.key} style={colStyle(px(s.from), px(s.to - s.from) - 2, cols.get(`i:${x.key}`))}>
             <div className="bt">{x.title}</div>
-            <div className="bm">{x.time + (x.note ? ' · ' + x.note : '')}</div>
+            <div className="bm">{tm + (x.note ? ' · ' + x.note : '')}</div>
+            {onResize && !x.done && <div className="cal-rs" data-rs={x.key} title={T.resize} onPointerDown={(e) => startResize(e, x)} />}
           </div>
         )
       })}

@@ -1,8 +1,10 @@
 /** 主进程和界面之间说的话（window.ct）。界面只拿到索引的样子，改文件一律交给主进程。 */
 import type { CalEvent } from '@cn/calendar'
 import type { EngineId } from '../../../notes/src/shared/agent'
+import type { ApiId } from '../../../notes/src/shared/ai-sources'
 import type { AiPick, ModelOption } from '../../../notes/src/shared/ai-features'
 import type { ChatInfo, TodayMsg } from './ai-chat'
+import type { CloseItem } from './plan'
 import type { FocusRecord, Habit, Prio, RingBy, When, WhenFields } from '@cn/tasks'
 import type { Lang } from './i18n'
 import type { TodayAppearance, TodaySettings } from './settings'
@@ -36,6 +38,8 @@ export interface TaskView {
   repeat: string | null
   prio: Prio
   doneDate: string | null
+  /** 估时（分钟）：那一行的「[估时:: 30分钟]」（排一天的时间块多长）；没写是 null */
+  minutes: number | null
   /**
    * 抄了好几遍的同一条（滴答同步抄进每天的日记，@cn/tasks dupes.ts）：只显示一份，文件不动。
    * 不显示的那几份这里是显示的那份的 key；显示的那份是 null，它的 dups 是另外几份的 key
@@ -106,6 +110,10 @@ export interface AppState {
 
 export type EditOp =
   | { op: 'done'; done: boolean }
+  /** 不做了：[-] 加 ❌ 今天（排一天「不做了」） */
+  | { op: 'cancel' }
+  /** 估时（分钟）；null 拿掉 */
+  | { op: 'minutes'; minutes: number | null }
   | { op: 'date'; date: string | null; time?: string | null }
   | { op: 'time'; time: string | null }
   | { op: 'remind'; remind: string | null }
@@ -196,9 +204,12 @@ export interface AiInfo {
   label: string
   /** 「Claude Code · Haiku」 */
   full: string
+  /** 要的那把 Key 画布今日还没有、画布笔记有（task-587os）：先问「用画布笔记那把？」 */
+  borrow?: ApiId
 }
 
-export type AiSplitResult = { ok: true; steps: string[] } | { ok: false; message: string; aborted?: boolean }
+/** borrow：要用的那把 Key 画布今日还没有、画布笔记有，先问一句再重来 */
+export type AiSplitResult = { ok: true; steps: string[] } | { ok: false; message: string; aborted?: boolean; borrow?: ApiId }
 
 /** AI 排好的一条（虚线框）：哪一条、哪天几点、多长 */
 export interface AiSlot {
@@ -209,7 +220,7 @@ export interface AiSlot {
   minutes: number
 }
 
-export type AiSchedResult = { ok: true; slots: AiSlot[]; candidates: number; events: number } | { ok: false; message: string; aborted?: boolean }
+export type AiSchedResult = { ok: true; slots: AiSlot[]; candidates: number; events: number } | { ok: false; message: string; aborted?: boolean; borrow?: ApiId }
 
 export type AiSchedAccept = { ok: true; undo: string; n: number } | { ok: false; reason: 'gone' | 'readonly' | 'failed'; message?: string }
 
@@ -336,6 +347,31 @@ export interface ImportPreview {
 
 export type ImportResult = { ok: true; undo: string; total: number; lists: number; rids: string[] } | { ok: false; message: string }
 
+// ---------- 排一天（shared/plan.ts、main/plan.ts、renderer/plan.tsx） ----------
+
+/** 这台设备今天排过没有、收工没有（只用来决定打开时停在哪一步） */
+export interface PlanState {
+  date: string
+  /** 早上那几步：走完了（点了「开工」）、跳过了、还没 */
+  morning: 'done' | 'skipped' | null
+  /** 收工写进了哪一篇日记；还没收工是 null */
+  closed: string | null
+}
+
+/** 日记放在哪（shared/plan.ts JournalPlace）；auto 是不看设置时自己认的那个，options 是设置里能挑的几种 */
+export interface JournalInfo {
+  pattern: string
+  how: 'chosen' | 'obsidian' | 'found' | 'default'
+  count: number
+  auto: { pattern: string; how: 'chosen' | 'obsidian' | 'found' | 'default'; count: number }
+  options: string[]
+  /** 今天那一篇的路径、已经有了没有 */
+  today: string
+  exists: boolean
+}
+
+export type CloseResult = { ok: true; path: string; undo: string; created: boolean } | { ok: false; message: string }
+
 /** 主进程要界面弹的提示条（带撤销的） */
 export interface Notice {
   msg: string
@@ -404,6 +440,12 @@ export interface CtApi {
   aiSchedule(job: string): Promise<AiSchedResult>
   aiScheduleAccept(slots: AiSlot[]): Promise<AiSchedAccept>
   aiCancel(job: string): Promise<void>
+  /** 用画布笔记那把 Key：同意后存一份到画布今日自己这里 */
+  aiBorrow(id: ApiId): Promise<{ ok: boolean; message?: string }>
+  /** 每一家画布今日自己有没有一份（后 4 位）、画布笔记有没有 */
+  aiKeys(): Promise<{ id: ApiId; tail: string | null; notes: boolean }[]>
+  /** 不用了：删掉画布今日自己存的那一份（画布笔记那份不动） */
+  aiKeyDrop(id: ApiId): Promise<void>
   /** 右栏 AI 对话：用哪家、看得到什么；对话列表；读一段；问一句（job 给 aiCancel 停下）；改动卡收下 / 不要 / 撤销了；这一段换家、模型、想多久（null 回到跟设置） */
   chatInfo(id: string): Promise<ChatInfoState>
   /** 画布笔记设置里「AI 对话」那一家（右图标栏 AI 一格画它的标志） */
@@ -492,6 +534,14 @@ export interface CtApi {
   calHide(id: string, hide: boolean): Promise<CalState>
   /** 左栏一个日历的右键：不在这里显示 / 在这里显示 · 全部显示（主进程弹系统菜单、点了就改） */
   calMenu(id: string): Promise<CalState>
+
+  // ---------- 排一天 ----------
+  planState(): Promise<PlanState>
+  planMark(p: Partial<Omit<PlanState, 'date'>>): Promise<PlanState>
+  /** 日记放在哪（照设置、Obsidian 日记插件、库里已有的认） */
+  journal(): Promise<JournalInfo>
+  /** 收工：那一节写进今天的日记 */
+  planClose(o: { time: string; items: CloseItem[]; focus: { n: number; minutes: number } }): Promise<CloseResult>
 }
 
 declare global {

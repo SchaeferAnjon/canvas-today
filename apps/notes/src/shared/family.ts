@@ -29,7 +29,8 @@ export interface CnFamilyApi {
   download(id: string): Promise<void>
   hub(): Promise<void>
   /** 库里这份 PDF 用 ParaRead 打开 */
-  readInParaRead(rel: string): Promise<void>
+  /** 用 ParaRead 打开库里这份 PDF（深链，翻到 page；back：从哪个文件夹首页来，ParaRead 回来时到那儿） */
+  readInParaRead(rel: string, o?: { page?: number; back?: string; view?: 'bilingual' | 'original' }): Promise<void>
   /** 库里的联动开关变了（画布今日拨了、Git 拉下来） */
   onLinks(f: (links: Record<string, boolean>) => void): () => void
   /** 从总站读来了新名单 */

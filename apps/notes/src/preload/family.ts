@@ -9,7 +9,7 @@ export const familyApi: CnFamilyApi = {
   open: (id) => ipcRenderer.invoke('family:open', id),
   download: (id) => ipcRenderer.invoke('family:download', id),
   hub: () => ipcRenderer.invoke('family:hub'),
-  readInParaRead: (rel) => ipcRenderer.invoke('family:readInParaRead', rel),
+  readInParaRead: (rel, o) => ipcRenderer.invoke('family:readInParaRead', rel, o),
   onLinks: (f) => {
     const h = (_e: unknown, links: Record<string, boolean>) => f(links)
     ipcRenderer.on('family:links', h)

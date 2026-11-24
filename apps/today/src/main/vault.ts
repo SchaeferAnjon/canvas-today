@@ -1,11 +1,13 @@
 /**
  * 库和索引：和画布笔记同一个库（一个文件夹，里面是 md），扫出所有「- [ ]」建一份索引（只在内存里，每次打开从库里重建）。
  * 外面改了（画布笔记里改、Git 拉下来）：监听整个库，那一篇停手 120ms 后重读，几百毫秒内界面就是新的。
- * 改文件一律走 change()：每篇排队、改之前重读一遍盘上的、先写临时文件再改名；写完马上更新索引，记一份撤销。
+ * 改文件一律走 change()：每篇排队、改之前重读一遍盘上的、原子写（@cn/atomic：临时文件、fsync、改名）；换上去前最后一刻再看一眼，
+ * 读完以后外面又改过就重读、重做这次改动，不盖掉外面的；写完马上更新索引，记一份撤销。
  * 不是合法 UTF-8 的、有单独 \r 的文件只读，不改（改了会把文件写坏）。
  */
 import { type FSWatcher, watch } from 'node:fs'
-import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, rm, stat } from 'node:fs/promises'
+import { atomicWrite, ChangedOutsideError, type FileStamp, readStamped } from '@cn/atomic'
 import { basename, dirname, join, relative, resolve, sep } from 'node:path'
 import { merge3 } from '@cn/format'
 import { type FileTask, type Habit, isHabitPath, keyOf, parseHabit, type RingBy, sameTasks, scanTasks } from '@cn/tasks'
@@ -52,7 +54,6 @@ export class TaskVault {
   private queues = new Map<string, Promise<unknown>>()
   private undos = new Map<string, { changes: Change[]; message: string }>()
   private undoSeq = 0
-  private tmpSeq = 0
   /** 索引变了（界面要刷新） */
   onChange: () => void = () => {}
   /** 提醒记录变了（别的设备的、Git 拉下来的） */
@@ -151,6 +152,7 @@ export class TaskVault {
           repeat: t.task.repeat,
           prio: t.task.prio,
           doneDate: t.task.doneDate,
+          minutes: t.task.minutes,
           parent: t.parent === null ? null : key(t.parent),
           subs: t.children.map(key),
           depth: t.depth,
@@ -176,14 +178,15 @@ export class TaskVault {
     return { version: this.version, tasks, notes, habits }
   }
 
-  /** 盘上这一篇现在的字（不在返回 null） */
-  async current(path: string): Promise<{ text: string; readOnly: boolean } | null> {
-    try {
-      return decode(await readFile(this.abs(path)))
-    } catch (e) {
-      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return null
-      throw e
-    }
+  /** 盘上这一篇现在的字（不在返回 null）；stamp 是读时的样子，写之前拿它比外面改没改过 */
+  async current(path: string): Promise<{ text: string; readOnly: boolean; stamp: FileStamp } | null> {
+    const r = await readStamped(this.abs(path))
+    return r ? { ...decode(r.bytes), stamp: r.stamp } : null
+  }
+
+  /** 库里所有 md 的路径（排一天找日记放在哪） */
+  paths(): string[] {
+    return [...this.files.keys()]
   }
 
   isReadOnly(path: string): boolean {
@@ -200,12 +203,14 @@ export class TaskVault {
    * 写完马上更新索引、记撤销、交给提交；返回撤销的编号（什么都没改是 null）
    */
   async change<R>(paths: string[], message: string, f: (now: Map<string, string | null>) => { out: Map<string, string | null>; result: R } | null): Promise<{ undo: string | null; result: R } | null> {
-    const run = async () => {
+    const run = async (tries = 0): Promise<{ undo: string | null; result: R } | null> => {
       const now = new Map<string, string | null>()
+      const stamps = new Map<string, FileStamp | null>()
       for (const p of paths) {
         const c = await this.current(p)
         if (c?.readOnly) throw new ReadOnlyError(p)
         now.set(p, c ? c.text : null)
+        stamps.set(p, c ? c.stamp : null)
       }
       const r = f(now)
       if (!r) return null
@@ -215,7 +220,16 @@ export class TaskVault {
         const after = r.out.has(p) ? r.out.get(p)! : before
         if (after !== before) changes.push({ path: p, before, after })
       }
-      for (const c of changes) await this.writeRaw(c.path, c.after)
+      for (const [i, c] of changes.entries()) {
+        try {
+          await this.writeRaw(c.path, c.after, stamps.get(c.path) ?? null)
+        } catch (e) {
+          // 读完以后外面（画布笔记、同步盘、Git）又改了这一篇：一篇都还没写时重读、照新的字重做一遍；
+          // 写了几篇以后才撞上的不重做（前面几篇已经改了，重做会改两遍），报错
+          if (e instanceof ChangedOutsideError && i === 0 && tries < 5) return run(tries + 1)
+          throw e
+        }
+      }
       if (!changes.length) return { undo: null, result: r.result }
       const id = `u${++this.undoSeq}`
       this.undos.set(id, { changes, message })
@@ -229,7 +243,7 @@ export class TaskVault {
     // 几篇一起改时排在每一篇的队尾（按名字排好，不会互相等死）
     const keys = [...new Set(paths)].sort()
     const prev = Promise.all(keys.map((k) => this.queues.get(k) ?? Promise.resolve()))
-    const next = prev.then(run, run)
+    const next = prev.then(() => run(), () => run())
     for (const k of keys) this.queues.set(k, next)
     next.then(
       () => keys.forEach((k) => this.queues.get(k) === next && this.queues.delete(k)),
@@ -238,17 +252,15 @@ export class TaskVault {
     return next
   }
 
-  /** 写一篇（null 是删掉）：先写临时文件再改名；写完更新索引 */
-  private async writeRaw(path: string, text: string | null) {
+  /** 写一篇（null 是删掉）：原子写，expect 是读时的样子（对不上抛 ChangedOutsideError，什么都不写）；写完更新索引 */
+  private async writeRaw(path: string, text: string | null, expect: FileStamp | null) {
     const p = this.abs(path)
     if (text === null) {
       await rm(p, { force: true })
       this.files.delete(path)
     } else {
       await mkdir(dirname(p), { recursive: true })
-      const tmp = `${p}.${process.pid}.${++this.tmpSeq}.tmp`
-      await writeFile(tmp, text)
-      await rename(tmp, p)
+      await atomicWrite(p, text, { expect })
       if (path.toLowerCase().endsWith('.md')) {
         const st = await stat(p)
         this.files.set(path, { path, mtimeMs: st.mtimeMs, text, readOnly: false, tasks: scanTasks(text), habit: isHabitPath(path) ? parseHabit(path, text) : null })

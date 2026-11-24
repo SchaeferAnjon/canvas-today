@@ -1,10 +1,11 @@
 /** 主进程和界面之间的接口，preload 按这个暴露成 window.cn */
 
-import type { LocalLlmStatus } from './local-models'
 import type { AutoApi } from './automation'
+import type { SourcesApi } from './sources'
 import type { AiAct, AiEvent, BridgeOp, ChatSide, EngineId, EngineInfo, SideTurnRequest, StoredMsg, TurnRequest, TurnResult } from './agent'
 import type { ChatSummary } from './ai-chats'
-import type { AiFeature, AiPick, AiPrefs } from './ai-features'
+import type { AiFeature, AiPick, AiPrefs, ModelOption } from './ai-features'
+import type { ApiId, LocalId } from './ai-sources'
 import type { AppSettings, SettingsPatch } from './appearance'
 import type { ThemeFile } from './vscode-theme'
 import type { HomeConfig } from './home'
@@ -143,6 +144,8 @@ export interface TrashItem {
   board?: string
   /** 删这一篇时连着删的图（同一次删的）：不单列，放回时一起回来 */
   with?: string[]
+  /** 这一条是同一次删的一组附件（path 和 with 在同一个附件文件夹）：原来属于哪篇（附件/<路径>/ → <路径>.md） */
+  attachOf?: string
 }
 
 /** 删掉前的样子：md 给全文；图片给 data: 网址；别的只说多大 */
@@ -269,11 +272,20 @@ export interface RelatedResult {
   notes: number
   /** 主进程算这一次用了几毫秒 */
   ms: number
+  /**
+   * 最上面那张「词条」卡（梦游 Wiki 那节 C1）：梦游建议过、这篇提到了的那个东西；page 是已经建好的词条页（卡换成那一页，点了打开）
+   */
+  entry?: { name: string; count: number; page?: string }
 }
 
-/** 相关栏里点了「连上 / 不相关 / 撤掉」：撤销时原样交回 */
+/** 相关栏里点了「连上 / 不相关 / 撤掉 / 建词条页」：撤销时原样交回 */
 export interface RelatedUndo {
-  kind: 'link' | 'unrelated' | 'unlink'
+  kind: 'link' | 'unrelated' | 'unlink' | 'entry'
+  /** 建词条页：新建的那一篇、加了块编号的那几篇，改前改后（新建的改前是 null） */
+  files?: { path: string; before: string | null; after: string }[]
+  /** 建词条页：提到它的字链过来的那几处（哪篇、哪几个字、那一句）；AI 拿不准、没改的那几处 */
+  linked?: { path: string; words: string; quote: string }[]
+  unsure?: { path: string; words: string; quote: string }[]
   /** 这篇和那篇 */
   a: string
   b: string
@@ -374,6 +386,10 @@ export interface CnApi {
   relatedUnrelated(path: string, other: string): Promise<RelatedUndo>
   relatedUnlink(path: string, other: string, src: { path: string; line: number }): Promise<RelatedUndo>
   relatedUndo(u: RelatedUndo): Promise<void>
+  /** 建词条页（梦游建议的那个东西，from 是点它时开着的那篇）：AI 起草、要嵌的段加块编号、一次提交；返回撤销用的 */
+  relatedEntry(name: string, from: string): Promise<RelatedUndo>
+  /** 这个东西不要建词条页（以后不再建议） */
+  relatedEntryNo(name: string): Promise<void>
   /** 梦游给这篇连了新的、还没在相关栏里看过：右图标栏「相关」那格右上一个小点 */
   relatedDot(path: string): Promise<boolean>
   relatedSeen(path: string): Promise<void>
@@ -397,6 +413,8 @@ export interface CnApi {
   aiColNotes(paths: string[]): Promise<Record<string, string>>
   /** 自动化（当……就……、按钮列、周记，task-i921u）：契约在 shared/automation.ts */
   auto: AutoApi
+  /** 同步来源（设置 › 库 › 同步来源，设计页 61） */
+  sources: SourcesApi
   search(q: string): Promise<SearchHit[]>
   /** 置顶的笔记（库里 .canvas-notes/置顶.json），按置顶的先后 */
   pins(): Promise<string[]>
@@ -473,7 +491,7 @@ export interface CnApi {
   /** own：软件自己挪的（梦游收下、撤回），不是在外面改的 */
   onNoteRenamed(cb: (from: string, to: string, own: boolean) => void): () => void
   /** canvas-notes://open?file=<笔记>.md&line=N（画布今日「打开笔记，到这一行」）：打开这一篇、到第 N 行 */
-  onOpenNoteAt(cb: (a: { file: string; line?: number }) => void): () => void
+  onOpenNoteAt(cb: (a: { file: string; line?: number; folder?: boolean }) => void): () => void
   /** 文件增删 */
   onFilesChanged(cb: () => void): () => void
   updateStatus(): Promise<UpdateState>
@@ -498,7 +516,27 @@ export interface CnApi {
    * chat 是 {哪家, 模型, effort}（effort 没设过是 high），label 是回答头上写的「Claude Code · Opus 5.5 · High」。
    * again：「重新找一遍」（重新取登录 shell 的 PATH、每家重新跑 --version、Codex 重新问模型列表，跑完再答）
    */
-  aiEngines(again?: boolean): Promise<{ engines: EngineInfo[]; current: EngineId; label: string; chat: AiPick; omni: boolean }>
+  /**
+   * none：这台 Mac 上一个能用的都没有（没命令行、没 Key、本机模型没开），AI 栏第一次打开就是三选一卡（task-587os）；
+   * intro：第一次开 AI、第一次梦游前那一句说明看过没有
+   */
+  aiEngines(again?: boolean): Promise<{ engines: EngineInfo[]; current: EngineId; label: string; chat: AiPick; omni: boolean; none: boolean; intro: { ai: boolean; dream: boolean } }>
+  /** 填一把 API Key：先验（列模型，不花钱），认了才存进钥匙串；不认回一句人话 */
+  aiKeySet(id: ApiId, key: string): Promise<{ ok: true; models: ModelOption[] } | { ok: false; error: string }>
+  aiKeyRemove(id: ApiId): Promise<void>
+  /** 本机模型（Ollama、LM Studio）开没开、有哪些模型；again：再找一遍 */
+  aiLocal(again?: boolean): Promise<{ id: LocalId; on: boolean; models: { id: string; size?: number }[] }[]>
+  /** 接上一家：以后默认用它（AI 对话跟默认，小活用它便宜的那个） */
+  aiConnect(pick: AiPick): Promise<void>
+  /** 那一句说明看过了 */
+  aiIntroSeen(what: 'ai' | 'dream'): Promise<void>
+  /** 上手卡的链接：拿 Key 的页面（api）、本机模型的官网（local） */
+  aiOpenPage(id: ApiId | LocalId): Promise<void>
+  /** 装 Claude Code（官方安装命令，输出一行行从 onAiCcLine 来） */
+  aiCcInstall(): Promise<{ ok: true } | { ok: false; error: string }>
+  onAiCcLine(cb: (line: string) => void): () => void
+  /** 登录 Claude Code：打开浏览器，等它登好 */
+  aiCcLogin(): Promise<{ ok: boolean; error?: string }>
   /**
    * 全能模式（2026-11-19，默认开）：开着时 AI 能读写这台 Mac 上的文件、跑命令、上网、开子 Agent，不停下来问；关着只在库里动手。
    * AI 对话和读 PDF 共用，记在软件设置目录；开着的 AI 面板收到 onAiPrefsChanged
@@ -560,6 +598,10 @@ export interface CnApi {
   stopDuplicates(): Promise<void>
   /** 梦游：最近一份报告，没梦游过是 null */
   dreamReport(): Promise<DreamReport | null>
+  /** 这个库怎么分（设置 › 梦游，task-h7oy8）：文件里的加上新文件夹的推断；fresh 是不看文件、重新认一遍（还没存） */
+  dreamRoles(fresh?: boolean): Promise<import('./vault-roles').RolesView>
+  /** 「确认」：写进 .canvas-notes/梦游.md（带今天的日期），一次提交 */
+  dreamRolesSave(rows: import('./vault-roles').RoleRow[]): Promise<import('./vault-roles').RolesView>
   /** 现在梦游（不等闲时），跑完返回新报告；正在跑时等它跑完（AI 的 /现在梦游 调它，参数是 { webUrl }，用不上） */
   /** pick：AI 输入框里打 /现在梦游 时输入框底行选的（不给照设置 › AI「梦游」那一行） */
   dreamNow(arg?: { webUrl: string | null; pick?: AiAskOpts['pick'] }): Promise<DreamReport>
@@ -583,23 +625,21 @@ export interface CnApi {
   diffFiles(src: DiffSource): Promise<DiffResult>
   /** 梦游开始、跑完、报告变了 */
   onDream(cb: (report: DreamReport | null, running: boolean) => void): () => void
-  /** 本地模型（梦游判断的另一条路，task-h7oy8）：选的哪个、下好没有、下到哪了 */
-  llmStatus(): Promise<LocalLlmStatus>
-  /** 下载（不给 id 下选着的；给了先选上它）：下好、取消、出错都回最后的状态，不报错；进度走 onLlm */
-  llmDownload(id?: string): Promise<LocalLlmStatus>
-  /** 停下正在下的（已下的留着，下次接着下） */
-  llmCancel(): Promise<void>
-  /** 换模型（LOCAL_MODELS 的 id） */
-  llmSetModel(id: string): Promise<LocalLlmStatus>
-  /** 「在访达中显示」放模型的文件夹（下好了选中那个文件） */
-  llmReveal(): Promise<void>
-  /** 状态变了（下载进度一秒最多五次） */
-  onLlm(cb: (s: LocalLlmStatus) => void): () => void
   /** 找候选用的本机模型：现在用哪个、bge-m3 下到哪、索引建到哪（设置 › 梦游那一行） */
   embedStatus(): Promise<EmbedModelStatus>
   onEmbed(cb: (s: EmbedModelStatus) => void): () => void
   /** bge-m3 没下成时「重试」（续着下，已下的那截不丢） */
   embedRetry(): Promise<void>
+  /** 生长图的数据（task-h7oy8）：库变了先给上次算好的、building 是 true，后台算完推 onGrowth */
+  growthData(): Promise<GrowthState>
+  onGrowth(cb: (s: GrowthState) => void): () => void
+}
+
+/** 生长图：算好的数据（还没算过是 null）、是不是正在后台算、上次没算成的原因 */
+export interface GrowthState {
+  data: import('./growth').GrowthData | null
+  building: boolean
+  error: string | null
 }
 
 /** 找重复的一对：a、b 是相对路径，score 是 0 到 1 的相似度，why 是一句人话 */
@@ -613,7 +653,7 @@ export interface DuplicatePair {
 /** file：归类和改名（收件箱里的挪进课程、项目、生活、写作、素材，顺手起好名字） */
 /** viz：今天卡得最久的几处做的可视化（新的 HTML，挂到读 PDF 笔记那一段） */
 /** unsure：AI 拿不准的一对（把握 0.5 到 0.75），你来定连不连；recheck：已经收下的旧「相关：」行复查下来判成不相关，建议去掉（task-h7oy8） */
-export type DreamGroup = 'attach' | 'file' | 'viz' | 'link' | 'unsure' | 'recheck' | 'dup' | 'week'
+export type DreamGroup = 'attach' | 'file' | 'viz' | 'link' | 'unsure' | 'recheck' | 'dup' | 'week' | 'alias' | 'entry'
 
 export interface DreamItem {
   id: string
@@ -653,6 +693,19 @@ export interface DreamItem {
     a: { path: string; quote: string }
     b: { path: string; quote: string }
   }
+  /**
+   * 梦游 Wiki 化（task-h7oy8，设计页 24-梦游底层 W 节）：这一条把 A 里一行的哪几个字链到哪（整篇 / 那一节 / 那一段），
+   * 链到一段时 B 那段行尾加的块编号（收下时 B 里没有就补上：同一段被两条用到、只收了后一条时）
+   */
+  wiki?: {
+    /** quote：A 里这一处所在的那一句；quoteB：B 那边的原话（软件核对过） */
+    links: { words: string; path: string; level: 'note' | 'heading' | 'block'; anchor: string; confidence: number; why: string; quote?: string; quoteB?: string }[]
+    blocks: { path: string; id: string; snippet: string }[]
+  }
+  /** 建议给这篇加别名（D1）：这几个写法在别的笔记里指的都是它 */
+  alias?: { path: string; names: string[] }
+  /** 建议建词条页（C1）：库里几篇提到它、还没有讲它的一篇；只是建议，没有提交，点了才建 */
+  entry?: { name: string; count: number; notes: string[] }
   /** 老图挪进各篇自己的附件文件夹：每张从哪到哪、不挪的和原因、改了几处链接（预览标签按笔记分组列出来） */
   oldImages?: {
     moves: { from: string; to: string; note: string; section: string }[]
@@ -679,14 +732,20 @@ export interface DreamReport {
   closed: boolean
   /** 收件箱里 AI 拿不准、留着不动的条数 */
   stay?: number
+  /** 拿不准的那几条和 AI 说的为什么（task-h7oy8） */
+  stayWhy?: { path: string; why: string }[]
+  /** 这次照的分法（task-h7oy8，.canvas-notes/梦游.md）：guess 是没确认过、有文件夹是猜的（报告摘要提示一句） */
+  roles?: { guess: boolean; guessed: string[] }
   /** 设置里选了「改完直接收下」：梦游完直接收下的那次提交（报告顶上能一键撤回） */
   autoTaken?: string
   /** 这晚 AI 判断补双链的账（task-h7oy8）：谁判的、问了几次、判了几篇、几篇用的是以前判过的结果、还剩几篇下一晚接着 */
   judge?: DreamJudgeStats
+  /** 这晚 Wiki 化的账：问了几次、几篇用的以前的结果、还剩几篇、链上几处、拿不准几处、作废几处、建议几个词条页和别名、向量那一路用的哪个模型 */
+  wiki?: { asked: number; cached: number; left: number; link: number; unsure: number; voided: number; skipped: number; entries: number; aliases: number; vec: string | null; failed: number }
 }
 
 export interface DreamJudgeStats {
-  /** 「Claude Code · Haiku」「本地模型 · Qwen3 4B」 */
+  /** 「Claude Code · Sonnet」「Codex · GPT-6.1 Terra」 */
   by: string
   /** 找候选用了哪几路：关键词、向量（模型名）、标题 */
   sources: string[]

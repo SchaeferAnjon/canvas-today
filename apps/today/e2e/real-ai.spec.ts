@@ -35,7 +35,7 @@ test('真的 Claude Code：拆成小步、排进空着的时间，收下写进�
     t0 = Date.now()
     await page.getByRole('button', { name: '帮我排进空着的时间' }).click()
     const bar = page.locator('.aibar')
-    await expect(bar.getByRole('button', { name: '收下' }).or(bar.getByRole('button', { name: '再试一次' })).or(bar.getByRole('button', { name: '关闭' }))).toBeVisible({ timeout: 180_000 })
+    await expect(bar.getByRole('button', { name: '收下' }).or(bar.getByRole('button', { name: '再试一次' })).or(bar.getByRole('button', { name: '关上' }))).toBeVisible({ timeout: 180_000 })
     console.log(`[真 AI] 排空档 ${((Date.now() - t0) / 1000).toFixed(1)} 秒：${await bar.innerText()}`)
     const ghosts = await page.locator('.cal-blk.ghost').allInnerTexts()
     console.log(`[真 AI] 虚线框：${JSON.stringify(ghosts)}`)

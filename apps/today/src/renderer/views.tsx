@@ -6,6 +6,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { CalBar, type CalMode, daysFrom, hasEvents, MiniMonth, MonthGrid, monthWeeks, shiftMonth, useWhenInput, WeekGrid } from '@cn/calendar'
 import { parseQuick, type Quick, weekday } from '@cn/tasks'
 import type { AddCtx, AiSlot, Snapshot, TaskView } from '../shared/api'
+import { type ApiId, PROVIDER_NAME } from '../../../notes/src/shared/ai-sources'
 import { INBOX_NOTE } from '../shared/brand'
 import { repeatLabel, tr } from '../shared/i18n'
 import { calItems, cntToday, type Group, groupsOf, type Nav, open, quadOf } from '../shared/views'
@@ -15,6 +16,8 @@ import { prioText, usePreview } from './ai-preview'
 import type { PlanChange } from '../shared/ai-chat'
 import { nowLocal, refreshAi, useCalEvents, useData, useLang } from './store'
 import { Check, EngineLogo, Ic, useT } from './ui'
+import { ChangeBar } from '@cn/design/answer-bar'
+import '@cn/design/answer-bar.css'
 
 /** 一篇笔记在界面上叫什么：收件箱那篇叫「收件箱/待办」（照原型），别的是文件名 */
 export function noteLabel(path: string): string {
@@ -525,7 +528,7 @@ function AiSplit({ x }: { x: TaskView }) {
   const a = useActions()
   const t = useT()
   const { ai } = useData()
-  const [st, setSt] = useState<{ key: string; job: string; phase: 'think' | 'done' | 'error'; steps?: string[]; msg?: string } | null>(null)
+  const [st, setSt] = useState<{ key: string; job: string; phase: 'think' | 'done' | 'error' | 'borrow'; steps?: string[]; msg?: string; borrow?: ApiId } | null>(null)
   const cur = st && st.key === x.key ? st : null
   const label = ai?.label ?? 'Claude Code'
   const close = () => {
@@ -543,8 +546,14 @@ function AiSplit({ x }: { x: TaskView }) {
     const job = `split-${x.key}-${Date.now()}`
     setSt({ key: x.key, job, phase: 'think' })
     const r = await window.ct.aiSplit(x.key, job)
-    setSt((s) => (s?.job !== job ? s : r.ok ? { ...s, phase: 'done', steps: r.steps } : r.aborted ? null : { ...s, phase: 'error', msg: r.message }))
+    setSt((s) => (s?.job !== job ? s : r.ok ? { ...s, phase: 'done', steps: r.steps } : r.aborted ? null : r.borrow ? { ...s, phase: 'borrow', borrow: r.borrow } : { ...s, phase: 'error', msg: r.message }))
   }
+  if (cur?.phase === 'borrow')
+    return (
+      <div className="ai" data-part="AI 帮忙">
+        <BorrowAsk id={cur.borrow!} onYes={() => void run()} onNo={close} onFail={(m) => setSt({ ...cur, phase: 'error', msg: m })} />
+      </div>
+    )
   if (!cur)
     return (
       <button className="btn sm aisplit" disabled={x.done || x.cancelled} onClick={() => void run()}>
@@ -577,23 +586,26 @@ function AiSplit({ x }: { x: TaskView }) {
             {s}
           </div>
         ))}
-      {cur.phase !== 'think' && (
+      {/* 收不收那一套（task-eavzx，和画布笔记同一个组件）：不要（无边框）· 收下（实心）；收下后底部提示里是撤回 */}
+      {cur.phase === 'done' && (
+        <ChangeBar
+          testId="ai-split-bar"
+          reject={{ label: t('aiReject'), onClick: close }}
+          accept={{
+            label: t('aiAccept'),
+            onClick: () => {
+              a.aiSplitAccept(x, cur.steps!)
+              setSt(null)
+            },
+          }}
+          solid
+        />
+      )}
+      {cur.phase === 'error' && (
         <div className="row2">
-          {cur.phase === 'done' ? (
-            <button
-              className="btn pri sm"
-              onClick={() => {
-                a.aiSplitAccept(x, cur.steps!)
-                setSt(null)
-              }}
-            >
-              {t('aiAccept')}
-            </button>
-          ) : (
-            <button className="btn sm" onClick={() => void run()}>
-              {t('aiRetry')}
-            </button>
-          )}
+          <button className="btn sm" onClick={() => void run()}>
+            {t('aiRetry')}
+          </button>
           <button className="btn ghost sm" onClick={close}>
             {t('aiReject')}
           </button>
@@ -698,7 +710,44 @@ export function CalendarView({ snap, today, sel, mode, anchor, nowMin, onMode, o
   )
 }
 
-type SchedState = { job: string; phase: 'think' } | { job: string; phase: 'done'; slots: AiSlot[]; candidates: number } | { job: string; phase: 'error'; msg: string }
+type SchedState = { job: string; phase: 'think' } | { job: string; phase: 'done'; slots: AiSlot[]; candidates: number } | { job: string; phase: 'error'; msg: string } | { job: string; phase: 'borrow'; borrow: ApiId }
+
+/**
+ * 要用的那把 Key 画布今日还没有、画布笔记有（task-587os，设计页第 4 节）：问一句「用画布笔记里存的 Anthropic Key？」，
+ * 用它：存一份到画布今日自己的钥匙串项，再问一次；不用：收起
+ */
+function BorrowAsk({ id, onYes, onNo, onFail }: { id: ApiId; onYes(): void; onNo(): void; onFail(msg: string): void }) {
+  const t = useT()
+  const [busy, setBusy] = useState(false)
+  return (
+    <div className="ai-borrow" data-testid="ai-borrow">
+      <div className="ah">
+        <EngineLogo id={id} s={14} />
+        <b>{t('aiBorrowAsk', PROVIDER_NAME[id])}</b>
+      </div>
+      <div className="sub">{t('aiBorrowSub')}</div>
+      <div className="row2">
+        <button
+          className="btn pri sm"
+          disabled={busy}
+          onClick={() => {
+            setBusy(true)
+            void window.ct.aiBorrow(id).then((r) => {
+              setBusy(false)
+              if (r.ok) onYes()
+              else onFail(t('aiBorrowFail', r.message ?? ''))
+            })
+          }}
+        >
+          {t('aiBorrowYes')}
+        </button>
+        <button className="btn ghost sm" onClick={onNo}>
+          {t('aiBorrowNo')}
+        </button>
+      </div>
+    </div>
+  )
+}
 
 /** 日历「帮我排进空着的时间」那一问：想着、排好了（虚线框）、出错；esc 收起 */
 function useAiSchedule() {
@@ -720,7 +769,7 @@ function useAiSchedule() {
     const job = `sched-${Date.now()}`
     setSt({ job, phase: 'think' })
     const r = await window.ct.aiSchedule(job)
-    setSt((s) => (s?.job !== job ? s : r.ok ? { job, phase: 'done', slots: r.slots, candidates: r.candidates } : r.aborted ? null : { job, phase: 'error', msg: r.message }))
+    setSt((s) => (s?.job !== job ? s : r.ok ? { job, phase: 'done', slots: r.slots, candidates: r.candidates } : r.aborted ? null : r.borrow ? { job, phase: 'borrow', borrow: r.borrow } : { job, phase: 'error', msg: r.message }))
   }
   return {
     st,
@@ -740,6 +789,12 @@ function useAiSchedule() {
 function AiSchedBar({ sched, calOn }: { sched: ReturnType<typeof useAiSchedule>; calOn: boolean }) {
   const t = useT()
   const st = sched.st!
+  if (st.phase === 'borrow')
+    return (
+      <div className="aibar" data-part="AI 帮忙">
+        <BorrowAsk id={st.borrow} onYes={sched.run} onNo={sched.close} onFail={sched.close} />
+      </div>
+    )
   return (
     <div className="aibar" data-part="AI 帮忙">
       <EngineLogo id={sched.engine} s={14} />
@@ -755,12 +810,8 @@ function AiSchedBar({ sched, calOn }: { sched: ReturnType<typeof useAiSchedule>;
             <b>{t('aiSchedDone', st.slots.length)}</b> {t('aiSchedDoneSub', calOn)}
           </span>
           <span className="sp" />
-          <button className="btn pri sm" onClick={sched.accept}>
-            {t('aiAccept')}
-          </button>
-          <button className="btn ghost sm" onClick={sched.close}>
-            {t('aiReject')}
-          </button>
+          {/* 收不收那一套（task-eavzx）：不要（无边框）· 收下（实心） */}
+          <ChangeBar testId="ai-sched-bar" reject={{ label: t('aiReject'), onClick: sched.close }} accept={{ label: t('aiAccept'), onClick: sched.accept }} solid />
         </>
       )}
       {st.phase === 'done' && !st.slots.length && (
@@ -768,7 +819,7 @@ function AiSchedBar({ sched, calOn }: { sched: ReturnType<typeof useAiSchedule>;
           <span>{st.candidates ? t('aiSchedFull') : t('aiSchedNone')}</span>
           <span className="sp" />
           <button className="btn ghost sm" onClick={sched.close}>
-            {t('close')}
+            {t('aiShut')}
           </button>
         </>
       )}

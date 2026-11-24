@@ -4,6 +4,7 @@
  * 翻译另有自己的一串顺序（设置 › 插件 › 双语翻译），不在这里存。
  */
 import type { EngineId, EngineInfo } from './agent'
+import { ANTHROPIC_EFFORTS, API_DEFAULT, canSeeImages, isApi, isEngineId, isLocal, SOURCE_LABEL } from './ai-sources'
 
 /**
  * 跟着这里走的功能：AI 对话（浮窗、边读边问、/ 命令）、梦游（整理、周记、可视化）、看图问（视频框一块问、拍导图）、小活（视频摘要、起名、插件快问）、
@@ -61,7 +62,7 @@ const CODEX_EFFORTS = ['low', 'medium', 'high'].map(effortOption)
  * 没选过 effort 时也给一档（High）的两家：Claude Code、Codex 的模型都认 effort。
  * Gemini、OpenCode 看拉到的模型（task-m55m7）：OpenCode 的模型带它自己那几档（variants），选了才传；Gemini 没有
  */
-export const hasEffort = (e: EngineId) => e === 'claude' || e === 'codex'
+export const hasEffort = (e: EngineId) => e === 'claude' || e === 'codex' || e === 'anthropic'
 
 /** 输入框底行模型菜单里的一项：id 是命令行认的；空串是这家自己的默认模型（不传 --model） */
 export interface ModelOption {
@@ -91,7 +92,7 @@ export interface AiPrefs {
   features: Partial<Record<AiFeature, AiPick>>
 }
 
-export const ENGINE_LABEL: Record<EngineId, string> = { claude: 'Claude Code', codex: 'Codex', gemini: 'Gemini', opencode: 'OpenCode' }
+export const ENGINE_LABEL: Record<EngineId, string> = { claude: 'Claude Code', codex: 'Codex', gemini: 'Gemini', opencode: 'OpenCode', ...SOURCE_LABEL }
 
 /** Claude Code 能选的模型：名字是 claude 命令行的 --model 认的 */
 export const CLAUDE_MODELS: { id: string; label: string }[] = [
@@ -101,6 +102,16 @@ export const CLAUDE_MODELS: { id: string; label: string }[] = [
 ]
 export const CLAUDE_DEFAULT = 'claude-opus-5-5'
 
+/** Anthropic 接口的几档：名字、旁注和 Claude Code 的同一套 */
+export const API_EFFORTS: EffortOption[] = ANTHROPIC_EFFORTS.map(effortOption)
+/** Claude API 还没拉到模型列表时用的（接口的型号，没有别名） */
+export const ANTHROPIC_MODELS: ModelOption[] = [
+  { id: 'claude-sonnet-5-5', label: 'Sonnet 5.5', efforts: API_EFFORTS, defaultEffort: 'high' },
+  { id: 'claude-haiku-5-5', label: 'Haiku 5.5', efforts: API_EFFORTS, defaultEffort: 'medium' },
+  { id: 'claude-opus-5-5', label: 'Opus 5.5', efforts: API_EFFORTS, defaultEffort: 'medium' },
+]
+export const ANTHROPIC_DEFAULT = 'claude-sonnet-5-5'
+
 /**
  * 每家能选的模型（CN-91，task-m55m7 起从命令行拉，pulled 是拉到的），第一项是这家的默认：
  * Claude Code 拉到了就是它报的那几个（别名 opus / sonnet / haiku… 和具体型号，各自那几档），没拉到用自带的三个、各五档；
@@ -109,6 +120,12 @@ export const CLAUDE_DEFAULT = 'claude-opus-5-5'
  */
 export function modelsOf(engine: EngineId, pulled: ModelOption[] = []): ModelOption[] {
   if (engine === 'claude') return pulled.length ? pulled : CLAUDE_MODELS.map((m) => ({ ...m, efforts: CLAUDE_EFFORTS }))
+  // API Key、本机模型（task-587os）：验 Key、找本机模型时拉到的；还没拉到时 Anthropic 给自带的三个，别家给推荐的那个
+  if (isApi(engine) || isLocal(engine)) {
+    if (pulled.length) return pulled
+    if (engine === 'anthropic') return ANTHROPIC_MODELS
+    return isApi(engine) ? [{ id: API_DEFAULT[engine].chat[0]!, label: API_DEFAULT[engine].chat[0]!, efforts: [] }] : [{ id: '', label: `${ENGINE_LABEL[engine]} 默认模型`, efforts: [] }]
+  }
   if (engine !== 'codex') return [{ id: '', label: `${ENGINE_LABEL[engine]} 默认模型`, efforts: [] }, ...pulled]
   const def = pulled[0]
   return [{ id: '', label: 'Codex 默认模型', efforts: def?.efforts ?? CODEX_EFFORTS, ...(def?.defaultEffort ? { defaultEffort: def.defaultEffort } : {}) }, ...pulled]
@@ -122,12 +139,14 @@ export function modelsOf(engine: EngineId, pulled: ModelOption[] = []): ModelOpt
 export function fitPick(engine: EngineId, models: ModelOption[], want: { model?: string; effort?: string }): AiPick {
   let model = want.model ?? ''
   if (engine === 'claude') model ||= CLAUDE_DEFAULT
+  // API Key、本机模型没有「这家自己的默认模型」：没选用列表里第一个（接上时把推荐的排在第一）
+  if (isApi(engine) || isLocal(engine)) model ||= models[0]?.id ?? ''
   const option = findModel(models, model)
   if (!hasEffort(engine)) {
     const effort = want.effort && option?.efforts.some((e) => e.id === want.effort) ? want.effort : undefined
     return { engine, ...(model ? { model } : {}), ...(effort ? { effort } : {}) }
   }
-  const efforts = option?.efforts ?? (engine === 'claude' ? CLAUDE_EFFORTS : [])
+  const efforts = option?.efforts ?? (engine === 'claude' ? CLAUDE_EFFORTS : engine === 'anthropic' ? API_EFFORTS : [])
   // 拉到的这个模型明说不认 effort（Claude Code 的 Haiku 4.5）：不带
   if (option && !efforts.length && models.some((m) => m.efforts.length)) return { engine, ...(model ? { model } : {}) }
   let effort = want.effort ?? DEFAULT_EFFORT
@@ -155,8 +174,7 @@ export function convPick(engines: EngineInfo[], chat: AiPick, own?: AiPick | nul
 /** 从没设过时：都跟默认，只有小活用 Claude Code 的 Haiku（快、便宜，一次问很多遍） */
 export const INITIAL_PREFS: AiPrefs = { default: { engine: 'claude', model: CLAUDE_DEFAULT }, features: { quick: { engine: 'claude', model: 'haiku' } } }
 
-const ENGINES: EngineId[] = ['claude', 'codex', 'gemini', 'opencode']
-const isEngine = (x: unknown): x is EngineId => typeof x === 'string' && (ENGINES as string[]).includes(x)
+const isEngine = isEngineId
 
 /**
  * 存的东西读回来：不认识的丢掉；模型四家都留（task-m55m7 起 Gemini、OpenCode 也能选模型），写法不对的丢掉；
@@ -167,7 +185,7 @@ export function normalizePick(x: unknown): AiPick | null {
   const o = x as { engine?: unknown; model?: unknown; effort?: unknown }
   if (!isEngine(o.engine)) return null
   const model = typeof o.model === 'string' && o.model.trim() && MODEL_ID.test(o.model.trim()) ? o.model.trim() : undefined
-  const effort = typeof o.effort === 'string' && /^[a-z]{1,20}$/.test(o.effort) && (o.engine !== 'claude' || CLAUDE_EFFORTS.some((e) => e.id === o.effort)) ? o.effort : undefined
+  const effort = typeof o.effort === 'string' && /^[a-z]{1,20}$/.test(o.effort) && ((o.engine !== 'claude' && o.engine !== 'anthropic') || CLAUDE_EFFORTS.some((e) => e.id === o.effort)) ? o.effort : undefined
   if (o.engine === 'claude') return { engine: 'claude', model: model ?? CLAUDE_DEFAULT, ...(effort ? { effort } : {}) }
   return { engine: o.engine, ...(model ? { model } : {}), ...(effort ? { effort } : {}) }
 }
@@ -184,11 +202,14 @@ export function normalizePrefs(x: unknown, legacyEngine?: EngineId): AiPrefs {
   return { default: def, features }
 }
 
-/** 这个功能真的用哪家哪个模型。看图问只有 Claude Code 能做：默认不是它时用 Claude Code 的默认模型 */
+/**
+ * 这个功能真的用哪家哪个模型。看图问：Claude Code、Claude API、OpenAI API 能看图（task-587os），
+ * 默认那家不能看图时用 Claude Code 的默认模型
+ */
 export function resolvePick(p: AiPrefs, feature: AiFeature): AiPick {
   const own = p.features[feature]
   const pick = own ?? p.default
-  if (feature === 'vision' && pick.engine !== 'claude') return { engine: 'claude', model: CLAUDE_DEFAULT }
+  if (feature === 'vision' && !canSeeImages(pick.engine)) return { engine: 'claude', model: CLAUDE_DEFAULT }
   return pick
 }
 
@@ -204,7 +225,7 @@ export function modelLabel(engine: EngineId, id: string, models: readonly ModelO
 export function pickLabel(p: AiPick, models: readonly ModelOption[] = []): string {
   const parts = [ENGINE_LABEL[p.engine]]
   if (p.engine === 'claude') parts.push(modelLabel('claude', p.model ?? CLAUDE_DEFAULT, models))
-  else if (p.model) parts.push(modelLabel(p.engine, p.model, models))
+  else if (p.model) parts.push(modelLabel(p.engine, p.model, p.engine === 'anthropic' && !models.length ? ANTHROPIC_MODELS : models))
   if (p.effort && (hasEffort(p.engine) || findModel(models, p.model ?? '')?.efforts.some((e) => e.id === p.effort))) parts.push(effortOption(p.effort).label)
   return parts.join(' · ')
 }

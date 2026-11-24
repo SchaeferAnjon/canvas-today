@@ -203,3 +203,107 @@ export function linkedPaths(text: string, notePath: string): Set<string> {
   }
   return out
 }
+
+// ---------------------------------------------------------------- 一个附件谁在用（删笔记留不留、「没人用的附件」，2026-11-23 附件跟着笔记走）
+
+/**
+ * 文中提到的一个文件：先按 cands（库里的路径）找；都不在库里时按 name（去掉 ./ ../ 的名字或尾巴）认尾巴对得上的，
+ * 写明了是链接的（loose：md 链接、[[嵌入]]、src）尾巴也对不上再认所有同名的，宁可多认
+ */
+export interface FileRef {
+  cands: string[]
+  name: string
+  loose: boolean
+}
+
+const WIKI = /\[\[([^\]|#^\n]+)/g
+const ATTR_URL = /\b(?:src|href|data-src|poster|xlink:href)\s*=\s*(?:"([^"\n]+)"|'([^'\n]+)')/gi
+/** 带扩展名的一段字（属性里的封面、JSON、白板卡片、写坏了的链接）：不含空白和括号引号 */
+const RAW = /[^\s"'`()<>[\]{}|*!,;]+\.[A-Za-z0-9]{1,10}(?![A-Za-z0-9])/g
+
+const decoded = (s: string) => {
+  try {
+    return decodeURI(s)
+  } catch {
+    return s
+  }
+}
+/** 名字兜底：去掉开头的 ./ ../ /，#、? 后面的不要 */
+const looseName = (s: string) => decoded(s.replace(/[#?].*$/, '')).replace(/^(?:\.{1,2}\/|\/)+/, '')
+
+/**
+ * 一篇（或库里任何一个文字文件）提到的文件：md 链接和图片、[[双链]] / ![[嵌入]]、HTML 的 src / href、
+ * 还有任何一段带扩展名的字（属性里的封面、白板卡片、JSON 里的路径）。只算字，不看磁盘；按库里有哪些文件认用 refHits。
+ */
+export function fileRefs(text: string, from: string): FileRef[] {
+  const out: FileRef[] = []
+  const add = (raw: string, wiki = false, loose = true) => {
+    const link = (raw.startsWith('<') && raw.endsWith('>') ? raw.slice(1, -1) : raw).trim()
+    if (!link || /^[a-z][a-z0-9+.-]*:/i.test(link)) return
+    const name = looseName(link)
+    if (!name) return
+    const cands = new Set<string>()
+    const rel = linkTarget(from, link)
+    if (rel) cands.add(rel)
+    if (wiki || !link.startsWith('.')) cands.add(name)
+    out.push({ cands: [...cands], name, loose })
+  }
+  for (const m of text.matchAll(LINK)) add(m[2]!)
+  for (const m of text.matchAll(WIKI)) add(m[1]!, true)
+  for (const m of text.matchAll(ATTR_URL)) add(m[1] ?? m[2]!)
+  // 一段带扩展名的字可能是带空格的链接的后半截（「Lecture05 笔记/截图%201.png」）：只认尾巴，不按文件名认
+  for (const m of text.matchAll(RAW)) add(m[0], false, false)
+  return out
+}
+
+/**
+ * fileRefs 在这些文件里认到的：路径对得上的就是它；一个都对不上（写坏了的链接、按名字的 [[嵌入]]）就认所有同名的（名字带路径时先认尾巴对得上的，尾巴也对不上再只看文件名）。
+ * byName：小写文件名 → 那些文件（fileNameIndex 建）
+ */
+export function refHits(refs: FileRef[], files: ReadonlySet<string>, byName: ReadonlyMap<string, string[]>): Set<string> {
+  const hit = new Set<string>()
+  for (const r of refs) {
+    let found = false
+    for (const c of r.cands)
+      if (files.has(c)) {
+        hit.add(c)
+        found = true
+      }
+    if (found) continue
+    const low = r.name.toLowerCase()
+    const same = byName.get(low.slice(low.lastIndexOf('/') + 1)) ?? []
+    const tail = same.filter((p) => {
+      const l = p.toLowerCase()
+      return l === low || l.endsWith('/' + low)
+    })
+    // 尾巴也对不上（文件夹改过名的旧链接）：写明了是链接的只看文件名
+    for (const p of tail.length || !r.loose ? tail : same) hit.add(p)
+  }
+  return hit
+}
+
+/** 小写文件名 → 库里那些文件（refHits 用） */
+export function fileNameIndex(files: Iterable<string>): Map<string, string[]> {
+  const m = new Map<string, string[]>()
+  for (const p of files) {
+    const k = p.slice(p.lastIndexOf('/') + 1).toLowerCase()
+    const list = m.get(k)
+    if (list) list.push(p)
+    else m.set(k, [p])
+  }
+  return m
+}
+
+/**
+ * 附件归哪篇：附件/<笔记路径>/ 最长的那个前缀对上的、现在还在的那篇（「冰岛旅行.md」和「冰岛旅行/ttravel.md」都在时，
+ * 附件/冰岛旅行/ttravel/ 里的归 ttravel）。没有就是 null
+ */
+export function attachOwner(path: string, isNote: (note: string) => boolean): string | null {
+  if (!path.startsWith(ATTACHMENTS_DIR + '/')) return null
+  const segs = path.slice(ATTACHMENTS_DIR.length + 1).split('/').slice(0, -1)
+  for (let n = segs.length; n > 0; n--) {
+    const note = segs.slice(0, n).join('/') + '.md'
+    if (isNote(note)) return note
+  }
+  return null
+}

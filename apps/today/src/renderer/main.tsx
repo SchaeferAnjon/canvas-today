@@ -1,5 +1,6 @@
 import '@cn/design/tokens.css'
 import '@cn/design/themes.css'
+import '@cn/design/wall.css'
 import '@cn/calendar/calendar.css'
 import './today.css'
 import { createRoot } from 'react-dom/client'

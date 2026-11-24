@@ -12,16 +12,18 @@ import { AppearancePage, Group, type LookSkin, PageHead, Row, Sel, SettingsShell
 import { FamilySettings } from './family'
 import '@cn/design/settings.css'
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
-import { activeSkin, allSkins, SKINS, skinOf } from '../../../notes/src/shared/appearance'
+import { glassPct } from '@cn/design/glass'
+import { activeSkin, allSkins, panelsGlass, SKINS, skinOf } from '../../../notes/src/shared/appearance'
 import { themeInfo } from '../../../notes/src/shared/vscode-theme'
-import type { QuickKeyState, RemList } from '../shared/api'
+import type { JournalInfo, QuickKeyState, RemList } from '../shared/api'
 import { comboOf, DEFAULT_QUICK_KEY, QUICK_KEY_SUGGEST, quickKeyOften, quickKeyProblem } from '../shared/quick'
 import type { TodayAppearance, TodaySettings } from '../shared/settings'
 import { updateError, updateLine } from '../shared/update'
-import { nowMs, reloadState, saveSettings, setLook, useData, useLang } from './store'
-import { useT } from './ui'
+import { nowMs, refreshAi, reloadState, saveSettings, setLook, useData, useLang } from './store'
+import { type ApiId, SOURCE_LABEL } from '../../../notes/src/shared/ai-sources'
+import { EngineLogo, useT } from './ui'
 
-export type SettingsPage = 'general' | 'look' | 'calrem' | 'vault' | 'family'
+export type SettingsPage = 'general' | 'plan' | 'look' | 'calrem' | 'ai' | 'vault' | 'family'
 
 const SKIN_EN: Record<string, string> = { mint: 'Mint', sky: 'Sky', sakura: 'Sakura', lilac: 'Lilac', stone: 'Stone', pine: 'Pine', petrol: 'Deep lake', cocoa: 'Cocoa', ink: 'Ink', graphite: 'Graphite' }
 /** 主题卡悬停那句的英文（中文在 SKINS 里；和画布笔记的英文表一样） */
@@ -38,11 +40,13 @@ const SKIN_NOTE_EN: Record<string, string> = {
   graphite: 'Dispatch black: no dividers, white buttons on black',
 }
 
-const PAGES: { id: SettingsPage; icon: CodiconName; name: 'sGeneral' | 'sLook' | 'sCalRem' | 'sVault' | 'sFamily'; desc: 'sGeneralDesc' | 'sLookDesc' | 'sCalRemDesc' | 'sVaultDesc' | 'sFamilyDesc' }[] = [
+const PAGES: { id: SettingsPage; icon: CodiconName; name: 'sGeneral' | 'sPlan' | 'sLook' | 'sCalRem' | 'sAi' | 'sVault' | 'sFamily'; desc: 'sGeneralDesc' | 'sPlanDesc' | 'sLookDesc' | 'sCalRemDesc' | 'sAiDesc' | 'sVaultDesc' | 'sFamilyDesc' }[] = [
   { id: 'general', icon: 'settings-gear', name: 'sGeneral', desc: 'sGeneralDesc' },
   { id: 'look', icon: 'symbol-color', name: 'sLook', desc: 'sLookDesc' },
   { id: 'calrem', icon: 'calendar', name: 'sCalRem', desc: 'sCalRemDesc' },
+  { id: 'ai', icon: 'sparkle', name: 'sAi', desc: 'sAiDesc' },
   { id: 'vault', icon: 'library', name: 'sVault', desc: 'sVaultDesc' },
+  { id: 'plan', icon: 'rocket', name: 'sPlan', desc: 'sPlanDesc' },
   { id: 'family', icon: 'multiple-windows', name: 'sFamily', desc: 'sFamilyDesc' },
 ]
 
@@ -65,14 +69,19 @@ export function SettingsDialog({ page: first = 'general', onClose, onImport, app
     setFocus({ row, seq: Date.now() })
   }
   const cur = PAGES.find((p) => p.id === page)!
+  // AI 那一页的图标画正在用的那一家（偏好「AI 图标用引擎标志」，task-587os）
+  const aiNow = useData().ai
+  const iconOf = (p: (typeof PAGES)[number], s: number) => (p.id === 'ai' ? <EngineLogo id={aiNow?.engine} s={s} /> : <Codicon name={p.icon} size={s} />)
   const text = useMemo(() => ({ title: t('settings'), nav: t('sNav'), close: t('sCloseSet'), closeTip: t('sCloseTip'), saved: (hint: string) => t('sSaved', hint), undo: t('sUndo') }), [t])
-  const sections = [{ pages: PAGES.map((p) => ({ id: p.id, name: t(p.name), icon: <Codicon name={p.icon} /> })) }]
+  const sections = [{ pages: PAGES.map((p) => ({ id: p.id, name: t(p.name), icon: iconOf(p, 16) })) }]
   return (
     <SettingsShell asTab={asTab} text={text} sections={sections} page={page} onPage={(id) => setPage(id as SettingsPage)} onClose={onClose} appNotice={appNotice} focus={focus}>
-      <PageHead icon={<Codicon name={cur.icon} size={18} />} title={t(cur.name)} desc={t(cur.desc)} />
+      <PageHead icon={iconOf(cur, 18)} title={t(cur.name)} desc={t(cur.desc)} />
       {page === 'general' && <GeneralPage />}
+      {page === 'plan' && <PlanPage />}
       {page === 'look' && <LookPage />}
       {page === 'calrem' && <CalRemPage onImport={onImport} />}
+      {page === 'ai' && <AiPage />}
       {page === 'vault' && <VaultPage />}
       {page === 'family' && <FamilySettings onGoRow={goRow} />}
     </SettingsShell>
@@ -125,6 +134,43 @@ function GeneralPage() {
             onChange={(v) => change({ familyFetch: v }, { familyFetch: !v }, v ? t('sFamilyFetchOn') : t('sFamilyFetchOff'))}
           />
         </Row>
+      </Group>
+    </>
+  )
+}
+
+/** 排一天：打开时先排一天、菜单栏写正在做的那一块、收工写进哪里的日记（库里认出来的几种、Obsidian 日记插件的、「周记」旁边） */
+function PlanPage() {
+  const t = useT()
+  const change = useChange()
+  const s = useData().state!.settings
+  const p = s.plan
+  const [j, setJ] = useState<JournalInfo | null>(null)
+  useEffect(() => {
+    void window.ct.journal().then(setJ)
+  }, [p.journal])
+  const flip = (key: 'onOpen' | 'tray', label: string) => change({ plan: { ...p, [key]: !p[key] } }, { plan: p }, !p[key] ? t('sTurnedOn', label) : t('sTurnedOff', label))
+  const how = (x: { how: string; count: number }) => (x.how === 'obsidian' ? t('sPlanHowObsidian') : x.how === 'found' ? t('sPlanHowFound', x.count) : x.how === 'chosen' ? t('sPlanHowChosen') : t('sPlanHowDefault'))
+  const show = (pattern: string) => pattern.replace('{date}', 'YYYY-MM-DD').replace(/\{YYYY\}/g, 'YYYY').replace(/\{MM\}/g, 'MM').replace(/\{DD\}/g, 'DD')
+  return (
+    <>
+      <Group title={t('sPlan')}>
+        <Row id="planOpen" label={t('sPlanOpen')} desc={t('sPlanOpenDesc')}>
+          <Toggle on={p.onOpen} label={t('sPlanOpen')} onChange={() => flip('onOpen', t('sPlanOpen'))} />
+        </Row>
+        <Row id="planTray" label={t('sPlanTray')} desc={t('sPlanTrayDesc')}>
+          <Toggle on={p.tray} label={t('sPlanTray')} onChange={() => flip('tray', t('sPlanTray'))} />
+        </Row>
+        {j && (
+          <Row id="planJournal" label={t('sPlanJournal')} desc={t('sPlanJournalDesc', how(j))}>
+            <Sel
+              label={t('sPlanJournal')}
+              value={p.journal ?? ''}
+              options={[['', t('sPlanJournalAuto', show(j.auto.pattern))], ...j.options.filter((o) => o !== j.auto.pattern || p.journal === o).map((o) => [o, show(o)] as [string, string])]}
+              onChange={(v) => change({ plan: { ...p, journal: v || null } }, { plan: p }, t('sSetTo', t('sPlanJournal'), v ? show(v) : t('sPlanJournalAuto', show(j.auto.pattern))))}
+            />
+          </Row>
+        )}
       </Group>
     </>
   )
@@ -227,7 +273,7 @@ function LookPage() {
   ]
   const active = skinOf(activeSkin({ ...look, homeStyle: 'a', homeWinBg: false, winBgFile: null }, dark), all)
   const frameName = (f: 'a' | 'b') => (f === 'a' ? t('frameA') : t('frameB'))
-  const bgName = (b: string) => (b === 'cave' ? t('bgCave') : b === 'none' ? t('bgNone') : t('bgAurora'))
+  const bgName = (b: string) => (b === 'cave' ? t('bgCave') : b === 'none' ? t('bgNone') : b === 'wall' ? t('bgWall') : t('bgAurora'))
   const now = own.followSystem ? (dark ? own.night : own.day) : own.skin
   const setLookTo = (next: TodayAppearance, hint: string) => change({ appearance: next }, { appearance: own }, hint)
   const flipFollow = (v: boolean) =>
@@ -286,11 +332,52 @@ function LookPage() {
             winBg={{
               value: own.winBg === 'custom' ? 'aurora' : own.winBg,
               options: [
+                { id: 'wall', name: t('bgWall'), bg: 'var(--wall-glow), var(--wall-base)' },
                 { id: 'none', name: t('bgNone'), bg: 'var(--title)' },
                 { id: 'aurora', name: t('bgAurora'), bg: `url("${aurora}") center/cover` },
                 { id: 'cave', name: t('bgCave'), bg: `url("${cave}") center/cover` },
               ],
               onChange: (winBg) => setLookTo({ ...own, winBg }, t('sSetTo', t('sWinBg'), bgName(winBg))),
+            }}
+            wall={
+              own.winBg === 'wall'
+                ? {
+                    mix: own.wallMix,
+                    move: own.wallMove,
+                    speed: own.wallSpeed,
+                    onMix: (wallMix) => setLookTo({ ...own, wallMix }, t('sSetTo', t('wallMix'), t(wallMix === 'soft' ? 'wallSoft' : wallMix === 'rich' ? 'wallRich' : 'wallNormal'))),
+                    onMove: (wallMove) => setLookTo({ ...own, wallMove }, wallMove ? t('sTurnedOn', t('wallMove')) : t('sTurnedOff', t('wallMove'))),
+                    onSpeed: (wallSpeed) => setLookTo({ ...own, wallSpeed }, t('sSetTo', t('wallSpeed'), t(wallSpeed === 'slow' ? 'wallSlow' : wallSpeed === 'fast' ? 'wallFast' : 'wallMid'))),
+                    text: {
+                      move: t('wallMove'),
+                      speed: t('wallSpeed'),
+                      slow: t('wallSlow'),
+                      mid: t('wallMid'),
+                      fast: t('wallFast'),
+                      mix: t('wallMix'),
+                      soft: t('wallSoft'),
+                      normal: t('wallNormal'),
+                      rich: t('wallRich'),
+                      reduced: t('wallReduced'),
+                      still: t('wallStill'),
+                    },
+                  }
+                : undefined
+            }
+            glass={{
+              text: {
+                label: t('sGlass'),
+                solid: t('sGlassSolid'),
+                clear: t('sGlassClear'),
+                value: (n) => t('sGlassValue', n),
+                def: t('sGlassDef'),
+                reset: t('sGlassReset'),
+                on: t('sGlassOn'),
+                off: t('sGlassOff'),
+              },
+              value: own.glass,
+              enabled: panelsGlass(own),
+              onChange: (glass) => setLookTo({ ...own, glass }, t('sSetTo', t('sGlass'), t('sGlassValue', glassPct(glass)))),
             }}
             importTheme={{
               label: t('sImportTheme'),
@@ -330,6 +417,59 @@ function CalRemPage({ onImport }: { onImport: () => void }) {
         <RemRows onImport={onImport} />
       </Group>
     </>
+  )
+}
+
+/**
+ * 设置 › AI（task-587os，设计页第 4 节「画布今日 设置 › AI」，结构照画布笔记设置）：用哪家跟画布笔记「小活」那一行；
+ * Key 借用：画布笔记有、画布今日还没有的那一家，按钮「用它」（同意后存一份到画布今日自己的钥匙串项）；已经存过写后 4 位
+ */
+function AiPage() {
+  const t = useT()
+  const said = useSaid()
+  const ai = useData().ai
+  const [keys, setKeys] = useState<{ id: ApiId; tail: string | null; notes: boolean }[] | null>(null)
+  const load = () => void window.ct.aiKeys().then(setKeys)
+  useEffect(load, [])
+  const shown = (keys ?? []).filter((k) => k.notes || k.tail)
+  return (
+    <Group title={null}>
+      <Row id="aiFollow" label={t('sAiFollow')} desc={ai ? t('sAiFollowDesc', ai.full) : t('sAiNoNotes')} />
+      {shown.length === 0 && keys && <Row id="aiKey" label={t('sAiKey', 'API Key')} desc={t('sAiKeyNone')} />}
+      {shown.map((k) => (
+        <Row key={k.id} id={`aiKey-${k.id}`} label={t('sAiKey', SOURCE_LABEL[k.id])} desc={k.tail ? t('sAiKeyHave', k.tail) : t('sAiKeyDesc')}>
+          {k.tail ? (
+            <button
+              className="sa-btn"
+              data-testid={`ai-drop-${k.id}`}
+              onClick={() =>
+                void window.ct.aiKeyDrop(k.id).then(() => {
+                  load()
+                  said.say(t('sAiKeyDropped', SOURCE_LABEL[k.id]))
+                })
+              }
+            >
+              {t('sAiKeyDrop')}
+            </button>
+          ) : (
+            <button
+              className="sa-btn"
+              data-testid={`ai-borrow-${k.id}`}
+              onClick={() =>
+                void window.ct.aiBorrow(k.id).then((r) => {
+                  if (r.ok) {
+                    load()
+                    void refreshAi()
+                  } else said.say(t('aiBorrowFail', r.message ?? ''))
+                })
+              }
+            >
+              {t('sAiKeyUse')}
+            </button>
+          )}
+        </Row>
+      ))}
+    </Group>
   )
 }
 

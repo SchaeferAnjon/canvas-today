@@ -65,7 +65,7 @@ test('在别的软件里按 ⌥⇧T：弹出小框，边打边认出日子钟点
     expect(await isOpen(run)).toBe(false)
     expect(await restored(run)).toEqual(['Google Chrome'])
     const n = await notifs(run)
-    expect(n.at(-1)).toMatchObject({ title: '加上了「交实验报告」', body: '写进《小论文计划》 · 明天 15:00', actions: ['撤销'] })
+    expect(n.at(-1)).toMatchObject({ title: '加上了「交实验报告」', body: '写进《小论文计划》 · 明天 15:00', actions: ['撤回'] })
     await expect.poll(() => commits(run.vault)[0]).toBe('画布今日：加了「交实验报告」')
     expect(commits(run.vault).length).toBe(before + 1)
     // 主窗口跟着有了（左栏「明天」）

@@ -4,11 +4,13 @@
  */
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import type { CalEvent } from '@cn/calendar'
+import { applyGlass } from '@cn/design/glass'
 import aurora from '@notes-assets/covers/aurora.jpg'
 import cave from '@notes-assets/covers/ice-cave.jpg'
 import { activeSkin, skinOf } from '../../../notes/src/shared/appearance'
 import { themeCss, themeInfo } from '../../../notes/src/shared/vscode-theme'
 import { installThemeCss } from '../../../notes/src/renderer/skin'
+import { applyWall } from '@cn/design/wall'
 import type { AiInfo, AppState, CalState, FocusInfo, GitInfo, LookState, RemState, Snapshot, UpdateState } from '../shared/api'
 import type { Lang } from '../shared/i18n'
 import type { TodayAppearance, TodaySettings } from '../shared/settings'
@@ -85,14 +87,17 @@ function applyLook() {
   r.dataset.tone = skin.tone
   r.dataset.tabmark = skin.tab
   r.dataset.frame = look.frame
+  applyGlass(look.glass, r)
   const photo = look.winBg === 'aurora' ? aurora : look.winBg === 'cave' ? cave : null
   if (photo) {
     r.style.setProperty('--frame-photo', `url("${photo}")`)
     r.dataset.winbg = 'photo'
   } else {
     r.style.removeProperty('--frame-photo')
-    r.dataset.winbg = 'none'
+    r.dataset.winbg = look.winBg === 'wall' ? 'wall' : 'none'
   }
+  // 主题渐变那一层（和画布笔记同一份，@cn/design/wall）
+  applyWall({ mix: look.wallMix, move: look.wallMove, speed: look.wallSpeed }, { e2e: s.e2e })
   r.lang = s.settings.lang === 'zh' ? 'zh-CN' : 'en'
 }
 

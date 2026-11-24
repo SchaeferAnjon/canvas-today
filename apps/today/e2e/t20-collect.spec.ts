@@ -87,7 +87,7 @@ test('勾掉抄了三遍的「驾照刷题」：三篇各只改那一行，✅ �
     // 列表里还是一条（今天勾掉的那组，划掉）
     await expect(page.locator('.center .row.done .rt', { hasText: /^🚗 驾照刷题$/ })).toHaveCount(1)
     await expect(page.locator('.center .row .rt', { hasText: /^🚗 驾照刷题$/ })).toHaveCount(1)
-    await page.locator('.toast').getByRole('button', { name: '撤销' }).click()
+    await page.locator('.toast').getByRole('button', { name: '撤回' }).click()
     await expect.poll(() => [D1, D2, D3].map((p) => run.read(p))).toEqual(before)
   } finally {
     await run.close()
@@ -103,13 +103,13 @@ test('提示块里的待办勾掉：「> 」留着，✅ 在行尾；进行中�
     await row(page, 'Q1 读完 11 个原子').locator('.cb').click()
     await expect.poll(() => run.read(HW)).not.toBe(before)
     expect(onlyLine(before, run.read(HW), 3)).toBe('> - [x] Q1 读完 11 个原子 📅 2026-11-22 ✅ 2026-11-22')
-    await page.locator('.toast').getByRole('button', { name: '撤销' }).click()
+    await page.locator('.toast').getByRole('button', { name: '撤回' }).click()
     await expect.poll(() => run.read(HW)).toBe(before)
 
     await row(page, '做了一半的实验').locator('.cb').click()
     await expect.poll(() => run.read(HW)).not.toBe(before)
     expect(onlyLine(before, run.read(HW), 6)).toBe('- [x] 做了一半的实验 📅 2026-11-22 ✅ 2026-11-22')
-    await page.locator('.toast').getByRole('button', { name: '撤销' }).click()
+    await page.locator('.toast').getByRole('button', { name: '撤回' }).click()
     await expect.poll(() => run.read(HW)).toBe(before)
 
     // 那一篇：取消了的也列着，划掉、勾选框一道横线

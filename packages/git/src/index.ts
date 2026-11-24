@@ -2,8 +2,9 @@
  * 调系统 git 命令（SSH、钥匙串直接能用）。每个调用都有超时；git 报错原样抛出。
  */
 import { execFile } from 'node:child_process'
-import { rename, rm, stat, writeFile } from 'node:fs/promises'
+import { readFile, rm, stat } from 'node:fs/promises'
 import { isAbsolute, join } from 'node:path'
+import { atomicWrite, finishTemp, RECYCLE_DIR, TEMP_GLOB, tempPathFor, unlinkTemp } from '@cn/atomic'
 
 export class GitError extends Error {
   constructor(
@@ -66,6 +67,37 @@ export async function isRepo(dir: string): Promise<boolean> {
 
 export async function init(dir: string): Promise<void> {
   await git(dir, ['init', '-b', 'main'])
+  await ensureExcludes(dir)
+}
+
+/**
+ * Git 不看的软件内部文件（task-8dula）：原子写的临时文件（`.<名字>.cn-<进程>-<随机>.tmp`，保存那一下才有，崩溃会留下）、
+ * 崩溃残留挪去的回收处。写进这个库自己的 .git/info/exclude（不进提交、不改用户的 .gitignore）：
+ * 软件里的提交、状态（左栏「没提交的」）和终端里的 git 都看不见它们
+ */
+export const EXCLUDES = [TEMP_GLOB, `/${RECYCLE_DIR}/`]
+const excluded = new Map<string, Promise<void>>()
+export function ensureExcludes(dir: string): Promise<void> {
+  let p = excluded.get(dir)
+  if (!p) {
+    p = (async () => {
+      const rel = (await git(dir, ['rev-parse', '--git-path', 'info/exclude'])).trim()
+      const file = isAbsolute(rel) ? rel : join(dir, rel)
+      const cur = await readFile(file, 'utf8').catch((e: NodeJS.ErrnoException) => {
+        if (e.code === 'ENOENT') return ''
+        throw e
+      })
+      const have = new Set(cur.split(/\r?\n/).map((l) => l.trim()))
+      const missing = EXCLUDES.filter((l) => !have.has(l))
+      if (!missing.length) return
+      const head = cur && !cur.endsWith('\n') ? cur + '\n' : cur
+      await atomicWrite(file, `${head}# 画布笔记：保存时的临时文件、崩溃残留的回收处\n${missing.join('\n')}\n`, { mkdir: true })
+    })()
+    // 不是仓库、读不到：下次再试，不把失败记住
+    p.catch(() => excluded.delete(dir))
+    excluded.set(dir, p)
+  }
+  return p
 }
 
 /** 当前分支；还没有提交时也能拿到名字 */
@@ -82,6 +114,7 @@ export interface FileStatus {
 }
 
 export async function status(dir: string): Promise<FileStatus[]> {
+  await ensureExcludes(dir)
   // 不抢 index.lock：界面随时在查状态，抢了锁会让同时进行的提交、撤回失败
   return parseStatus(await git(dir, STATUS_ARGS))
 }
@@ -140,6 +173,7 @@ async function commitStep(dir: string, args: string[], pending: () => Promise<bo
 
 /** 把所有改动提交成一次；没有改动时返回 null */
 export async function commitAll(dir: string, message: string): Promise<string | null> {
+  await ensureExcludes(dir)
   await gitLocking(dir, ['add', '-A'])
   if ((await status(dir)).length === 0) return null
   if (!(await commitStep(dir, ['commit', '-q', '-m', message], async () => (await status(dir)).length > 0))) return null
@@ -151,6 +185,7 @@ export async function commitAll(dir: string, message: string): Promise<string | 
  * 不是「新增 1 个文件：b；删除 1 个：a」）。没有要提交的返回 null
  */
 export async function commitPending(dir: string): Promise<string | null> {
+  await ensureExcludes(dir)
   await gitLocking(dir, ['add', '-A'])
   const st = await status(dir)
   if (!st.length) return null
@@ -412,9 +447,14 @@ export async function sync(dir: string, opts: GitOptions = {}): Promise<SyncResu
  * 写到一半断了也不坏上一份。要找回时 git clone 这个文件就是一个完整的库
  */
 export async function bundle(dir: string, file: string): Promise<void> {
-  const tmp = `${file}.tmp-${process.pid}`
-  await git(dir, ['bundle', 'create', tmp, '--all'], { timeoutMs: 10 * 60_000 })
-  await rename(tmp, file)
+  const tmp = tempPathFor(file)
+  try {
+    await git(dir, ['bundle', 'create', tmp, '--all'], { timeoutMs: 10 * 60_000 })
+  } catch (e) {
+    await unlinkTemp(tmp)
+    throw e
+  }
+  await finishTemp(tmp, file)
 }
 
 async function revParse(dir: string, ref: string): Promise<string | null> {
@@ -429,6 +469,7 @@ async function revParse(dir: string, ref: string): Promise<string | null> {
 /** 只提交这几个路径（新建、修改、删除都算）；返回提交号，没有改动返回 null */
 export async function commitPaths(dir: string, paths: string[], message: string): Promise<string | null> {
   if (!paths.length) return null
+  await ensureExcludes(dir)
   // 已经暂存了删除的（文件不在了、index 里也没了）不再 add：add 会报「pathspec did not match」，整次提交失败
   const inIndex = new Set((await git(dir, ['ls-files', '-z', '--', ...paths])).split('\0'))
   const onDisk = await Promise.all(paths.map((p) => stat(join(dir, p)).then(() => true, () => false)))
@@ -481,7 +522,7 @@ export async function revert(dir: string, hash: string, o: RevertOptions = {}): 
       if (text === null) throw await fail(files)
       merged.push([f, text])
     }
-    for (const [f, text] of merged) await writeFile(join(dir, f), text)
+    for (const [f, text] of merged) await atomicWrite(join(dir, f), text)
     await git(dir, ['add', '--', ...files])
   }
   await git(dir, o.resolve ? ['commit', '-q', '-m', message] : ['commit', '--amend', '-q', '-m', message])
@@ -509,7 +550,7 @@ export async function revertPaths(dir: string, hash: string, paths: string[], me
   if (!patch.trim()) throw new Error('那次提交里没有这几个文件的改动')
   const rel = (await git(dir, ['rev-parse', '--git-path', 'cn-revert.patch'])).trim()
   const file = isAbsolute(rel) ? rel : join(dir, rel)
-  await writeFile(file, patch)
+  await atomicWrite(file, patch)
   try {
     // 不加 --3way：打不上就整个不动（git apply 要么全打上，要么一个文件都不改）
     await git(dir, ['apply', '-R', file])

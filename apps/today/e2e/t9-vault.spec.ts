@@ -3,7 +3,7 @@
  */
 import { _electron as electron, expect, test } from '@playwright/test'
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import electronPath from 'electron'
@@ -59,7 +59,8 @@ test('哪都没有库：出「选一个库」，选一个不是 Git 仓库的文
     expect(execFileSync('git', ['-C', picked, 'rev-parse', '--is-inside-work-tree'], { encoding: 'utf8' }).trim()).toBe('true')
     await page.locator('#qa').fill('读三篇文献')
     await page.locator('#qa').press('Enter')
-    await expect.poll(() => readFileSync(join(picked, '收件箱/待办.md'), 'utf8')).toBe('# 待办\n\n- [ ] 读三篇文献 📅 2026-11-22\n')
+    // 写盘要一小会儿（原子写：临时文件、fsync、改名）：文件还没出现时接着等，不当成失败
+    await expect.poll(() => (existsSync(join(picked, '收件箱/待办.md')) ? readFileSync(join(picked, '收件箱/待办.md'), 'utf8') : null)).toBe('# 待办\n\n- [ ] 读三篇文献 📅 2026-11-22\n')
     const log = () => {
       try {
         return execFileSync('git', ['-C', picked, 'log', '--format=%s'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()

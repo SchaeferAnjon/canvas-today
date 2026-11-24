@@ -12,6 +12,10 @@ const on =
   }
 
 const api: CtApi = {
+  planState: () => ipcRenderer.invoke('ct:planState'),
+  planMark: (p) => ipcRenderer.invoke('ct:planMark', p),
+  journal: () => ipcRenderer.invoke('ct:journal'),
+  planClose: (o) => ipcRenderer.invoke('ct:planClose', o),
   state: () => ipcRenderer.invoke('ct:state'),
   chooseVault: () => ipcRenderer.invoke('ct:chooseVault'),
   snapshot: () => ipcRenderer.invoke('ct:snapshot'),
@@ -38,6 +42,9 @@ const api: CtApi = {
   aiSchedule: (job) => ipcRenderer.invoke('ct:aiSchedule', job),
   aiScheduleAccept: (slots) => ipcRenderer.invoke('ct:aiScheduleAccept', slots),
   aiCancel: (job) => ipcRenderer.invoke('ct:aiCancel', job),
+  aiBorrow: (id) => ipcRenderer.invoke('ct:aiBorrow', id),
+  aiKeys: () => ipcRenderer.invoke('ct:aiKeys'),
+  aiKeyDrop: (id) => ipcRenderer.invoke('ct:aiKeyDrop', id),
   chatInfo: (id) => ipcRenderer.invoke('ct:chatInfo', id),
   chatDefault: () => ipcRenderer.invoke('ct:chatDefault'),
   chatList: () => ipcRenderer.invoke('ct:chatList'),

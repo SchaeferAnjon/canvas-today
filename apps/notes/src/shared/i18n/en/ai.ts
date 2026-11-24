@@ -152,7 +152,6 @@ export const AI: Table = {
   '梦游跑完了，没什么要整理的。': 'Dreaming finished; nothing to tidy.',
 
   // ---------- 回答下面那一排（renderer/ans-acts.tsx，task-83vl3） ----------
-  '拷贝这条回答（Markdown原文）': 'Copy this answer (Markdown source)',
   中间开着一篇文档才能插: 'Open a doc in the center to insert',
   '插到《{name}》光标处\n写成 AI 块，块头链回这段对话': 'Insert at the cursor in “{name}”\nAs an AI block that links back to this chat',
   '插到《{name}》末尾\n写成 AI 块，块头链回这段对话': 'Insert at the end of “{name}”\nAs an AI block that links back to this chat',

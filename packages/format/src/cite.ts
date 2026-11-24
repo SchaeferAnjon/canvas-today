@@ -10,6 +10,7 @@
  *   命令行常写的「路径:42」「路径:42-50」「路径:42:7」（行:列）也认成几行。
  * 纯函数，不碰 DOM、不依赖 Electron（iPad 版照着移植）。
  */
+import { headingKey, outline } from './passages'
 import { attr, content, parseBoard } from './board'
 import { resolveLink } from './blocks'
 import { splitDoc, unitId } from './doc-board'
@@ -197,6 +198,9 @@ export function anchorLines(text: string, anchor: CiteAnchor): { from: number; t
     return { a, b }
   }
   if ('block' in anchor) {
+    // 列表里的一项、引用块：只到那一项（几项之间没有空行时，按空行分段会把整个列表当一段）
+    const ps = outline(text.replace(/\r\n/g, '\n')).passages.find((x) => x.id === anchor.block)
+    if (ps) return { from: ps.line + 1, to: ps.end + 1 }
     const re = new RegExp(`(^|\\s)\\^${anchor.block.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`)
     const i = lines.findIndex((l) => re.test(l))
     if (i === -1) return null
@@ -204,10 +208,14 @@ export function anchorLines(text: string, anchor: CiteAnchor): { from: number; t
     return { from: p.a + 1, to: p.b + 1 }
   }
   const want = anchor.heading.replace(/\s+/g, ' ').trim().toLowerCase()
-  const i = lines.findIndex((l) => {
-    const m = /^#{1,6}\s+(.*?)\s*#*\s*$/.exec(l)
-    return !!m && m[1]!.replace(/\s+/g, ' ').trim().toLowerCase() === want
-  })
+  const headAt = (same: (h: string) => boolean) =>
+    lines.findIndex((l) => {
+      const m = /^#{1,6}\s+(.*?)\s*#*\s*$/.exec(l)
+      return !!m && same(m[1]!)
+    })
+  // 先比原字；没有再不管空白和标点比（标题末尾带「52:56」这种时间戳、全角半角括号不一样时也认，梦游 Wiki 化 W.5）
+  let i = headAt((h) => h.replace(/\s+/g, ' ').trim().toLowerCase() === want)
+  if (i === -1 && headingKey(want)) i = headAt((h) => headingKey(h) === headingKey(want))
   if (i === -1) return null
   let j = i + 1
   while (j < n && blank(j)) j++

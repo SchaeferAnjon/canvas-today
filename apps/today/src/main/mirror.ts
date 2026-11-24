@@ -8,7 +8,7 @@
  * 什么时候同步：库里变了（0.6 秒后）、提醒事项在外面改了（小助手说一声）、每分钟一次兜底、连上 / 开镜像 / 换列表时。
  * 「导入提醒事项」也在这里：读几个列表 → rem-import 换成行尾写法 → 一次提交（能撤回）→ 界面问过再删原条目。
  */
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import {
   applyWriteBacks,
@@ -33,6 +33,7 @@ import { type Args, type Key, type Lang, tr } from '../shared/i18n'
 import type { RemSettings, TodaySettings } from '../shared/settings'
 import { HelperError, type RemHelper } from './rem-helper'
 import { ReadOnlyError, type TaskVault } from './vault'
+import { atomicWriteSync } from '@cn/atomic'
 
 interface VaultMirror {
   base: Record<string, MirrorBase>
@@ -178,8 +179,7 @@ export class RemMirror {
 
   private persist() {
     mkdirSync(dirname(this.path), { recursive: true })
-    writeFileSync(this.path + '.tmp', JSON.stringify(this.file, null, 1))
-    renameSync(this.path + '.tmp', this.path)
+    atomicWriteSync(this.path, JSON.stringify(this.file, null, 1))
   }
 
   private vs(): VaultMirror {

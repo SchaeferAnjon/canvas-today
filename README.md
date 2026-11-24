@@ -151,7 +151,7 @@ pnpm build               # 只构建到 apps/today/out/
 pnpm dist:mac            # 本机用的 .app（本地签名）：apps/today/release/mac-arm64/
 ```
 
-结构：`apps/today` 是软件（Electron + React + TypeScript，electron-vite 构建）；`packages/tasks` 读写任务那一行（不依赖 Electron，画布笔记也用它）；`packages/design` 是和画布笔记共用的颜色、主题和图标；`packages/git` 调系统 git；`packages/format` 是撤销时用的三方合并。`apps/notes/` 里只有画布今日借用的几个画布笔记文件（主题表、读画布笔记设置的规则、检查更新、两张窗口背景照片），见那里的 README。
+结构：`apps/today` 是软件（Electron + React + TypeScript，electron-vite 构建）；`packages/tasks` 读写任务那一行（不依赖 Electron，画布笔记也用它）；`packages/design` 是和画布笔记共用的颜色、主题和图标；`packages/git` 调系统 git；`packages/atomic` 是存文件的原子写（先写临时文件、fsync、再改名，写到一半断电不坏文件）；`packages/format` 是撤销时用的三方合并。`apps/notes/` 里只有画布今日借用的几个画布笔记文件（主题表、读画布笔记设置的规则、检查更新、两张窗口背景照片），见那里的 README。
 
 这个仓库是从作者的私有工作区导出的，每一版一个提交。发版：`pnpm release`（Developer ID 签名、不公证，见 `apps/today/scripts/release.mjs` 开头的说明）。
 

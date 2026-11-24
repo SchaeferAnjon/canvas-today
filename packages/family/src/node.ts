@@ -5,9 +5,11 @@
  * - 名单每天从总站看一次（loadList / refreshList），没网、总站没有时用软件带的那份。
  */
 import { execFile } from 'node:child_process'
-import { mkdirSync, readFileSync, renameSync, unwatchFile, watchFile, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { existsSync, mkdirSync, readdirSync, readFileSync, unwatchFile, watchFile } from 'node:fs'
+import { homedir } from 'node:os'
+import { basename, dirname, join } from 'node:path'
 import { BUILTIN, bundleIdsOf, cmpVersion, FAMILY_URL, FETCH_EVERY, type FamilyList, type Installed, LINKS_FILE, mergeFamily, parseFamily, parseLinks, setLinkText } from './index'
+import { atomicWriteSync } from '@cn/atomic'
 
 // ---------- 装没装 ----------
 
@@ -101,8 +103,7 @@ export function writeLink(vault: string, id: string, on: boolean): Record<string
   const text = setLinkText(cur, id, on)
   if (text !== cur) {
     mkdirSync(dirname(p), { recursive: true })
-    writeFileSync(p + '.tmp', text)
-    renameSync(p + '.tmp', p)
+    atomicWriteSync(p, text)
   }
   return parseLinks(text)
 }
@@ -160,7 +161,67 @@ export async function refreshList(cacheFile: string, now: number, opts: { url?: 
   }
   if (!parseFamily(body)) return false
   mkdirSync(dirname(cacheFile), { recursive: true })
-  writeFileSync(cacheFile + '.tmp', JSON.stringify({ checkedAt: now, list: body }))
-  renameSync(cacheFile + '.tmp', cacheFile)
+  atomicWriteSync(cacheFile, JSON.stringify({ checkedAt: now, list: body }))
   return true
+}
+
+// ---------------------------------------------------------------- ParaRead「放到画布笔记…」：画布笔记开过哪些库、库里的目录
+
+/** 画布笔记装好的软件的设置目录（测试和多开用 CN_USER_DATA，和画布笔记 main/index.ts 同一个规矩） */
+export const canvasNotesUserData = (env: NodeJS.ProcessEnv = process.env): string => env.CN_USER_DATA || join(homedir(), 'Library/Application Support/canvas-notes')
+
+/**
+ * 画布笔记在这台 Mac 上开过哪些库（读它设置目录里的 settings.json：lastVault、knownVaults，和对外接口 list_vaults 同一个读法），
+ * 还在的才列；open 是上次开着的那个。画布笔记没装、没开过库是空的
+ */
+export function canvasNotesVaults(userData = canvasNotesUserData()): { name: string; path: string; open: boolean }[] {
+  let s: { lastVault?: unknown; knownVaults?: unknown }
+  try {
+    s = JSON.parse(readFileSync(join(userData, 'settings.json'), 'utf8')) as typeof s
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT' || e instanceof SyntaxError) return []
+    throw e
+  }
+  const last = typeof s.lastVault === 'string' ? s.lastVault : null
+  const known = Array.isArray(s.knownVaults) ? s.knownVaults.filter((x): x is string => typeof x === 'string') : []
+  return [...new Set([...(last ? [last] : []), ...known])].filter((p) => existsSync(p)).map((p) => ({ name: basename(p), path: p, open: p === last }))
+}
+
+export interface VaultFolder {
+  /** 库里的相对路径 */
+  path: string
+  name: string
+  /** 下面直接放着几份 PDF */
+  pdfs: number
+  children: VaultFolder[]
+}
+
+/** 库里不算文件夹的：点开头的（.git、.canvas-notes）、附件、node_modules */
+const NOT_FOLDER = new Set(['附件', 'node_modules'])
+
+/** 库里的目录树（ParaRead「放到画布笔记…」弹窗选位置用）：depth 层以内，按名字排 */
+export function vaultFolders(root: string, depth = 6): VaultFolder[] {
+  const walk = (rel: string, left: number): VaultFolder[] => {
+    let ents
+    try {
+      ents = readdirSync(rel ? join(root, rel) : root, { withFileTypes: true })
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return []
+      throw e
+    }
+    return ents
+      .filter((d) => d.isDirectory() && !d.name.startsWith('.') && !NOT_FOLDER.has(d.name))
+      .sort((a, b) => a.name.localeCompare(b.name, 'zh-CN', { numeric: true }))
+      .map((d) => {
+        const path = rel ? `${rel}/${d.name}` : d.name
+        let pdfs = 0
+        try {
+          pdfs = readdirSync(join(root, path), { withFileTypes: true }).filter((f) => f.isFile() && /\.pdf$/i.test(f.name)).length
+        } catch {
+          pdfs = 0
+        }
+        return { path, name: d.name, pdfs, children: left > 1 ? walk(path, left - 1) : [] }
+      })
+  }
+  return walk('', depth)
 }

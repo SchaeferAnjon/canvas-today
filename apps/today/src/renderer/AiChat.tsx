@@ -13,6 +13,8 @@ import { isoOf, mdLabel, whenLabel } from '../shared/when'
 import { prioText, setPreview, UNDONE_EVENT } from './ai-preview'
 import { useData, useLang } from './store'
 import { EngineLogo, Ic, useT } from './ui'
+import { ChangeBar, UndoButton } from '@cn/design/answer-bar'
+import '@cn/design/answer-bar.css'
 import { noteLabel } from './views'
 
 const KEY = 'ct-ai-chat'
@@ -304,14 +306,8 @@ export function AiChat({ shown, today, ask, onToast, onUndo }: AiChatProps) {
               </div>
             ))}
             {p.keep && <div className="foot">{p.keep}</div>}
-            <div className="row2">
-              <button className="btn pri sm" disabled={!on.length} onClick={() => void accept(m)}>
-                {t('aiAccept')}
-              </button>
-              <button className="btn ghost sm" onClick={() => reject(m)}>
-                {t('aiReject')}
-              </button>
-            </div>
+            {/* 收不收那一套（task-eavzx）：不要（无边框）· 收下（实心） */}
+            <ChangeBar reject={{ label: t('aiReject'), onClick: () => reject(m) }} accept={{ label: t('aiAccept'), disabled: !on.length, onClick: () => void accept(m) }} solid />
             <div className="foot">{t('chatHint')}</div>
           </div>
         )}
@@ -322,11 +318,7 @@ export function AiChat({ shown, today, ask, onToast, onUndo }: AiChatProps) {
               <b>{t('chatTook', p.n ?? 0)}</b>
               <span>{t('chatTookSub')}</span>
               <span className="sp" />
-              {p.undo && (
-                <button className="btn ghost sm" onClick={() => onUndo(p.undo!)}>
-                  {t('undo')}
-                </button>
-              )}
+              {p.undo && <UndoButton label={t('undo')} onClick={() => onUndo(p.undo!)} />}
             </div>
           </div>
         )}

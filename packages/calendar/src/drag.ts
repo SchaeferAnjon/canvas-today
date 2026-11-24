@@ -21,12 +21,14 @@ export interface DragHandlers {
   readonly?(): void
   /** 右键 data-drag 的那一条 */
   menu?(key: string): void
+  /** 这一条多长（分钟）：拖到周看法的格子上时那个虚线框画多高；不给是一小时 */
+  minutes?(key: string): number | null
 }
 
 /** 按下时落在这些上面不算拖（勾选框、输入框、按钮） */
-const NOT_DRAG = '.cb, input, select, textarea, button.btn, button.cal-btn'
+const NOT_DRAG = '.cb, .cal-rs, input, select, textarea, button.btn, button.cal-btn'
 /** 没挪就松开，落在这些上面不算点了这一条 */
-const NOT_CLICK = '.cb, button, input, select, textarea'
+const NOT_CLICK = '.cb, .cal-rs, button, input, select, textarea'
 
 export function useDragDrop(h: DragHandlers): void {
   const ref = useRef(h)
@@ -96,7 +98,7 @@ export function useDragDrop(h: DragHandlers): void {
         const p = document.createElement('div')
         p.className = 'cal-slot'
         p.style.top = (m / 60) * hp + 'px'
-        p.style.height = hp - 2 + 'px'
+        p.style.height = ((ref.current.minutes?.(d.key!) ?? 60) / 60) * hp - 2 + 'px'
         p.textContent = d.time
         tg.appendChild(p)
       } else tg.classList.add('cal-over')

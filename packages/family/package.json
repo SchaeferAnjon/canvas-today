@@ -9,6 +9,9 @@
     "./icons/*": "./icons/*",
     "./icons": "./src/icons.ts"
   },
+  "dependencies": {
+    "@cn/atomic": "workspace:*"
+  },
   "scripts": {
     "gen": "node scripts/gen.ts"
   }

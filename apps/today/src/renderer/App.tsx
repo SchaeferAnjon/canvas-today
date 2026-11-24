@@ -5,10 +5,10 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { type CalMode, openWhenHost, parseDrop, useDragDrop, whenHostOpen } from '@cn/calendar'
-import type { Prio, When, WhenFields } from '@cn/tasks'
+import { type Prio, type When, type WhenFields, weekday } from '@cn/tasks'
 import type { AddCtx, EditOp, EditResult, Notice, TaskView } from '../shared/api'
 import { INBOX_NOTE } from '../shared/brand'
-import { repeatLabel, tr } from '../shared/i18n'
+import { repeatLabel, tr, wdName } from '../shared/i18n'
 import { cntInbox, cntNote, cntToday, cntTomorrow, cntWeek, findAgain, type Nav, notesWithTodo } from '../shared/views'
 import { barKind } from '../shared/update'
 import { dayLabel, isoPlus, mdLabel, whenLabel } from '../shared/when'
@@ -23,8 +23,10 @@ import { EngineLogo, Ic, type ToastData, Toast, useT } from './ui'
 import { FocusView, mmss, useFocusLeft } from './focus'
 import { HabitsView } from './habits'
 import { CalendarView, CalPanel, Detail, LeftMonth, ListView, noteLabel, QuadView } from './views'
+import { planAiText, PlanSide, PlanView } from './plan'
+import { est, type PlanStep, planLists, pushLater } from '../shared/plan'
 
-type Act = 'lists' | 'calendar' | 'quad' | 'focus' | 'habit'
+type Act = 'plan' | 'lists' | 'calendar' | 'quad' | 'focus' | 'habit'
 type SelRef = Pick<TaskView, 'key' | 'id' | 'path' | 'line' | 'raw' | 'title'>
 const pickSel = (t: TaskView): SelRef => ({ key: t.key, id: t.id, path: t.path, line: t.line, raw: t.raw, title: t.title })
 
@@ -58,6 +60,12 @@ function Desk() {
   const s = state!.settings
   const fa = state!.look.frame === 'a'
   const [act, setAct] = useState<Act>('lists')
+  /** 排一天停在哪一步 */
+  const [step, setStep] = useState<PlanStep>('left')
+  /** 今天早上点过「开工」了（这台设备，main/plan.ts） */
+  const [started, setStarted] = useState(false)
+  /** 今天收工写进了哪一篇日记（这台设备，main/plan.ts）；还没收工是 null */
+  const [closed, setClosed] = useState<string | null>(null)
   const [nav, setNav] = useState<Nav>('today')
   const [hist, setHist] = useState<{ back: [Act, Nav][]; fwd: [Act, Nav][] }>({ back: [], fwd: [] })
   const [selRef, setSelRef] = useState<SelRef | null>(null)
@@ -86,6 +94,20 @@ function Desk() {
   /** ⌘K「问 AI：…」交给右栏对话的那一句 */
   const [aiAsk, setAiAsk] = useState<{ text: string; seq: number } | null>(null)
   const lastUndo = useRef<string | null>(null)
+
+  // 打开时先排一天（设置能关）：今天早上那几步还没走完停在第 1 步（没有剩下的就第 2 步），走完了停在「开工」
+  useEffect(() => {
+    void window.ct.planState().then((p) => {
+      setStarted(!!p.morning)
+      setClosed(p.closed)
+      if (!s.plan.onOpen) return
+      setAct('plan')
+      if (p.morning) return setStep('now')
+      setStep(planLists(getData().snap.tasks, today).left.length ? 'left' : 'pick')
+    })
+    // 只在打开时看一次
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // 选中的那一条：索引换了（外面改了、自己改了）照 🆔、原文、标题找回来
   const sel = useMemo(() => (selRef ? findAgain(selRef, snap.tasks) : null), [selRef, snap])
@@ -283,7 +305,25 @@ function Desk() {
           show(ok ? t('undone') : t('undoChanged'))
           if (ok) window.dispatchEvent(new CustomEvent(UNDONE_EVENT, { detail: id }))
         })(),
-      pickWhen: (x, el, keys = false) => {
+      cancel: (x) =>
+        void edit(x, { op: 'cancel' }, (r) => [t('planDropped', x.title), r.copies ? t('planDroppedCopies', r.copies) : t('planDroppedSub', note(x.path), x.line + 1)]),
+      setMinutes: (x, m) => void edit(x, { op: 'minutes', minutes: m }, () => (m ? [t('planEstSet', x.title, m), t('planEstSetSub', note(x.path))] : null)),
+      pushLater: (x, evs) => {
+        const nowD = new Date(nowMs())
+        const at = pushLater(x, evs, getData().snap.tasks, today, nowD.getHours() * 60 + nowD.getMinutes())
+        if (at) void edit(x, { op: 'date', date: today, time: at }, () => [t('planPushed', x.title, at), t('movedSub', note(x.path), today)])
+        else void edit(x, { op: 'date', date: isoPlus(today, 1), time: null }, () => [t('planPushedTomorrow', x.title), t('movedSub', note(x.path), isoPlus(today, 1))])
+      },
+      closeDay: async (o) => {
+        const r = await window.ct.planClose(o)
+        if (!r.ok) {
+          show(t('failed', r.message))
+          return null
+        }
+        show(t('planClosed', r.path.replace(/^.*\//, '').replace(/\.md$/i, '')), t(r.created ? 'planClosedNew' : 'planClosedSub', r.path), r.undo || undefined)
+        return r.path
+      },
+      pickWhen: (x, el, keys = false, after) => {
         let cur = x
         let last: WhenFields = { date: x.date, time: x.time, remind: x.remind, repeat: x.repeat }
         const undos: string[] = []
@@ -310,6 +350,7 @@ function Desk() {
           onClose: () =>
             void queue.then(() => {
               if (!undos.length) return
+              after?.(last.date)
               if (!last.date) return show(t('dateRemoved', x.title), t('dateRemovedSub'), undos.join(','))
               show(t('moved', x.title, whenLabel(lang, last, today)), t('movedSub', note(x.path), last.date), undos.join(','))
             }),
@@ -416,12 +457,17 @@ function Desk() {
     },
     // 系统日历的日程拖不动：说一句（原型）
     readonly: () => show(t('calReadonly'), t('calReadonlySub')),
+    // 拖到日历格子上那个虚线框画多高：写了估时的照估时（排一天）
+    minutes: (key) => {
+      const x = getData().snap.tasks.find((y) => y.key === key)
+      return x ? est(x) : null
+    },
   })
 
   // ---------- 左图标栏、左栏 ----------
   const nToday = cntToday(snap.tasks, today)
   const tapAct = (a: Act) => {
-    if (a === act && s.left && (a === 'lists' || a === 'calendar')) return void saveSettings({ left: false })
+    if (a === act && s.left && (a === 'lists' || a === 'calendar' || a === 'plan')) return void saveSettings({ left: false })
     if (!s.left) void saveSettings({ left: true })
     if (a !== act) go(a)
   }
@@ -470,7 +516,13 @@ function Desk() {
     </button>
   )
   let left: { title: string; acts?: React.ReactNode; body: React.ReactNode } | null = null
-  if (act === 'lists')
+  if (act === 'plan')
+    left = {
+      title: t('planDay'),
+      acts: <span className="t3 sm pdate">{`${mdLabel(lang, today)} ${wdName(lang, weekday(today))}`}</span>,
+      body: <PlanSide step={step} onStep={setStep} snap={snap} today={today} started={started} closed={!!closed} />,
+    }
+  else if (act === 'lists')
     left = {
       title: t('lists'),
       acts: (
@@ -536,7 +588,24 @@ function Desk() {
   const nowMin = nowD.getHours() * 60 + nowD.getMinutes()
   let center: React.ReactNode
   let tab: { icon: Parameters<typeof Ic>[0]['n']; label: string }
-  if (act === 'lists') {
+  if (act === 'plan') {
+    center = (
+      <PlanView
+        step={step}
+        onStep={setStep}
+        snap={snap}
+        today={today}
+        closed={closed}
+        onClosed={setClosed}
+        onStarted={() => {
+          void window.ct.planMark({ morning: 'done' })
+          setStarted(true)
+          setStep('now')
+        }}
+      />
+    )
+    tab = { icon: 'rocket', label: t('planDay') }
+  } else if (act === 'lists') {
     center = <ListView nav={nav} snap={snap} today={today} sel={sel?.key ?? null} flash={flash} />
     tab = nav.startsWith('list:') ? { icon: 'file', label: noteLabel(nav.slice(5)) } : { icon: 'checklist', label: t(nav as 'today' | 'tomorrow' | 'inbox' | 'week') }
   } else if (act === 'calendar') {
@@ -618,6 +687,7 @@ function Desk() {
         </div>
         <div className="body">
           <nav className="abar l" aria-label={tr(lang, 'lists')} data-part="左图标栏">
+            {ab({ k: 'plan', icon: 'rocket', label: t('planDay'), on: act === 'plan', onClick: () => tapAct('plan') })}
             {ab({ k: 'lists', icon: 'checklist', label: t('lists'), on: act === 'lists', badge: nToday, onClick: () => tapAct('lists') })}
             {ab({ k: 'calendar', icon: 'calendar', label: t('calendar'), on: act === 'calendar', onClick: () => tapAct('calendar') })}
             {ab({ k: 'quad', icon: 'target', label: t('quad'), on: act === 'quad', onClick: () => tapAct('quad') })}
@@ -654,6 +724,13 @@ function Desk() {
                 </span>
               )}
               <span className="sp" />
+              {act === 'plan' && !setTab && (
+                // 排一天这一页自己的动作放在标签条右端（DESIGN.md 框架）：开右栏 AI 对话问今天没排的几条
+                <button className="tact" data-ai="plan" onClick={() => askAi(planAiText(snap, today, lang))}>
+                  <EngineLogo id={chatAi?.engine} s={14} />
+                  {t('planAi')}
+                </button>
+              )}
             </div>
             {fa && !setTab && (
               <div className="crumb">
@@ -754,6 +831,7 @@ function Desk() {
           today={today}
           onClose={() => setPal(false)}
           onGo={(a, n) => (setPal(false), go(a, n))}
+          onPlan={() => (setPal(false), go('plan'), setStep(planLists(getData().snap.tasks, today).left.length ? 'left' : 'pick'))}
           onSettings={() => (setPal(false), setSetOpen('general'))}
           onImport={rem?.connected && rem.auth === 'full' ? () => (setPal(false), setImp(true)) : undefined}
           onAskAi={(text) => (setPal(false), askAi(text))}

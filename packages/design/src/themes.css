@@ -42,16 +42,22 @@
   --paper: transparent;
   --paper-sh: none;
   /* 浮岛书桌的岛：半透明、透出窗口背景图（2026-11-22 用户：「这个大白底能不能做成…半透明的」；画布今日 B 的三栏、画布笔记首页 B 的组件都用这几个），
-     配 backdrop-filter: var(--isle-blur)。透多少是每套的 --isle-k：再透，次要字在照片最亮、最暗的地方对比不到 4.5 */
-  --isle: color-mix(in srgb, var(--win) var(--isle-k, 82%), transparent);
-  --isle-side: color-mix(in srgb, var(--side) var(--isle-k, 82%), transparent);
-  --isle-pop: color-mix(in srgb, var(--pop) var(--isle-k, 82%), transparent);
-  /* 岛里的卡片、当前标签：比岛实一点 */
-  --isle-card: color-mix(in srgb, var(--card) 72%, transparent);
-  --isle-blur: blur(24px) saturate(150%);
-  /* 岛上的次要字、提示字往正文色靠 30%：照片最亮、最暗的地方次要字对岛底也有 4.5 */
-  --isle-t2: color-mix(in srgb, var(--t2) 70%, var(--t1));
-  --isle-t3: color-mix(in srgb, var(--t3) 70%, var(--t1));
+     配 backdrop-filter: var(--isle-blur)。透多少是每套的 --isle-k（默认，用户认可的「改后」那版），
+     再加设置 › 外观 ›「面板透明度」拉出来的 --isle-shift（<html> 上，正数更透，范围见 glass.ts，两头的对比度都量过） */
+  --isle-a: calc(var(--isle-k, 82%) - var(--isle-shift, 0%));
+  --isle: color-mix(in srgb, var(--win) var(--isle-a), transparent);
+  --isle-side: color-mix(in srgb, var(--side) var(--isle-a), transparent);
+  --isle-pop: color-mix(in srgb, var(--pop) var(--isle-a), transparent);
+  /* 岛里的卡片、当前标签：比岛实一点（跟着透明度一起变） */
+  --isle-card: color-mix(in srgb, var(--card) calc(72% - var(--isle-shift, 0%)), transparent);
+  /* 透明度往透那边拉时，透上来的照片按浅深压一压亮度（--isle-lum，下面 data-tone 那两条）：照片的颜色、轮廓看得更清楚，亮处、暗处不吃掉字；
+     饱和度每格少 2.5%（拉到头 120%：照片下面的树林、雪地透上来不发粉发灰）；默认和往实那边不变 */
+  --isle-blur: blur(24px) saturate(calc(150% - max(0, var(--isle-n, 0)) * 2.5%)) brightness(var(--isle-lum, 1));
+  /* 岛上的次要字、提示字往正文色靠（次要 45%、提示 55%）：照片最亮、最暗的地方次要字对岛底也有 4.5
+     （2026-11-23 画布笔记所有栏半透明时逐像素量过：靠 30% 时天青左栏「最近」里的灰字只有 3.5）；
+     面板透明度往透那边拉 n 格，再往正文色多靠 n × 1.5%（浅色主题在照片亮处次要字掉得最快） */
+  --isle-t2: color-mix(in srgb, var(--t2) calc(55% - max(0, var(--isle-n, 0)) * 1.5%), var(--t1));
+  --isle-t3: color-mix(in srgb, var(--t3) calc(45% - max(0, var(--isle-n, 0)) * 1.5%), var(--t1));
   /* 勾选框没勾时的那圈边（task-gr4sx，用户嫌半透明面板上白色实心方框太硬，「按照推荐来」）：框不铺底、透出面板，只留这圈细边。
      正文色按每套的 --cb-k 透明：叠在什么底上都跟着变，十套主题在 B 极光 / 冰洞 / 不用图 / A 上对框里框外的底色都 ≥ 3:1
      （非文字元素；画布笔记、画布今日的 e2e/gr4sx-checkbox.spec.ts 逐像素量）。画布今日 .cb、画布笔记待办 .td-cb、文档里的 .cm-taskbox 共用；悬停换 --t2。
@@ -60,6 +66,23 @@
   /* ⏫ 没勾的黄框：--yellow 往正文色靠 --cb-hi-k（设计复审：浅色在冰洞图上 --yellow 只有 2.96:1）；浅色靠 20%，深色五套 0% 不动（本来就 ≥ 3.7）；
      面板往透拉 n 格同样每格多靠 0.5% */
   --cb-hi: color-mix(in srgb, var(--t1) calc(var(--cb-hi-k, 20%) + max(0, var(--isle-n, 0)) * 0.5%), var(--yellow));
+  /* 窗口背景「主题渐变」（task-aph2j，设计稿 canvas-notes-visual/26-纯色背景渐变）：竖向垫底 --wall-base 上叠三块椭圆色块 --wall-glow
+     （基调色铺左上面积最大、邻近色右上、点缀色右下）。十套各给一份，这里是导入的 VS Code 主题用的：照它的强调色和底色混。
+     浓淡三档：<html data-wallmix> 改 --wall-k（色块浓度）、--wall-sat（色块饱和度），浓的那档面板也再透一点（下面）。画法在 wall.css */
+  --wall-k: 1;
+  --wall-sat: 1;
+  --wall-base: linear-gradient(180deg, var(--title) 0%, var(--side) 55%, var(--title) 100%);
+  --wall-glow:
+    radial-gradient(120% 70% at 18% 0%, color-mix(in srgb, var(--acc) 30%, var(--title)) 0%, transparent 60%),
+    radial-gradient(85% 60% at 88% 8%, color-mix(in srgb, var(--acc) 16%, var(--side)) 0%, transparent 55%);
+}
+
+/* 面板透明度（@cn/design/glass）往透那边拉了 n 格：浅色主题把透上来的照片提亮、深色主题压暗，每格 4% / 2.2%；<html data-tone> 由软件套主题时写上 */
+[data-tone='light'] {
+  --isle-lum: calc(1 + max(0, var(--isle-n, 0)) * 0.04);
+}
+[data-tone='dark'] {
+  --isle-lum: calc(1 - max(0, var(--isle-n, 0)) * 0.022);
 }
 
 /* ---------- 薄荷 · 浅（白天默认，GitHub Light 的结构 + Everforest 的绿） ---------- */
@@ -117,6 +140,12 @@
   --mm-b3: #9a6aa8;
   --mm-b4: #a8892a;
   --mm-b5: #c06478;
+  /* 主题渐变（窗口背景选「主题渐变」，task-aph2j）。薄荷：基调薄荷绿、邻近湖青、一点嫩黄 */
+  --wall-base: linear-gradient(180deg, #c6e2d3 0%, #e7f3ed 55%, #cfe3d9 100%);
+  --wall-glow:
+    radial-gradient(120% 70% at 18% 0%, #8fcdae 0%, transparent 60%),
+    radial-gradient(85% 60% at 88% 8%, #9ccdd8 0%, transparent 55%),
+    radial-gradient(70% 55% at 72% 100%, #e4e1a4 0%, transparent 60%);
 }
 
 /* ---------- 天青 · 浅（Light Owl / VS Code Light+）：底栏一条青色，卡片只描边，当前标签下沿 ---------- */
@@ -178,6 +207,12 @@
   --mm-b3: #9a6aa8;
   --mm-b4: #a8892a;
   --mm-b5: #c06478;
+  /* 主题渐变（窗口背景选「主题渐变」，task-aph2j）。天青：基调天青蓝、邻近薄荷绿、一点淡黄 */
+  --wall-base: linear-gradient(180deg, #bcd6e2 0%, #e3eef3 55%, #c8d8df 100%);
+  --wall-glow:
+    radial-gradient(120% 70% at 20% 0%, #7fb7cf 0%, transparent 60%),
+    radial-gradient(90% 60% at 85% 10%, #a9d6c6 0%, transparent 55%),
+    radial-gradient(70% 50% at 70% 100%, #e8dfa6 0%, transparent 60%);
 }
 
 /* ---------- 樱花 · 浅（Horizon Bright）：当前标签整块染色，卡片软投影，圆角大一号 ---------- */
@@ -235,6 +270,12 @@
   --mm-b3: #9a6aa8;
   --mm-b4: #a8892a;
   --mm-b5: #c06478;
+  /* 主题渐变（窗口背景选「主题渐变」，task-aph2j）。樱花：基调樱粉、邻近杏橘、一点淡紫 */
+  --wall-base: linear-gradient(180deg, #f1d6dd 0%, #fbf0f3 55%, #efd9df 100%);
+  --wall-glow:
+    radial-gradient(120% 70% at 18% 0%, #eeb0c2 0%, transparent 60%),
+    radial-gradient(85% 60% at 88% 8%, #f3c8a9 0%, transparent 55%),
+    radial-gradient(70% 55% at 72% 100%, #dac5e9 0%, transparent 60%);
 }
 
 /* ---------- 丁香 · 浅（Noctis Lilac，强调换成李子紫） ---------- */
@@ -292,6 +333,12 @@
   --mm-b3: #9a6aa8;
   --mm-b4: #a8892a;
   --mm-b5: #c06478;
+  /* 主题渐变（窗口背景选「主题渐变」，task-aph2j）。丁香：基调丁香紫、邻近藕粉、一点天蓝 */
+  --wall-base: linear-gradient(180deg, #ded2eb 0%, #f5f0fa 55%, #ddd4e9 100%);
+  --wall-glow:
+    radial-gradient(120% 70% at 18% 0%, #c6a7dd 0%, transparent 60%),
+    radial-gradient(85% 60% at 88% 8%, #e9b9d1 0%, transparent 55%),
+    radial-gradient(70% 55% at 72% 100%, #bdd6ea 0%, transparent 60%);
 }
 
 /* ---------- 石白 · 浅（照 Dispatch Light）：没有分隔线、只靠两层底色；黑按钮，当前标签只靠白底 ---------- */
@@ -352,6 +399,12 @@
   --mm-b3: #9a6aa8;
   --mm-b4: #a8892a;
   --mm-b5: #c06478;
+  /* 主题渐变（窗口背景选「主题渐变」，task-aph2j）。石白：白里留一抹（同石墨的「太极」，设计复审：原来暖灰冷灰看不出渐变），右上角一抹杏色，左下一小块晨雾蓝 */
+  --wall-base: linear-gradient(180deg, #f2f1ef 0%, #fbfbfa 55%, #f0efed 100%);
+  --wall-glow:
+    radial-gradient(120% 70% at 18% 0%, #f1efec 0%, transparent 60%),
+    radial-gradient(58% 72% at 97% 0%, #f2c8a2 0%, rgba(242, 200, 162, 0.35) 32%, transparent 70%),
+    radial-gradient(70% 55% at 30% 100%, #dde6ee 0%, transparent 60%);
 }
 
 /* ---------- 松林 · 深（夜里默认，Everforest Dark） ---------- */
@@ -413,6 +466,12 @@
   --mm-b3: #b98fc6;
   --mm-b4: #c8bb5c;
   --mm-b5: #d98a9b;
+  /* 主题渐变（窗口背景选「主题渐变」，task-aph2j）。松林：基调松绿、邻近湖蓝、一点苔黄 */
+  --wall-base: linear-gradient(180deg, #1d2528 0%, #262f34 55%, #1a2124 100%);
+  --wall-glow:
+    radial-gradient(120% 70% at 18% 0%, #2f5944 0%, transparent 60%),
+    radial-gradient(85% 60% at 88% 8%, #244659 0%, transparent 55%),
+    radial-gradient(70% 55% at 96% 100%, #55512b 0%, transparent 60%);
 }
 
 /* ---------- 深湖 · 深（Solarized Dark）：底栏一条深青，卡片只描边，当前标签下沿 ---------- */
@@ -477,6 +536,12 @@
   --mm-b3: #b98fc6;
   --mm-b4: #c8bb5c;
   --mm-b5: #d98a9b;
+  /* 主题渐变（窗口背景选「主题渐变」，task-aph2j）。深湖：基调深青、邻近海蓝、一点橄榄黄 */
+  --wall-base: linear-gradient(180deg, #06202a 0%, #0b2a33 55%, #03161d 100%);
+  --wall-glow:
+    radial-gradient(110% 70% at 25% 0%, #0f5a5a 0%, transparent 60%),
+    radial-gradient(80% 60% at 80% 20%, #1f4a6e 0%, transparent 60%),
+    radial-gradient(70% 50% at 96% 100%, #454716 0%, transparent 60%);
 }
 
 /* ---------- 可可 · 深（Monokai Pro Ristretto）：当前标签整块染色，卡片投影 ---------- */
@@ -538,6 +603,12 @@
   --mm-b3: #b98fc6;
   --mm-b4: #c8bb5c;
   --mm-b5: #d98a9b;
+  /* 主题渐变（窗口背景选「主题渐变」，task-aph2j）。可可：基调可可红、邻近梅紫、一点琥珀 */
+  --wall-base: linear-gradient(180deg, #1f1919 0%, #2a2222 55%, #1a1515 100%);
+  --wall-glow:
+    radial-gradient(120% 70% at 18% 0%, #5a3532 0%, transparent 60%),
+    radial-gradient(85% 60% at 88% 8%, #4b3047 0%, transparent 55%),
+    radial-gradient(70% 55% at 72% 100%, #5c4424 0%, transparent 60%);
 }
 
 /* ---------- 墨夜 · 深（Ayu Dark）：近黑底、橙色强调，卡片只描边，当前标签下沿 ---------- */
@@ -598,6 +669,12 @@
   --mm-b3: #b98fc6;
   --mm-b4: #c8bb5c;
   --mm-b5: #d98a9b;
+  /* 主题渐变（窗口背景选「主题渐变」，task-aph2j）。墨夜：基调夜蓝、邻近墨青、一点余烬橙 */
+  --wall-base: linear-gradient(180deg, #07090e 0%, #0c1018 55%, #06080c 100%);
+  --wall-glow:
+    radial-gradient(120% 70% at 18% 0%, #183150 0%, transparent 60%),
+    radial-gradient(85% 60% at 88% 8%, #103b42 0%, transparent 55%),
+    radial-gradient(70% 55% at 75% 100%, #4a2a12 0%, transparent 60%);
 }
 
 /* ---------- 石墨 · 深（照 Dispatch Dark）：没有分隔线、只靠两层底色；白按钮黑字，当前标签只靠黑底 ---------- */
@@ -659,4 +736,10 @@
   --mm-b3: #b98fc6;
   --mm-b4: #c8bb5c;
   --mm-b5: #d98a9b;
+  /* 主题渐变（窗口背景选「主题渐变」，task-aph2j）。石墨：黑底上留一抹亮（用户「太极」：黑的里面留一点亮色）。基调炭色在左上，右上角一道余烬琥珀，从标题栏右边和右图标栏顶上透出来；右下一小块夜雾蓝 */
+  --wall-base: linear-gradient(180deg, #0c0a09 0%, #151311 55%, #0a0908 100%);
+  --wall-glow:
+    radial-gradient(120% 70% at 18% 0%, #3a332d 0%, transparent 60%),
+    radial-gradient(58% 72% at 97% 0%, #9a5f2c 0%, rgba(154, 95, 44, 0.35) 32%, transparent 70%),
+    radial-gradient(70% 55% at 72% 100%, #1d2631 0%, transparent 60%);
 }

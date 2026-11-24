@@ -310,4 +310,7 @@ export const AUTO: Table = {
   '数据库::先问一句': 'Ask first',
   '数据库::只给按钮': 'Buttons only',
   '数据库::在右栏打开它': 'Open it in the right panel',
+  // 同步来源自己拉到了新的（设计页 61）
+  '{name}：{did}': '{name}: {did}',
+  看一眼: 'Take a look',
 }

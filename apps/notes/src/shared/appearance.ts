@@ -1,3 +1,4 @@
+import { GLASS_DEFAULT, normalizeGlass } from '@cn/design/glass'
 import { type ArchiveDays, DEFAULT_ARCHIVE_DAYS, isArchiveDays } from './sidebar'
 import { type Lang, tIn, uiLang } from './i18n'
 import { DEFAULT_DREAM, type DreamPatch, type DreamSettings, normalizeDream } from './dream-settings'
@@ -38,8 +39,18 @@ export type Tone = 'light' | 'dark'
 export type HomeStyle = 'a' | 'b'
 /** 界面风格（2026-11-16 用户定两种都要）：a 照 VS Code（平的、细线分区、面包屑、底栏写满、AI 在底栏最右）；b 浮岛书桌（背景图铺满、三块圆角磨砂面板、底栏几项、AI 在右下角圆按钮） */
 export type FrameStyle = 'a' | 'b'
-/** 窗口背景（哪套主题都能配）：不用图、两张照片、自己选的图 */
-export type WinBg = 'none' | 'aurora' | 'cave' | 'custom'
+/**
+ * 窗口背景（哪套主题、哪种界面风格都能配，task-aph2j 用户定「排列组合」）：主题渐变、纯色、两张照片、自己选的图。
+ * wall 是每套主题自己的渐变（@cn/design themes.css 的 --wall-base / --wall-glow）；none 是纯色（B 是标题栏那层色，A 和以前一样）
+ */
+export type WinBg = 'wall' | 'none' | 'aurora' | 'cave' | 'custom'
+export const WIN_BGS: readonly WinBg[] = ['wall', 'none', 'aurora', 'cave', 'custom']
+/** 主题渐变的浓淡三档（用户定做法二：淡 / 标准 / 浓，不做滑杆：每一档的对比度都量过） */
+export type WallMix = 'soft' | 'mid' | 'rich'
+export const WALL_MIXES: readonly WallMix[] = ['soft', 'mid', 'rich']
+/** 渐变动的快慢（一个来回的秒数在 packages/design/src/wall.css） */
+export type WallSpeed = 'slow' | 'mid' | 'fast'
+export const WALL_SPEEDS: readonly WallSpeed[] = ['slow', 'mid', 'fast']
 /** 当前标签怎么标：上沿 2px、下沿 2px、整块强调色、只靠底色（Dispatch 的做法） */
 export type TabMark = 'top' | 'bottom' | 'fill' | 'none'
 
@@ -102,6 +113,12 @@ export interface Appearance {
   winBg: WinBg
   /** 自己选的窗口背景：拷进设置目录 backgrounds/ 后的文件名 */
   winBgFile: string | null
+  /** 主题渐变：浓淡、动不动、动多快（只在窗口背景是主题渐变时用；系统开了「减少动态效果」、窗口在后台或看不见时一律不动） */
+  wallMix: WallMix
+  wallMove: boolean
+  wallSpeed: WallSpeed
+  /** 面板透明度：有窗口背景时半透明面板在主题默认上再透几个百分点（正数更透，@cn/design/glass） */
+  glass: number
 }
 
 export interface AppSettings {
@@ -144,6 +161,9 @@ export interface SettingsPatch {
   cite?: Partial<CitePrefs>
 }
 
+/** 渐变默认慢慢动（task-aph2j 按耗电实测定，交付页 49-主题渐变施工「耗电」一节：慢慢动比不动多 2 到 4% CPU，打字、滚动不卡；用户「能动是更好」） */
+const WALL_MOVE_DEFAULT = true
+
 export const AUTO_COMMIT_CHOICES = [0, 5, 10, 30, 60] as const
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -158,6 +178,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
     // 默认极光照片（`背景图保留`）
     winBg: 'aurora',
     winBgFile: null,
+    wallMix: 'mid',
+    wallMove: WALL_MOVE_DEFAULT,
+    wallSpeed: 'slow',
+    glass: GLASS_DEFAULT,
   },
   autoCommitMinutes: 10,
   archiveDays: DEFAULT_ARCHIVE_DAYS,
@@ -186,7 +210,9 @@ export function normalizeSettings(raw: unknown, user: readonly SkinInfo[] = []):
   const [aDay, aNight, aSkin] = [find(skinIn(a.day)), find(skinIn(a.night)), find(skinIn(a.skin))]
   // 旧版的「深海光」渐变跟着深海蓝走了：换成默认的极光照片（B 里本来就铺的它）
   const bg = a.winBg === 'glow' ? 'aurora' : a.winBg
-  const winBg = bg === 'none' || bg === 'aurora' || bg === 'cave' || bg === 'custom' ? bg : d.winBg
+  // 有主题渐变以前的设置（没有 wallMix）：A 照 VS Code 从来不铺窗口背景，现在 A 也能配了，旧的 A 先当「纯色」，打开还是原来的样子
+  const old = !('wallMix' in a)
+  const winBg = old && a.frame === 'a' ? 'none' : WIN_BGS.includes(bg as WinBg) ? (bg as WinBg) : d.winBg
   const winBgFile = typeof a.winBgFile === 'string' && /^[^/\\]+$/.test(a.winBgFile) ? a.winBgFile : null
   const mins = Number(r.autoCommitMinutes)
   return {
@@ -201,6 +227,10 @@ export function normalizeSettings(raw: unknown, user: readonly SkinInfo[] = []):
       // 自己选的图没了就回到极光
       winBg: winBg === 'custom' && !winBgFile ? d.winBg : winBg,
       winBgFile,
+      wallMix: WALL_MIXES.includes(a.wallMix as WallMix) ? (a.wallMix as WallMix) : d.wallMix,
+      wallMove: typeof a.wallMove === 'boolean' ? a.wallMove : d.wallMove,
+      wallSpeed: WALL_SPEEDS.includes(a.wallSpeed as WallSpeed) ? (a.wallSpeed as WallSpeed) : d.wallSpeed,
+      glass: normalizeGlass(a.glass),
     },
     autoCommitMinutes: Number.isFinite(mins) && mins >= 0 && mins <= 24 * 60 ? Math.round(mins) : DEFAULT_SETTINGS.autoCommitMinutes,
     archiveDays: isArchiveDays(r.archiveDays) ? r.archiveDays : DEFAULT_SETTINGS.archiveDays,
@@ -215,6 +245,11 @@ export function normalizeSettings(raw: unknown, user: readonly SkinInfo[] = []):
     sync: normalizeSync(r.sync),
     cite: normalizeCite(r.cite),
   }
+}
+
+/** 几块面板这会儿是不是半透明的（设置里「面板透明度」能不能拉）：B 浮岛书桌 + 有窗口背景。和 renderer/skin.ts 的 data-glass 一起改 */
+export function panelsGlass(a: Pick<Appearance, 'frame' | 'winBg'>): boolean {
+  return a.frame === 'b' && a.winBg !== 'none'
 }
 
 /** 现在该用哪套：跟系统时看系统是不是深色 */

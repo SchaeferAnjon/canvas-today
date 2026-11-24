@@ -12,6 +12,7 @@
  */
 
 import { normTime } from './dates'
+import { DURATION_KEYS, parseMinutes } from './duration'
 
 export type FieldKind =
   | 'date'
@@ -90,6 +91,8 @@ export interface TaskLine {
   doneDate: string | null
   /** 行尾的 ^块编号（不带 ^） */
   block: string | null
+  /** 估时（分钟）：Dataview 的「[估时:: 30分钟]」（duration.ts）；没写是 null */
+  minutes: number | null
 }
 
 /** 写的时候用的记号 */
@@ -224,6 +227,9 @@ function peel(rest: string, end: number, titleStart: number): Field | null {
   return null
 }
 
+/** 估时的 Dataview 字段（[估时:: 30分钟]、[duration:: 30m]） */
+export const isDuration = (f: Field): boolean => f.kind === 'dv' && DURATION_KEYS.includes(f.key ?? '')
+
 /** Dataview 的 due 字段（值认得出是日子的） */
 export const isDvDue = (f: Field): boolean => f.kind === 'dv' && f.key === 'due' && /^\d{4}-\d{2}-\d{2}$/.test(f.value)
 
@@ -276,6 +282,7 @@ export function parseTaskLine(line: string): TaskLine | null {
     id: null,
     doneDate: null,
     block: null,
+    minutes: null,
   }
   // 同一种写了两遍的（手打重了）取最靠行尾的
   let sched: Field | null = null
@@ -293,6 +300,7 @@ export function parseTaskLine(line: string): TaskLine | null {
     else if (f.kind === 'id') t.id = f.value
     else if (f.kind === 'done') t.doneDate = f.value
     else if (f.kind === 'block') t.block = f.value
+    else if (isDuration(f)) t.minutes = parseMinutes(f.value)
   }
   // 没有 📅：⏳ 计划日当日子，再没有用 Dataview 的 due
   const alt = sched ?? due

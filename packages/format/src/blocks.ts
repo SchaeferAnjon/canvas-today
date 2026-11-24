@@ -818,7 +818,7 @@ export function parseTable(text: string, b: MdBlock): ParsedTable {
 }
 
 /** 表格一行里每一格两条竖线之间的原文范围（相对这一行；最后一个 | 后面的空白不算一格） */
-function cellSpans(s: string): { from: number; to: number }[] {
+export function cellSpans(s: string): { from: number; to: number }[] {
   const out: { from: number; to: number }[] = []
   let i = 0
   while (i < s.length && (s[i] === ' ' || s[i] === '\t')) i++
@@ -839,7 +839,7 @@ function cellSpans(s: string): { from: number; to: number }[] {
 }
 
 /** 一格里写的字：竖线转义、换行换成空格 */
-const cellText = (v: string) => v.replace(/\r?\n/g, ' ').replace(/(?<!\\)\|/g, '\\|').trim()
+export const tableCellText = (v: string) => v.replace(/\r?\n/g, ' ').replace(/(?<!\\)\|/g, '\\|').trim()
 
 /**
  * 改表格的一格（row = -1 是表头，0 起是下面的行）：只换这一格两条竖线之间的字，写成「 字 」，这一行别的地方原样。
@@ -858,7 +858,7 @@ export function setTableCell(text: string, b: MdBlock, row: number, col: number,
     spans = cellSpans(s)
   }
   const sp = spans[col]!
-  const v = cellText(value)
+  const v = tableCellText(value)
   const next = s.slice(0, sp.from) + (v ? ` ${v} ` : '  ') + s.slice(sp.to)
   return text.slice(0, line.from) + next + text.slice(line.to)
 }

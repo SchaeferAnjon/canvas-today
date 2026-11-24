@@ -12,12 +12,15 @@ import { join } from 'node:path'
 import type { EngineId } from '../../../notes/src/shared/agent'
 import { ENGINE_LABEL, type AiPick, fitPick, INITIAL_PREFS, modelsOf, type ModelOption, normalizePick, normalizePrefs, pickLabel, resolvePick } from '../../../notes/src/shared/ai-features'
 import { AgentStore } from '../../../notes/src/main/agent/store'
-import { claudeEngine, codexEngine, type Engine, geminiEngine, opencodeEngine } from '../../../notes/src/main/agent/engines'
+import type { Engine } from '../../../notes/src/main/agent/engines'
 import { locateCli, setCustomCli } from '../../../notes/src/main/agent/cli'
+import { ALL_IDS, isApi, isCli, isEngineId } from '../../../notes/src/shared/ai-sources'
+import { needBorrow, notesHasKey, todayKey } from './ai-keys'
 import { CHAT_SYSTEM, chatPlace, chatPrompt, chatTitle, type ChatCtx, type ChatInfo, type ChatReply, fakeChatAnswer, historyText, readChat, type TodayMsg } from '../shared/ai-chat'
-import { FAKE } from './ai'
+import { BorrowNeeded, engineOf, FAKE } from './ai'
 
-const IDS: EngineId[] = ['claude', 'codex', 'gemini', 'opencode']
+/** 命令行四家、API Key 四家（本机模型要现找，对话这一列不列） */
+const IDS: EngineId[] = ALL_IDS.filter((id) => isCli(id) || isApi(id))
 
 /** 输入框底行谁来答那一列要的：哪几家、装在哪、能选的模型 */
 export interface ChatEngine {
@@ -65,7 +68,7 @@ export class TodayChats {
   /** 画布笔记设置里「AI 对话」那一行（没设过是默认那家） */
   defaultPick(): AiPick {
     const raw = this.notesAi()
-    const legacy = typeof raw.engine === 'string' && (IDS as string[]).includes(raw.engine) ? (raw.engine as EngineId) : undefined
+    const legacy = isEngineId(raw.engine) ? raw.engine : undefined
     const prefs = raw.prefs === undefined && !legacy ? INITIAL_PREFS : normalizePrefs(raw.prefs, legacy)
     return resolvePick(prefs, 'chat')
   }
@@ -77,9 +80,11 @@ export class TodayChats {
   /** 四家：装没装、在哪（画布笔记「装在别处？指定位置…」选的也认） */
   engineList(): ChatEngine[] {
     const cli = this.notesAi().cli
-    if (cli && typeof cli === 'object') setCustomCli(Object.fromEntries(Object.entries(cli).filter(([k, v]) => (IDS as string[]).includes(k) && typeof v === 'string')) as Partial<Record<EngineId, string>>)
+    if (cli && typeof cli === 'object') setCustomCli(Object.fromEntries(Object.entries(cli).filter(([k, v]) => isCli(k) && typeof v === 'string')))
     return IDS.map((id) => {
-      const hit = FAKE() ? { path: `/test/${id}`, where: '~/.local/bin' } : locateCli(id)
+      // API Key：画布今日自己有一份，或者画布笔记有（用到时先问「用画布笔记那把？」）
+      if (isApi(id)) return { id, label: ENGINE_LABEL[id], ok: !!todayKey(id) || notesHasKey(id), where: '', models: this.modelsOf(id) }
+      const hit = FAKE() ? { path: `/test/${id}`, where: '~/.local/bin' } : isCli(id) ? locateCli(id) : null
       return { id, label: ENGINE_LABEL[id], ok: !!hit, where: hit ? hit.where : '', models: this.modelsOf(id) }
     })
   }
@@ -119,11 +124,13 @@ export class TodayChats {
   }
 
   private engineOf(id: EngineId): Engine {
-    return (this.engines[id] ??= id === 'claude' ? claudeEngine() : id === 'codex' ? codexEngine() : id === 'gemini' ? geminiEngine() : opencodeEngine())
+    return (this.engines[id] ??= engineOf(id))
   }
 
   /** 问一次：交回 AI 的原话（真的）或假 AI 照词答的 */
   async ask(pick: AiPick, ctx: ChatCtx, msgs: TodayMsg[], text: string, cwd: string, signal: AbortSignal): Promise<ChatReply> {
+    const borrow = needBorrow(pick.engine)
+    if (borrow) throw new BorrowNeeded(borrow)
     let answer: string
     if (FAKE()) {
       await new Promise<void>((resolve, reject) => {

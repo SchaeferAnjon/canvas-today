@@ -8,8 +8,9 @@
  * 机器忙时文件夹的通知会晚、会丢，另外每 3 秒读一次（一个几十字节的小文件）兜底。
  * 不碰 Electron（两个软件的主进程都用，单元测试直接跑）。
  */
-import { existsSync, type FSWatcher, mkdirSync, readFileSync, renameSync, watch, writeFileSync } from 'node:fs'
+import { existsSync, type FSWatcher, mkdirSync, readFileSync, watch } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
+import { atomicWriteSync } from '@cn/atomic'
 
 export interface CalRef {
   id: string
@@ -119,8 +120,7 @@ export class HiddenCals {
     }
     const text = JSON.stringify({ ...base, hidden }, null, 2) + '\n'
     mkdirSync(dirname(this.file), { recursive: true })
-    writeFileSync(this.file + '.tmp', text)
-    renameSync(this.file + '.tmp', this.file)
+    atomicWriteSync(this.file, text)
     this.text = text
     this.list = hidden
     if (!this.watcher) this.watch()

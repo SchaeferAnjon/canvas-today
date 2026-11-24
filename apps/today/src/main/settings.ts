@@ -3,12 +3,13 @@
  * 画布笔记的设置目录默认是 ~/Library/Application Support/canvas-notes；CT_NOTES_DATA 换（测试一律换成临时目录，
  * 测试模式里没给 CT_NOTES_DATA 就当没装画布笔记，不读用户真的设置、不打开用户真的库）。
  */
-import { existsSync, type FSWatcher, mkdirSync, readFileSync, renameSync, watch, writeFileSync } from 'node:fs'
+import { existsSync, type FSWatcher, mkdirSync, readFileSync, watch } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 import type { Lang } from '../shared/i18n'
 import type { SkinInfo } from '../../../notes/src/shared/appearance'
 import { lookFromNotes, normalizeToday, type TodayAppearance, type TodaySettings } from '../shared/settings'
 import { E2E } from './test-mode'
+import { atomicWriteSync } from '@cn/atomic'
 
 export class SettingsFile {
   constructor(
@@ -31,10 +32,9 @@ export class SettingsFile {
 
   set(p: Partial<TodaySettings>): TodaySettings {
     const cur = this.read()
-    const next = normalizeToday({ ...cur, ...p, appearance: { ...cur.appearance, ...(p.appearance ?? {}) } }, this.sysLang, this.userSkins())
+    const next = normalizeToday({ ...cur, ...p, appearance: { ...cur.appearance, ...(p.appearance ?? {}) }, plan: { ...cur.plan, ...(p.plan ?? {}) } }, this.sysLang, this.userSkins())
     mkdirSync(dirname(this.path), { recursive: true })
-    writeFileSync(this.path + '.tmp', JSON.stringify(next, null, 2))
-    renameSync(this.path + '.tmp', this.path)
+    atomicWriteSync(this.path, JSON.stringify(next, null, 2))
     return next
   }
 }

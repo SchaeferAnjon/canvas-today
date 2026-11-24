@@ -16,7 +16,8 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { EngineId } from '../../shared/agent'
-import { effortOption, type ModelOption } from '../../shared/ai-features'
+import { effortOption, ENGINE_LABEL, type ModelOption } from '../../shared/ai-features'
+import type { CliId } from '../../shared/ai-sources'
 import { cliEnv, findCli, INSTALL_HINT } from './cli'
 import { t } from '../../shared/i18n'
 import { RpcProcess } from './jsonrpc'
@@ -100,12 +101,12 @@ export interface Engine {
   dispose?(): void
 }
 
-export const LABELS: Record<EngineId, string> = { claude: 'Claude Code', codex: 'Codex', gemini: 'Gemini', opencode: 'OpenCode' }
+export const LABELS: Record<EngineId, string> = ENGINE_LABEL
 export const MCP_NAME = 'canvas'
 
 const APP = { name: 'canvas-notes', version: '0.0.1' }
 
-function need(id: EngineId): string {
+function need(id: CliId): string {
   const p = findCli(id)
   if (!p) throw new Error(INSTALL_HINT[id])
   return p
@@ -585,6 +586,8 @@ export async function codexModelList(command?: string, prefix: string[] = []): P
 
 interface AcpOptions {
   id: 'gemini' | 'opencode'
+  /** 出错时说的名字（软件自带的 OpenCode 替一把 Key 跑时写「Claude API」，task-587os）；不给是这家命令行的名字 */
+  label?: string
   /** 开进程前先看看登录了没有；没登录返回 false，免得等它超时 */
   loggedIn?(): boolean
   /** 只在测试里给（假的 ACP 程序） */
@@ -675,6 +678,7 @@ export function acpModelState(r: { configOptions?: unknown; models?: unknown }):
 }
 
 export function acpEngine(o: AcpOptions): Engine {
+  const label = o.label ?? LABELS[o.id]
   let proc: RpcProcess | null = null
   let ready: Promise<RpcProcess> | null = null
   /** 现在这个进程是哪种模式起的 */
@@ -703,14 +707,14 @@ export function acpEngine(o: AcpOptions): Engine {
           st.now = { model: want }
         }
       } catch (e) {
-        throw new Error(t('{name} 换不成模型 {model}：{error}', { name: LABELS[o.id], model: want, error: (e as Error).message }))
+        throw new Error(t('{name} 换不成模型 {model}：{error}', { name: label, model: want, error: (e as Error).message }))
       }
     }
     if (st.via !== 'config' || !st.effortOpt) return
     const effort = r.effort && st.efforts.includes(r.effort) ? r.effort : st.first.effort
     if (!effort || effort === st.now.effort) return
     await p.request('session/set_config_option', { sessionId, configId: st.effortOpt, value: effort }).catch((e) => {
-      throw new Error(t('{name} 换不成这一档 {effort}：{error}', { name: LABELS[o.id], effort, error: (e as Error).message }))
+      throw new Error(t('{name} 换不成这一档 {effort}：{error}', { name: label, effort, error: (e as Error).message }))
     })
     st.now = { ...st.now, effort }
   }
@@ -763,7 +767,7 @@ export function acpEngine(o: AcpOptions): Engine {
 
   return {
     id: o.id,
-    label: LABELS[o.id],
+    label,
     dispose: () => proc?.close(),
     async run(r) {
       if (o.loggedIn && !o.loggedIn()) throw new Error(o.loginHint)
@@ -818,7 +822,7 @@ export function acpEngine(o: AcpOptions): Engine {
         const prompt = fresh ? `${r.system}\n\n---\n\n${withHistory(r, true)}` : r.prompt
         const images = (r.images ?? []).map((i) => ({ type: 'image', mimeType: i.mime, data: i.data }))
         const res = await p.request<{ stopReason?: string }>('session/prompt', { sessionId, prompt: [{ type: 'text', text: prompt }, ...images] }, 0)
-        if (res.stopReason === 'refusal') throw new Error(t('{name} 拒绝回答', { name: LABELS[o.id] }))
+        if (res.stopReason === 'refusal') throw new Error(t('{name} 拒绝回答', { name: label }))
       } catch (e) {
         throw tagSession(e as Error, sessionId)
       } finally {

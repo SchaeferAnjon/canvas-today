@@ -76,6 +76,12 @@ export const APP: Table = {
   '「{name}」移到了废纸篓，在访达的废纸篓里能找回': '“{name}” moved to the Trash; get it back from the Trash in Finder',
   '「{name}」和里面{n}个文件移到了废纸篓，历史里能撤回': (p) => `“${p.name}” and the ${count(p.n, 'file')} in it moved to the Trash; undo in History`,
   '「{name}」移到了废纸篓，历史里能撤回': '“{name}” moved to the Trash; undo in History',
+  '「{name}」和里面{n}个文件、{images}个附件移到了废纸篓，历史里能撤回': (p) =>
+    `“${p.name}”, the ${count(p.n, 'file')} in it and ${count(p.images, 'attachment')} moved to the Trash; undo in History`,
+  '「{name}」的{n}个附件放回了原处': (p) => `${count(p.n, 'attachment')} of “${p.name}” restored to where they were`,
+  '这些附件又有笔记在用了，没有动': 'A note uses these attachments again; nothing was moved',
+  '{n}个没人用的附件移到了废纸篓，在「最近删掉的」里能放回': (p) => `${count(p.n, 'unused attachment')} moved to the Trash; restore them under Recently deleted`,
+  '撤回了，{n}个附件放回了原处': (p) => `Undone: ${count(p.n, 'attachment')} restored`,
   '已删除{n}个': (p) => `Deleted ${count(p.n, 'item')}`,
   '已删除{n}个和{images}张图': (p) => `Deleted ${count(p.n, 'item')} and ${count(p.images, 'image')}`,
   '已删除{n}个，文件夹在历史里能撤回': (p) => `Deleted ${count(p.n, 'item')}; folders can be restored in History`,

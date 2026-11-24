@@ -59,13 +59,21 @@ export interface AutoButtonInfo {
   steps: AutoStep[]
 }
 
-/** 不是写在规则里的自带那一样：梦游（开关、现在跑一次和设置 › 梦游同一个） */
+/**
+ * 不是写在规则里的自带那几样：梦游（开关、现在跑一次和设置 › 梦游同一个）；
+ * 接上的同步来源（id 'source:getnote'，开关、现在拉一次和设置 › 库 › 同步来源同一个，设计页 61-同步来源）
+ */
 export interface AutoSystemInfo {
-  id: 'dream'
+  id: 'dream' | `source:${string}`
   name: string
   on: boolean
-  /** 第二行：上次做了什么 */
+  /** 第二行：上次做了什么（梦游）；多久拉一次、放哪（同步来源） */
   desc: string
+  /** 同步来源：记录里那一条的名字（「同步来源 · Get笔记」）和从记录里算的跑过几次、上次几点、上次出错的原因 */
+  rule?: string
+  runs?: number
+  last?: string | null
+  error?: string | null
 }
 
 export interface AutoListing {
@@ -190,8 +198,8 @@ export interface AutoApi {
   /** 读设置；给 patch 就改了再读 */
   prefs(patch?: Partial<AutoPrefs>): Promise<AutoPrefs>
   /** 自带的梦游：开关、现在跑一次 */
-  system(id: 'dream', on?: boolean): Promise<AutoSystemInfo>
-  systemRun(id: 'dream'): Promise<void>
+  system(id: AutoSystemInfo['id'], on?: boolean): Promise<AutoSystemInfo>
+  systemRun(id: AutoSystemInfo['id']): Promise<void>
   onStarted(cb: (s: AutoStarted) => void): () => void
   onDone(cb: (d: AutoDone) => void): () => void
   /** 交给界面跑一条存过的命令 */

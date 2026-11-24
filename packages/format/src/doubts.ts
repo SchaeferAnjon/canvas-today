@@ -7,6 +7,7 @@
  */
 import { answerLead, type AskSection, lectureOf, linkFrom } from './reading-note'
 import { formatPdfAnchor } from './pdf-link'
+import { confusedOf, plainQ } from './highlights'
 import { setProp } from './props'
 
 export interface DoubtItem {
@@ -65,8 +66,10 @@ function walk(pdf: string, s: AskSection, lecture?: number): { items: DoubtItem[
   }
   let main = -1
   s.qas.forEach((qa, i) => {
+    // 划成「看不懂」还没问 AI 的那一问（ParaRead 联动）：没有回答，不算问过、不出卡
+    if (confusedOf(qa.q) && !qa.a.trim() && !qa.sides.length) return
     if (main >= 0 && AGAIN.test(qa.q.trim())) again(main, qa.a)
-    else if (qa.q.trim()) main = add(qa.q, qa.a)
+    else if (qa.q.trim()) main = add(plainQ(qa.q), qa.a)
     if (main >= 0) at.set(`q${i}`, main)
     qa.sides.forEach((side, j) => {
       let prev = -1

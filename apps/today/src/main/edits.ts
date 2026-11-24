@@ -4,7 +4,7 @@
  * 再按 🆔 找；都找不到就不改，告诉界面「这一行刚被别处改了」。
  * 抄了好几遍的同一条（索引里 dupOf / dups）：勾掉、改日子钟点、改名、删掉写到每一份上（一次改动、一个撤销），别的只改点的那一份。
  */
-import { addSubtask, appendTask, completeTask, type CopyEdit, copiesOf, editCopy, editLine, type ISODate, isISODate, lineAt, makeId, moveBlock, newTaskLine, normTime, parseQuick, parseRemind, parseRepeat, parseTaskLine, removeBlock, setDate, setDone, setId, setPrio, setRemind, setRepeat, setTime, setTitle, setWhen, splitLines, type When } from '@cn/tasks'
+import { addSubtask, appendTask, completeTask, type CopyEdit, copiesOf, editCopy, editLine, type ISODate, isISODate, lineAt, makeId, minutesText, moveBlock, newTaskLine, normTime, parseQuick, parseRemind, parseRepeat, parseTaskLine, removeBlock, setCancelled, setDate, setDone, setDuration, setId, setPrio, setRemind, setRepeat, setTime, setTitle, setWhen, splitLines, type When } from '@cn/tasks'
 import type { AddCtx, AddResult, EditReq, EditResult, Snapshot } from '../shared/api'
 import type { PlanChange } from '../shared/ai-chat'
 import { INBOX_NOTE } from '../shared/brand'
@@ -34,6 +34,8 @@ function copyEdit(e: EditReq['edit']): CopyEdit | null {
   switch (e.op) {
     case 'done':
       return { op: 'done', done: e.done }
+    case 'cancel':
+      return { op: 'cancel' }
     case 'date':
       return { op: 'when', date: e.date, ...(e.date && e.time !== undefined ? { time: e.time } : {}) }
     case 'time':
@@ -57,6 +59,10 @@ function say(req: EditReq, title: string): string {
   switch (e.op) {
     case 'done':
       return e.done ? `勾掉「${title}」` : `「${title}」改回没做完`
+    case 'cancel':
+      return `「${title}」不做了`
+    case 'minutes':
+      return e.minutes ? `「${title}」估时 ${minutesText(e.minutes)}` : `「${title}」拿掉估时`
     case 'date':
       return e.date ? `「${title}」改到 ${e.date}${e.time ? ' ' + e.time : ''}` : `「${title}」拿掉日子`
     case 'time':
@@ -118,6 +124,12 @@ export async function applyEdit(v: TaskVault, req: EditReq, today: ISODate): Pro
           break
         case 'time':
           after = editLine(text, n, (l) => setTime(l, e.time, today))
+          break
+        case 'cancel':
+          after = editLine(text, n, (l) => setCancelled(l, today))
+          break
+        case 'minutes':
+          after = editLine(text, n, (l) => setDuration(l, e.minutes))
           break
         case 'remind':
           // 有提醒的那条给一个 🆔（提醒记录、以后的提醒事项镜像、canvas-today:// 链接都靠它认）

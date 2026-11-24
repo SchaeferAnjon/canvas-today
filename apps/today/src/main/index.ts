@@ -14,6 +14,7 @@ import { themeInfo } from '../../../notes/src/shared/vscode-theme'
 import { deviceDir, lineAt, minutesOf, splitLines } from '@cn/tasks'
 import type { AddCtx, AiSlot, AppState, LookState, EditReq, FocusOp, FocusTask, GitInfo, HabitOp, TaskView } from '../shared/api'
 import type { Busy, SchedCandidate } from '../shared/ai-plan'
+import type { CloseItem } from '../shared/plan'
 import { type ChatCtx, chatTitle, type CtxEvent, type CtxTask, type ChatPlan, pickTasks, type TodayMsg } from '../shared/ai-chat'
 import { INBOX_NOTE } from '../shared/brand'
 import PKG from '../../package.json'
@@ -24,7 +25,9 @@ import { findAgain, listed, open } from '../shared/views'
 import { isoOf, isoPlus, localNowOf, localStamp, whenLabel } from '../shared/when'
 import { clockOffset, now, onClock } from './clock'
 import { Committer } from './commit'
-import { aiLabel, aiPick, aiSchedule, aiSplit, aiWhen, warmUp } from './ai'
+import { aiLabel, aiPick, aiSchedule, aiSplit, aiWhen, BorrowNeeded, warmUp } from './ai'
+import { borrowFromNotes, dropTodayKey, initKeys, needBorrow, notesHasKey, todayKeyTail } from './ai-keys'
+import { API_IDS, isApi } from '../../../notes/src/shared/ai-sources'
 import { calPrefsPath } from './cal-hidden'
 import { CalendarLink } from './calendar'
 import { addSubtasks, addTask, applyEdit, applyPlan, ensureTaskId, newList, setTimes } from './edits'
@@ -39,12 +42,15 @@ import { notifier, Reminders } from './remind'
 import { effectiveLook, notesDataDir, notesVault, SettingsFile, themesDir, watchNotesSettings, watchThemes } from './settings'
 import { E2E, guardScreen } from './test-mode'
 import { registerFamily } from '../../../notes/src/main/family'
+import { journalOf, PlanDayFile, writeClose } from './plan'
+import { trayLine } from '../shared/plan'
 import { MenuBar } from './tray'
 import { QuickPanel } from './quick'
 import type { QuickAddResult, QuickItem } from '../shared/api'
 import { pathTitle } from '../shared/quick'
 import { cntToday } from '../shared/views'
 import { TaskVault } from './vault'
+import { RECYCLE_DIR, sweepTemps } from '@cn/atomic'
 
 app.setPath('userData', process.env.CT_USER_DATA || join(app.getPath('appData'), BRAND.userDataDir))
 app.setName(BRAND.name)
@@ -76,6 +82,8 @@ let calendar: CalendarLink | null = null
 /** 检查更新建好了（发布包要先加载 electron-updater）；界面来问之前先等它 */
 let updaterReady: Promise<void> = Promise.resolve()
 let quitting = false
+/** 排一天：这台设备今天排过没有、收工没有（main/plan.ts） */
+let planDay: PlanDayFile | null = null
 /** 界面还没准备好时来的 canvas-today:// 链接 */
 const pendingUrls: string[] = []
 let rendererReady = false
@@ -83,6 +91,17 @@ let rendererReady = false
 let quickTakenSaid = false
 
 const today = () => isoOf(now())
+/** 软件的钟现在是当天第几分钟 */
+const nowMin = () => {
+  const d = new Date(now())
+  return d.getHours() * 60 + d.getMinutes()
+}
+
+/** 菜单栏图标旁边那一行：正在做的那一块和还剩几分钟，没有就是下一块（排一天，设置能关） */
+function trayTitle() {
+  const s = settings.read()
+  menuBar.setLine(s.plan.tray && vault ? trayLine(lang(), vault.snapshot().tasks, today(), nowMin()) : '')
+}
 const lang = (): Lang => settings.read().lang
 
 function sysLang(): Lang {
@@ -155,6 +174,7 @@ function pushSnapshot() {
     menuBar.setCount(cntToday(snap.tasks, today()))
     reminders?.soon()
     refreshGit()
+    trayTitle()
   }, 30)
 }
 
@@ -181,6 +201,11 @@ async function openVault(dir: string): Promise<void> {
   reminders?.stop()
   vault?.close()
   const v = new TaskVault(root)
+  // 上次崩溃、断电留下的临时文件（没换上去的那次保存）挪进 .canvas-notes/回收/、记一行（task-8dula）；不挡着打开
+  void sweepTemps(root).then(
+    (m) => m.length && console.log(`挪走 ${m.length} 个崩溃留下的临时文件，见 ${RECYCLE_DIR}/记录.txt`),
+    (e) => console.error('收拾崩溃留下的临时文件没成功', e),
+  )
   await v.scan()
   vault = v
   committer = new Committer(root)
@@ -522,6 +547,7 @@ function registerIpc() {
       menuBar.relabel()
     }
     if (s.tray !== before.tray) menuBar.set(s.tray)
+    if (s.plan.tray !== before.plan.tray || s.lang !== before.lang) trayTitle()
     if (s.quickKey !== before.quickKey) quick.applyKey()
     return pushLook(s)
   })
@@ -572,8 +598,30 @@ function registerIpc() {
     jobs.set(id, ac)
     return { ac, done: () => jobs.get(id) === ac && jobs.delete(id) }
   }
-  const failText = (e: unknown) => ({ ok: false as const, message: String((e as Error)?.message ?? e), ...((e as Error)?.name === 'AbortError' ? { aborted: true } : {}) })
-  ipcMain.handle('ct:aiInfo', () => aiLabel(aiPick(notesDir)))
+  // 要的那把 Key 画布今日还没有：界面问「用画布笔记那把？」（borrow 是哪一家）
+  const failText = (e: unknown) => ({ ok: false as const, message: String((e as Error)?.message ?? e), ...((e as Error)?.name === 'AbortError' ? { aborted: true } : {}), ...(e instanceof BorrowNeeded ? { borrow: e.engine } : {}) })
+  initKeys(app.getPath('userData'), notesDir)
+  ipcMain.handle('ct:aiInfo', () => {
+    const p = aiPick(notesDir)
+    const borrow = needBorrow(p.engine)
+    return { ...aiLabel(p), ...(borrow ? { borrow } : {}) }
+  })
+  // Key 借用（task-587os）：同意后从画布笔记那份解出来，存一份到画布今日自己的钥匙串项
+  ipcMain.handle('ct:aiBorrow', async (_e, id: unknown) => {
+    if (!isApi(id)) throw new Error('AI 的参数不对')
+    try {
+      await borrowFromNotes(id)
+      return { ok: true }
+    } catch (e) {
+      return { ok: false, message: String((e as Error)?.message ?? e) }
+    }
+  })
+  // 设置 › AI：每一家画布今日有没有自己的一份、画布笔记有没有
+  ipcMain.handle('ct:aiKeys', () => API_IDS.map((id) => ({ id, tail: todayKeyTail(id) ?? null, notes: notesHasKey(id) })))
+  ipcMain.handle('ct:aiKeyDrop', (_e, id: unknown) => {
+    if (!isApi(id)) throw new Error('AI 的参数不对')
+    dropTodayKey(id)
+  })
   ipcMain.handle('ct:aiCancel', (_e, id: unknown) => void (typeof id === 'string' && jobs.get(id)?.abort()))
   ipcMain.handle('ct:aiSplit', async (_e, key: unknown, id: unknown) => {
     const v = needVault()
@@ -882,6 +930,47 @@ function registerIpc() {
   })
 }
 
+/** 界面交来的「排过了 / 收工了」：一项项查 */
+function planPatch(x: unknown): { morning?: 'done' | 'skipped' | null; closed?: string | null } {
+  const o = (x && typeof x === 'object' ? x : {}) as Record<string, unknown>
+  const out: { morning?: 'done' | 'skipped' | null; closed?: string | null } = {}
+  if ('morning' in o) {
+    if (o.morning !== null && o.morning !== 'done' && o.morning !== 'skipped') throw new Error('排一天的参数不对')
+    out.morning = o.morning as 'done' | 'skipped' | null
+  }
+  if ('closed' in o) {
+    if (o.closed !== null && typeof o.closed !== 'string') throw new Error('排一天的参数不对')
+    out.closed = o.closed as string | null
+  }
+  return out
+}
+
+/** 界面交来的收工那几条：一项项查 */
+function closeItems(x: unknown): CloseItem[] {
+  if (!Array.isArray(x) || x.length > 500) throw new Error('收工的参数不对')
+  return x.map((y) => {
+    const o = (y && typeof y === 'object' ? y : {}) as Record<string, unknown>
+    if (typeof o.title !== 'string' || typeof o.note !== 'string' || !['done', 'moved', 'dropped', 'left'].includes(o.how as string)) throw new Error('收工的参数不对')
+    if (o.how === 'moved' && (typeof o.to !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(o.to))) throw new Error('收工的参数不对')
+    return { title: o.title.replace(/[\r\n]+/g, ' '), note: o.note.replace(/[\r\n\[\]|]+/g, ' '), how: o.how as CloseItem['how'], ...(o.how === 'moved' ? { to: o.to as string } : {}) }
+  })
+}
+
+function registerPlanIpc() {
+  ipcMain.handle('ct:planState', () => planDay!.read(today()))
+  ipcMain.handle('ct:planMark', (_e, p: unknown) => planDay!.mark(today(), planPatch(p)))
+  ipcMain.handle('ct:journal', () => journalOf(needVault(), settings.read().plan.journal, lang(), today()))
+  ipcMain.handle('ct:planClose', async (_e, o: unknown) => {
+    const r = (o && typeof o === 'object' ? o : {}) as Record<string, unknown>
+    const f = (r.focus && typeof r.focus === 'object' ? r.focus : {}) as Record<string, unknown>
+    if (typeof r.time !== 'string' || !/^\d{2}:\d{2}$/.test(r.time) || typeof f.n !== 'number' || typeof f.minutes !== 'number') throw new Error('收工的参数不对')
+    const v = needVault()
+    const res = await writeClose(v, { place: journalOf(v, settings.read().plan.journal, lang(), today()), today: today(), lang: lang(), time: r.time, items: closeItems(r.items), focus: { n: f.n, minutes: f.minutes } })
+    if (res.ok) planDay!.mark(today(), { closed: res.path })
+    return res
+  })
+}
+
 /** 提醒事项小助手和镜像：测试模式里小助手一律带 --memory（假提醒事项），globalThis.ctRem 让测试像人一样在提醒事项里改 */
 function setupMirror() {
   const helper = new RemHelper(helperCommand(process.env, { e2e: E2E, packaged: app.isPackaged, execPath: process.execPath, here: __dirname }))
@@ -1014,7 +1103,9 @@ app.whenReady().then(async () => {
   if (E2E) app.dock?.hide()
   else if (!app.isPackaged) app.dock?.setIcon(join(__dirname, '../../build/icon.png'))
   if (app.isPackaged && !E2E) app.setAsDefaultProtocolClient(BRAND.scheme)
+  planDay = new PlanDayFile(join(app.getPath('userData'), 'plan-day.json'))
   registerIpc()
+  registerPlanIpc()
   family = registerFamily({
     vault: () => vault,
     // 联动.json 不是 md，库的监视不报它：底栏的「未提交」重数一次
@@ -1039,11 +1130,15 @@ app.whenReady().then(async () => {
   if (!E2E) setTimeout(() => quick.warm(), 3000)
   // 跨了午夜、测试拨了钟：图标旁边的数重算
   setInterval(() => vault && menuBar.setCount(cntToday(vault.snapshot().tasks, today())), 60_000)
+  trayTitle()
+  // 菜单栏那一行「还剩几分钟」每半分钟跟一次
+  setInterval(trayTitle, 30_000)
   onClock((off) => {
     broadcast('ct:clock', off)
     if (vault) menuBar.setCount(cntToday(vault.snapshot().tasks, today()))
     reminders?.soon()
     focus?.check()
+    trayTitle()
   })
   watchNotesSettings(notesDir, () => {
     if (settings.read().followNotes) pushLook(settings.read())

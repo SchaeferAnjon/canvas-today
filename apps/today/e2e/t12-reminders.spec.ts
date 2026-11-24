@@ -194,7 +194,7 @@ const IMP = {
     preview: '先看看会搬什么',
     go: '导入4条',
     toast: '导入了2个列表4条',
-    undo: '撤销',
+    undo: '撤回',
     withDel: '搬完删掉提醒事项里的原条目',
     confirm: '把提醒事项里这4条删掉？',
     del: '删掉4条',

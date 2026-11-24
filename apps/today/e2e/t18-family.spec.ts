@@ -1,5 +1,5 @@
 /**
- * 设置 › 软件家族（task-59o3v，和画布笔记同一个页面）：第五页；没装 / 装了；「下载」「打开」只记下来；
+ * 设置 › 软件家族（task-59o3v，和画布笔记同一个页面）：第六页；没装 / 装了；「下载」「打开」只记下来；
  * 拨「用画布笔记打开」写进库里的联动.json，「打开笔记，到这一行」跟着换；「去库 ›」「去外观 ›」翻过去闪一下；
  * 画布笔记和画布今日同时开着同一个库：哪边拨了，另一边读到的是同一个值。
  */
@@ -34,13 +34,13 @@ async function openFamily(page: Page) {
   await expect(dlg(page).getByRole('heading', { name: '软件家族' })).toBeVisible()
 }
 
-test('侧栏第五页「软件家族」：画布笔记一张表三行、MeetCaption 一张，其余七个收在下面；没装时开关写「装了以后能开」，点「下载」开官网、装好了再看一下就出开关', async () => {
+test('侧栏第六页「软件家族」：画布笔记一张表三行、MeetCaption 一张，其余七个收在下面；没装时开关写「装了以后能开」，点「下载」开官网、装好了再看一下就出开关', async () => {
   install({})
   const run = await launch({ env: { CT_FAMILY_INSTALLED_FILE: installedFile() } })
   const { page } = run
   try {
     await page.locator('.ab[data-k="settings"]').click()
-    await expect(nav(page).getByRole('button')).toHaveText(['一般', '外观', '日历和提醒事项', '库', '软件家族'])
+    await expect(nav(page).getByRole('button')).toHaveText(['一般', '外观', '日历和提醒事项', 'AI', '库', '排一天', '软件家族'])
     await nav(page).getByRole('button', { name: '软件家族' }).click()
     await expect(dlg(page).locator('.sa-head')).toContainText('同一个人做的几个软件：装了的能互相接上，没装的先看看能做什么')
     expect(await dlg(page).locator('.fm-card').evaluateAll((els) => els.map((e) => e.getAttribute('data-app')))).toEqual(['canvas-notes', 'meetcaption'])

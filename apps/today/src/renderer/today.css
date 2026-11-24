@@ -589,14 +589,18 @@ strong {
 }
 
 /* B 有窗口背景图时三块岛都半透明、透出背景图（2026-11-22 用户：「这个大白底能不能做成…半透明的」，照 v2 和画布笔记首页 B）；
-   颜色、透多少、模糊是 @cn/design themes.css 的 --isle*（画布笔记首页 B 也用）。不用图时照旧是实色：后面是一块纯色，透了只是变色 */
-[data-winbg='photo'] .fb {
+   颜色、透多少、模糊是 @cn/design themes.css 的 --isle*（画布笔记首页 B 也用）。主题渐变（task-aph2j）同样半透明；纯色时照旧是实色：后面是一块纯色，透了只是变色 */
+[data-winbg='photo'] .fb,
+[data-winbg='wall'] .fb {
   /* 日历里的待办块压在格线上，要实底才读得清：先记下实的 --card */
   --card-solid: var(--card);
 }
 [data-winbg='photo'] .fb .left,
+[data-winbg='wall'] .fb .left,
 [data-winbg='photo'] .fb .center,
-[data-winbg='photo'] .fb .right {
+[data-winbg='wall'] .fb .center,
+[data-winbg='photo'] .fb .right,
+[data-winbg='wall'] .fb .right {
   -webkit-backdrop-filter: var(--isle-blur);
   backdrop-filter: var(--isle-blur);
   --t2: var(--isle-t2);
@@ -605,24 +609,97 @@ strong {
   --card: var(--isle-card);
   --clip: var(--isle-card);
 }
-[data-winbg='photo'] .fb .cal-blk:not(.ev):not(.ghost) {
+[data-winbg='photo'] .fb .cal-blk:not(.ev):not(.ghost),
+[data-winbg='wall'] .fb .cal-blk:not(.ev):not(.ghost) {
   background: var(--card-solid);
 }
-[data-winbg='photo'] .fb .left {
-  background: var(--isle-side);
-}
-[data-winbg='photo'] .fb .center {
+/* 三块的底和画布笔记一样（shell.css「半透明的岛」）：左栏浅色主题同中间（--isle），深色是侧栏色（--isle-side）；
+   右栏同中间（--isle，不是 --isle-pop：深色主题的 --pop 比 --win 亮，面板透明度拉到最透时正文不到 7） */
+[data-winbg='photo'] .fb .left,
+[data-winbg='wall'] .fb .left,
+[data-winbg='photo'] .fb .center,
+[data-winbg='wall'] .fb .center,
+[data-winbg='photo'] .fb .right,
+[data-winbg='wall'] .fb .right {
   background: var(--isle);
 }
-[data-winbg='photo'] .fb .right {
-  background: var(--isle-pop);
+[data-winbg='photo'][data-tone='dark'] .fb .left,
+[data-winbg='wall'][data-tone='dark'] .fb .left {
+  background: var(--isle-side);
 }
 [data-winbg='photo'] .fb .content,
-[data-winbg='photo'] .fb .tabs {
+[data-winbg='wall'] .fb .content,
+[data-winbg='photo'] .fb .tabs,
+[data-winbg='wall'] .fb .tabs {
   background: transparent;
 }
-[data-winbg='photo'] .fb .tab.on {
+[data-winbg='photo'] .fb .tab.on,
+[data-winbg='wall'] .fb .tab.on {
   background: var(--isle-card);
+}
+
+/* ---------- 窗口背景和风格任意组合（task-aph2j，同画布笔记 shell/winbg.css）：主题渐变是 @cn/design wall.css 铺在最底下的一层 ---------- */
+[data-winbg='wall'] .fb,
+[data-winbg='wall'] .fa {
+  background: transparent;
+}
+/* 渐变上的字和按钮：不是照片，照纯色那样用深字；没亮的换 --isle-t2（--t3 在基调色上不到 3:1） */
+[data-winbg='wall'] .fb > .tb,
+[data-winbg='wall'] .fb > .tb .ib,
+[data-winbg='wall'] .fa > .tb .ib,
+[data-winbg='wall'] .fb .ab,
+[data-winbg='wall'] .fa .ab {
+  color: var(--isle-t2);
+}
+[data-winbg='wall'] .fb > .tb .ib:hover,
+[data-winbg='wall'] .fb .ab.on,
+[data-winbg='wall'] .fb .ab:not(.dis):hover,
+[data-winbg='wall'] .fa .ab.on,
+[data-winbg='wall'] .fa .ab:not(.dis):hover {
+  color: var(--t1);
+}
+[data-winbg='wall'] .fb .ab.on::before {
+  background: var(--acc);
+}
+/* 深色主题标题栏的按钮再亮一点（同画布笔记 shell/winbg.css：石墨那抹余烬、深湖的深青在「浓」时压在按钮底下） */
+[data-tone='dark'][data-winbg='wall'] .fb > .tb .ib:not(:hover),
+[data-tone='dark'][data-winbg='wall'] .fa > .tb .ib:not(:hover) {
+  color: color-mix(in srgb, var(--t1) 80%, var(--t2));
+}
+/* A 也配背景：标题栏、两条图标栏透出来，各栏照旧实底 */
+[data-winbg='wall'] .fa > .tb,
+[data-winbg='wall'] .fa .abar,
+[data-winbg='photo'] .fa > .tb,
+[data-winbg='photo'] .fa .abar {
+  background: transparent;
+}
+[data-winbg='photo'] .fa {
+  background:
+    linear-gradient(rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0.3)),
+    var(--frame-photo, none) center / cover,
+    var(--side);
+}
+[data-winbg='wall'] .fa .srch,
+[data-winbg='photo'] .fa .srch {
+  background: color-mix(in srgb, var(--pop) 78%, transparent);
+  color: var(--isle-t2);
+}
+[data-winbg='photo'] .fa .ab {
+  color: rgba(255, 255, 255, 0.64);
+}
+[data-winbg='photo'] .fa > .tb .ib {
+  color: rgba(255, 255, 255, 0.82);
+}
+[data-winbg='photo'] .fa > .tb .ib:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+[data-winbg='photo'] .fa .ab.on,
+[data-winbg='photo'] .fa .ab:not(.dis):hover {
+  color: #fff;
+}
+[data-winbg='photo'] .fa .ab.on::before {
+  background: color-mix(in srgb, var(--acc) 40%, #fff);
 }
 
 /* 当前标签的标记跟着主题（themes.css 的结构差异，<html data-tabmark>） */
@@ -2756,4 +2833,451 @@ select.sel {
 /* 抄了几处（行尾小块）：和笔记名一样淡 */
 .acc.dup {
   color: var(--t3);
+}
+
+/* ---------- 排一天（renderer/plan.tsx，原型 45-画布今日特色 proto-b.html）：左边这一步要做的，右边一直是今天的时间 ---------- */
+.left .pdate {
+  margin-right: 6px;
+}
+.pstep {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 34px;
+  padding: 0 8px;
+  width: 100%;
+  border-radius: 6px;
+  text-align: left;
+  font-size: 13px;
+  color: var(--t1);
+}
+.pstep:hover:not(.on) {
+  background: var(--fill);
+}
+.pstep.on {
+  background: var(--fill2);
+  font-weight: 500;
+}
+.pstep .no {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1.5px var(--line2);
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  color: var(--t2);
+  flex: none;
+}
+.pstep.done .no {
+  background: var(--acc-bg);
+  box-shadow: none;
+  color: var(--acc-on);
+}
+.pstep .cnt {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--t3);
+}
+.calrow.pcal i {
+  border-radius: 3px;
+}
+.hint.pcal-hint {
+  padding: 6px 8px 0;
+  line-height: 1.5;
+}
+.plan {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 34%);
+}
+.pmain {
+  overflow: auto;
+  padding: 22px 32px 32px;
+  min-width: 0;
+}
+.phead h1 {
+  font: 600 28px/1.35 var(--serif-title);
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.phead .pn {
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--t3);
+}
+.phead p {
+  margin: 4px 0 14px;
+  font-size: 13px;
+  color: var(--t2);
+  max-width: 62ch;
+}
+.pgrp {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--t3);
+  padding: 14px 0 4px;
+}
+.pgrp .n {
+  font-weight: 400;
+  margin-left: 4px;
+}
+.prow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 52px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  position: relative;
+}
+.prow + .prow::before {
+  content: '';
+  position: absolute;
+  left: 36px;
+  right: 8px;
+  top: 0;
+  height: 1px;
+  background: var(--line);
+}
+.prow:hover {
+  background: var(--fill);
+}
+.prow:hover::before,
+.prow:hover + .prow::before {
+  display: none;
+}
+.prow .cb {
+  width: 16px;
+  height: 16px;
+}
+.prow .pt {
+  flex: 1;
+  min-width: 0;
+}
+.prow .ptt {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.prow.done .ptt {
+  color: var(--t3);
+  text-decoration: line-through;
+}
+.pmeta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--t3);
+  margin-top: 2px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.pmeta .pnote {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 36ch;
+}
+.pmeta .prep {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.pmeta .pnoest {
+  color: var(--t3);
+}
+.pacts {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+/* 估时那一排是 .seg（同别处的分段）：离「挪走」留一点 */
+.pest {
+  margin-right: 4px;
+}
+/* 今天要做多久 / 能用多久：超了整条变红（借 Structured） */
+.pload {
+  margin: 4px 0 6px;
+}
+.pload .bar {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--fill2);
+  overflow: hidden;
+}
+.pload .bar i {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: var(--acc-bg);
+  transition: width 0.25s;
+}
+.pload.over .bar i {
+  background: var(--red);
+}
+.pload .txt {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--t2);
+  margin-top: 6px;
+}
+.pload.over .txt span:first-child {
+  color: var(--red);
+}
+/* 还没排的几条：小块，拖到右边的格子里 */
+.pchips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 14px 0 6px;
+}
+.pchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  max-width: 100%;
+  padding: 0 10px 0 6px;
+  border-radius: 6px;
+  background: var(--card);
+  border: 1px solid var(--line2);
+  font-size: 12px;
+  cursor: grab;
+  user-select: none;
+}
+.pchip .ci {
+  color: var(--t3);
+}
+.pchip .nm {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 排好的：不加框（虚线只留给 AI 还没定的），前面一个勾 */
+.pchip.placed {
+  cursor: default;
+  padding-left: 4px;
+  background: none;
+  border-color: transparent;
+  color: var(--t3);
+}
+.pchip.cal-lift {
+  opacity: 0.4;
+}
+.phint {
+  font-size: 12px;
+  color: var(--t3);
+}
+.pline mark {
+  background: var(--acc-soft);
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 2px;
+}
+.pmore {
+  margin-top: 6px;
+}
+.pline code,
+.pline pre {
+  display: block;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: var(--fill);
+  font: 12px/1.6 ui-monospace, Menlo, monospace;
+  color: var(--t1);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.pfoot {
+  display: flex;
+  gap: 8px;
+  margin-top: 18px;
+}
+.pempty {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 8px;
+  color: var(--t2);
+}
+.pempty b {
+  font-weight: 500;
+}
+.pnone {
+  font-size: 13px;
+  color: var(--t3);
+  padding: 10px 0 2px;
+}
+/* 开工：现在这一块 */
+.pnow {
+  padding: 18px 20px;
+  border-radius: 10px;
+  background: var(--fill);
+}
+.pnow-t {
+  font: 600 22px/1.35 var(--serif-title);
+  margin: 4px 0;
+}
+.prog {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--fill2);
+  overflow: hidden;
+  margin: 12px 0;
+}
+.prog i {
+  display: block;
+  height: 100%;
+  background: var(--acc-bg);
+}
+.pnow-b {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.ptime {
+  font-size: 12px;
+  color: var(--t2);
+  flex: none;
+}
+.ptray {
+  font-size: 12px;
+  line-height: 1.6;
+  font-variant-numeric: tabular-nums;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: var(--fill);
+}
+/* 右边：今天的时间（共用的 WeekGrid 只画今天一列） */
+.pday {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  border-left: 1px solid var(--line);
+}
+/* 和左边大标题同一条中线（左边 22 的上边距、38 高的标题行） */
+.pday-h {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 38px;
+  margin-top: 22px;
+  padding: 0 14px;
+  flex: none;
+  font-size: 13px;
+}
+/* 日子头和左栏头重复，不要；「全天」那一行留着 */
+.pday .cal-head {
+  display: none;
+}
+/* 现在那条红线压在块下面，不划掉块的名字；开工时现在那一块框一圈（.cal-blk.on） */
+.pday .cal-now {
+  z-index: 0;
+}
+.pday .cal-blk {
+  z-index: 1;
+}
+.pday-h b {
+  font-weight: 500;
+}
+.pday-h .sp {
+  flex: 1;
+}
+/* 页面自己的动作：标签条右端（排一天的「AI 帮我排」） */
+.tabs .tact {
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 8px;
+  margin-right: 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--t2);
+}
+.tabs .tact:hover {
+  background: var(--fill);
+  color: var(--t1);
+}
+/* 右栏 AI 开着、中间窄了：右边时间线收到 240，一行的按钮换到下一行，标题不挤成一字一行 */
+.content {
+  container-type: inline-size;
+}
+@container (max-width: 900px) {
+  .plan {
+    grid-template-columns: minmax(0, 1fr) 240px;
+  }
+  .pmain {
+    padding: 22px 20px 32px;
+  }
+  .prow {
+    flex-wrap: wrap;
+  }
+  .prow .pacts {
+    width: 100%;
+    padding-left: 28px;
+  }
+}
+.pday > .cal-wk {
+  flex: 1;
+  min-height: 0;
+}
+.pday > .cal-wk > .cal-stick {
+  padding: 0 calc(12px + var(--cal-sbw, 0px)) 0 4px;
+}
+.pday > .cal-wk > .cal-week {
+  padding: 0 12px 12px 4px;
+}
+
+/* 「用画布笔记里存的 Anthropic Key？」（task-587os）：问一句，用它 / 不用 */
+.ai-borrow .ah {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.ai-borrow .ah b {
+  color: var(--t1);
+  font-weight: 500;
+}
+.ai-borrow .sub {
+  margin: 2px 0 0 22px;
+  font-size: 12px;
+  color: var(--t2);
+}
+.ai-borrow .row2 {
+  margin: 8px 0 0 22px;
+}
+.aibar .ai-borrow {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+.aibar .ai-borrow .sub {
+  margin: 0;
+}
+.aibar .ai-borrow .row2 {
+  margin: 0 0 0 auto;
+}
+
+/* 日历「帮我排」那一条里的「不要 · 收下」是共用的 ChangeBar（task-eavzx）：贴着这一条，不另起上边距 */
+.aibar .cn-cb {
+  margin: 0;
+  flex: none;
 }

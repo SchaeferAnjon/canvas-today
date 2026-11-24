@@ -154,6 +154,12 @@ export interface AskSection {
   recap?: string
   /** 我框的图在 PDF 上 100% 时的宽（CSS 像素），图按这个宽显示（CN-111） */
   cropW?: number
+  /**
+   * ParaRead 对照看法里框的（2026-11-23，设计页 51）：crop 截的是译文页时 cropSide 是 tr，图注写「我框的 · 译文」；
+   * 选了「两边都带」时 crop 是原文那张、cropTr 是译文那张（原文在前）。页码和框照原 PDF，两边版面一样。画布笔记不做 PDF 双语，只照样显示
+   */
+  cropSide?: 'tr'
+  cropTr?: string
   /** 选字问的那段原文（task-yp8l7）：写成图下面、第一问上面的一个引用块（选字问不截图） */
   quote?: string
 }
@@ -257,10 +263,12 @@ function clipTime(sec: number): string {
 /** 「问这一页」附的整页截图的说明 */
 const WHOLE_PAGE = '整页'
 
-/** 附的截图叫什么：「问这一页」没有框，是「整页」；框的、网页上框的是「我框的」（笔记文件、右栏笔记面板、Anki 弹窗同一个说法） */
-export function cropCaption(s: { rect?: unknown; web?: unknown }): string {
-  return !s.rect && !s.web ? WHOLE_PAGE : '我框的'
+/** 附的截图叫什么：「问这一页」没有框，是「整页」；框的、网页上框的是「我框的」（笔记文件、右栏笔记面板、Anki 弹窗同一个说法）；框的是译文页的「我框的 · 译文」 */
+export function cropCaption(s: { rect?: unknown; web?: unknown; cropSide?: 'tr' }): string {
+  return !s.rect && !s.web ? WHOLE_PAGE : s.cropSide === 'tr' ? CROP_TR : '我框的'
 }
+/** ParaRead 对照看法里框的译文页那张 */
+const CROP_TR = '我框的 · 译文'
 
 /** note：这一段写进的那篇笔记在库里的路径（链接相对它） */
 export function renderSection(s: AskSection, note: string): string {
@@ -496,6 +504,7 @@ function renderDoc(s: AskSection, note: string): string {
   out.push(`${back}${s.time ? ` · ${s.time}` : ''} <!-- cn:thread=${threadName(s.id)} -->`)
   const imgs: string[] = []
   if (s.crop) imgs.push(`![${cropCaption(s)}${s.cropW ? `|${Math.round(s.cropW)}` : ''}](${linkFrom(note, s.crop)})`)
+  if (s.cropTr) imgs.push(`![${CROP_TR}${s.cropW ? `|${Math.round(s.cropW)}` : ''}](${linkFrom(note, s.cropTr)})`)
   for (const f of s.figures) imgs.push(`![${alt(f.caption) || '图'}](${linkFrom(note, f.path)})`)
   if (imgs.length) out.push('', imgs.join('\n\n'))
   if (s.quote?.trim()) out.push('', quote(s.quote))
@@ -601,7 +610,12 @@ function parseDoc(lines: string[], head: RegExpExecArray, note: string): AskSect
           if ((cap === '我框的' || cap === WHOLE_PAGE) && !s.crop) {
             s.crop = path
             if (w) s.cropW = Number(w)
-          } else s.figures.push({ path, caption: im[1]! })
+          } else if (cap === CROP_TR && !s.crop) {
+            s.crop = path
+            s.cropSide = 'tr'
+            if (w) s.cropW = Number(w)
+          } else if (cap === CROP_TR && !s.cropTr && !s.cropSide) s.cropTr = path
+          else s.figures.push({ path, caption: im[1]! })
         }
       }
       i++

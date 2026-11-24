@@ -1,7 +1,9 @@
 /** 界面上的动作（改库里那一行、选中、提示条）：Desk 里建一份，各个看法用 useActions() 拿 */
 import { createContext, useContext } from 'react'
 import type { Prio, When } from '@cn/tasks'
+import type { CalEvent } from '@cn/calendar'
 import type { AddCtx, AiSlot, EditOp, HabitView, TaskView } from '../shared/api'
+import type { CloseItem } from '../shared/plan'
 
 export interface Actions {
   select(t: TaskView | null): void
@@ -15,8 +17,16 @@ export interface Actions {
   del(t: TaskView): void
   move(t: TaskView, to: string): void
   add(text: string, ctx: AddCtx, when?: When | null): Promise<boolean>
-  /** 定日子和时间的选择器（task-pd289）：贴着 el 弹，改什么写进这一条，关上时说一句带撤销 */
-  pickWhen(t: TaskView, el: HTMLElement, keys?: boolean): void
+  /** 定日子和时间的选择器（task-pd289）：贴着 el 弹，改什么写进这一条，关上时说一句带撤销；after：关上时最后定的日子（收工记「挪到哪天」） */
+  pickWhen(t: TaskView, el: HTMLElement, keys?: boolean, after?: (date: string | null) => void): void
+  /** 排一天「不做了」：[-] ❌ 今天，提示条能撤销 */
+  cancel(t: TaskView): void
+  /** 估时（分钟，[估时:: …]）；null 拿掉 */
+  setMinutes(t: TaskView, minutes: number | null): void
+  /** 「推到后面」：今天从现在起下一个放得下的空档，今天放不下挪到明天 */
+  pushLater(t: TaskView, events: readonly CalEvent[]): void
+  /** 收工：那一节写进今天的日记，提示条能撤销；写成了交回那一篇的路径，没成是 null */
+  closeDay(o: { time: string; items: CloseItem[]; focus: { n: number; minutes: number } }): Promise<string | null>
   openNote(path: string, line?: number): void
   menu(t: TaskView): void
   preview(t: TaskView): void

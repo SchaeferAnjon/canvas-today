@@ -43,7 +43,8 @@ export interface LaunchOpts {
   root?: string
 }
 
-export const LOOK = (skin: 'sky' | 'petrol', frame: 'a' | 'b', lang: 'zh' | 'en' = 'zh') => ({ lang, followNotes: false, appearance: { followSystem: false, skin, day: 'sky', night: 'petrol', frame, winBg: 'aurora' } })
+/** 测试里的设置：外观定死；排一天（打开时先排一天）关着，老测试照旧从「今天」开始 */
+export const LOOK = (skin: 'sky' | 'petrol', frame: 'a' | 'b', lang: 'zh' | 'en' = 'zh') => ({ lang, followNotes: false, appearance: { followSystem: false, skin, day: 'sky', night: 'petrol', frame, winBg: 'aurora' }, plan: { onOpen: false, tray: true, journal: null } })
 
 export async function launch(o: LaunchOpts = {}): Promise<Running> {
   const again = !!o.root

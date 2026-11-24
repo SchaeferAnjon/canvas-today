@@ -2,10 +2,11 @@
  * 导入的 VS Code 主题：换算好的变量存在软件设置目录 themes/<id>.json（不进库）。
  * .json 直接读（include 的文件到同一个文件夹里找）；.vsix 是 zip，读里面 extension/package.json 的 contributes.themes，一个扩展里的几套都导进来。
  */
-import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 import { inflateRawSync } from 'node:zlib'
 import { convertTheme, joinPosix, loadThemeChain, parseJsonc, type ThemeFile } from '../shared/vscode-theme'
+import { atomicWriteSync } from '@cn/atomic'
 
 /** 读 zip 里的文件（只认「存储」和「deflate」两种，vsix 就是这两种）：名字 → 内容 */
 export function readZip(buf: Buffer): Map<string, Buffer> {
@@ -87,8 +88,7 @@ export class ThemeStore {
     mkdirSync(this.dir, { recursive: true })
     for (const t of themes) {
       const f = join(this.dir, t.id + '.json')
-      writeFileSync(f + '.tmp', JSON.stringify(t, null, 2))
-      renameSync(f + '.tmp', f)
+      atomicWriteSync(f, JSON.stringify(t, null, 2))
     }
     return themes
   }

@@ -13,17 +13,25 @@
     "./settings.css": "./src/settings.css",
     "./codicon-svg": "./src/codicon-svg.ts",
     "./codicons-all": "./src/codicons-all.gen.ts",
-    "./drag-end": "./src/drag-end.ts"
+    "./drag-end": "./src/drag-end.ts",
+    "./glass": "./src/glass.ts",
+    "./wall": "./src/wall.ts",
+    "./wall.css": "./src/wall.css",
+    "./answer-bar": "./src/answer-bar.tsx",
+    "./answer-bar.css": "./src/answer-bar.css"
   },
   "dependencies": {
     "@cn/family": "workspace:*"
   },
   "peerDependencies": {
-    "react": "^19.0.0"
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
     "@types/react": "^19.3.0",
+    "@types/react-dom": "^19",
     "@vscode/codicons": "0.0.45",
-    "react": "^19.3.1"
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
   }
 }

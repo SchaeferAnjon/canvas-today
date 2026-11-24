@@ -347,7 +347,28 @@ type: board
 为什么偏偏是根号 d？
 `
 
+
+/** PDF 上划的线（ParaRead 联动）：「第 N 页 · 划的线」一条一行带含义，看不懂写成问题段；两个软件都读写这一篇 */
+const marked = `---
+类型: 笔记
+来源: "[[2026_C72_BST-GATNet.pdf]]"
+---
+# 2026_C72_BST-GATNet 笔记
+
+## 第 2 页 · 划的线
+- ==we selected the AffectiveROAD dataset [14],== · 重点 · [第 2 页](2026_C72_BST-GATNet.pdf#page=2&rect=0.192,0.498,0.318,0.018) <!-- cn:hl=p2-h1 k=key -->
+- ==EDA and TEMP (4 Hz), BVP (64 Hz), ACC (32 Hz), and HR (1 Hz)== · 想引用 · [第 2 页](2026_C72_BST-GATNet.pdf#page=2&rect=0.08,0.724,0.428,0.033) <!-- cn:hl=p2-h3 k=cite -->
+- ==implicit fully-connected topology== · 定义 · [第 2 页](2026_C72_BST-GATNet.pdf#page=2&rect=0.619,0.755,0.24,0.018) <!-- cn:hl=p2-h4 k=def -->
+
+## 第 2 页 · 看不懂：Bi-LSTM 为什么放在注意力后面
+[第 2 页](2026_C72_BST-GATNet.pdf#page=2&rect=0.51,0.635,0.437,0.033) · 16:44 <!-- cn:thread=2026_C72_BST-GATNet-p2-5 -->
+
+> [!question] 看不懂
+> ==a Bi-LSTM is introduced as a temporal refinement layer== <!-- cn:hl=p2-h6 k=confused -->
+`
+
 export const FIXTURES: Record<string, Uint8Array> = {
+  '2026_C72_BST-GATNet 笔记.md': enc(marked),
   '数学符号.md': enc(MATH_DOC),
   '旁支挂在讲解下面.md': enc(docWithSides),
   '白板带旁支.md': enc(boardWithSides),

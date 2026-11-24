@@ -358,6 +358,20 @@ export const SHELL: Table = {
   '放回「{where}」': 'Restore to “{where}”',
   '{kind} · {size}，放回以后能打开看': '{kind} · {size}; restore it to open',
   '最近删掉的::文件': 'File',
+  // 没人用的附件（以前删笔记时没跟着走的，2026-11-23）
+  '「{name}」的附件': 'Attachments of “{name}”',
+  '没人用的附件{n}个': (p) => `${count(p.n, 'unused attachment')}`,
+  没人用的附件: 'Unused attachments',
+  '附件::{n}个': (p) => count(p.n, 'file'),
+  '删笔记时没跟着走的，库里没有哪篇在用': 'Left behind when notes were deleted; no note in the vault uses them',
+  '删笔记时留下的，没有哪篇在用': 'Left behind by deleted notes; unused',
+  全部移到废纸篓: 'Move all to Trash',
+  '30天里删掉的{n}篇、{m}组附件。放回去还在原来的文件夹；更早删掉的去「历史」里找。': (p) =>
+    `${count(p.n, 'note')} and ${count(p.m, 'attachment set')} deleted in the last 30 days. Restored items go back to their folder; look in History for older ones.`,
+  '那篇已经删了 · 原来在「{where}」': 'Its note was deleted · was in “{where}”',
+  '认不出原来属于哪篇 · 在「{where}」': 'Original note unknown · in “{where}”',
+  '移到废纸篓是一次提交，底栏能撤回，这里也能放回。不点不会删。': 'Moving them to the Trash is one commit: undo from the bottom bar or restore them here. Nothing is deleted unless you click.',
+  '没人用的附件::移到废纸篓': 'Move to Trash',
 
   // ---------- 底栏（shell/StatusBar.tsx、StatusExtras.tsx） ----------
   '没提交的改动::新': 'New',

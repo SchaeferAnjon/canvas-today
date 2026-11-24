@@ -2,7 +2,7 @@
  * 各家命令行的版本、自查、模型拉到没有（task-m55m7，用户 r20：「Claude Code 更新了…我们是否还兼容」）。
  * 主进程（main/agent/engine-watch.ts）记、查；设置 › AI 每家那一行、引擎菜单、AI 对话出错时用这里的话说。不碰 Electron，能单独测。
  */
-import type { EngineId } from './agent'
+import type { CliId as EngineId } from './ai-sources'
 import { list, t } from './i18n'
 
 /**

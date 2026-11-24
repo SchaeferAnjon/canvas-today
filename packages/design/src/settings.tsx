@@ -6,6 +6,7 @@
  * 不碰各软件的翻译：给人看的字都从参数进来。
  */
 import { createContext, Fragment, type ReactNode, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { applyGlass, GLASS_DEFAULT, GLASS_MAX, GLASS_MIN, glassPct } from './glass'
 import { Codicon } from './index'
 
 /** 设置里改了一项之后，底下提示条说的话：已存 · 会怎样，带「撤回」；别的事（存好了、导入了）只说一句 */
@@ -14,8 +15,8 @@ export interface Said {
   saved(hint: string, undo?: () => void): void
   /** 只说一句（不带撤回） */
   say(text: string): void
-  /** 成了一件事（不是改设置）：带对勾、不加「已存」（软件家族「认出来了」） */
-  ok(text: string): void
+  /** 成了一件事（不是改设置）：带对勾、不加「已存」（软件家族「认出来了」）；undo 给了带「撤回」，act 给了前面多一颗（同步来源拉了几篇：「看是哪几篇」「撤回」） */
+  ok(text: string, undo?: () => void, act?: { label: string; run(): void }): void
 }
 export const SaidContext = createContext<Said>({ saved: () => undefined, say: () => undefined, ok: () => undefined })
 export const useSaid = () => useContext(SaidContext)
@@ -57,14 +58,14 @@ export interface SettingsShellProps {
 export function SettingsShell(props: SettingsShellProps) {
   const body = useRef<HTMLDivElement>(null)
   /** 底下的提示条：一句说这次改了会怎样，带「撤回」，4 秒后收起（鼠标停在上面不计时） */
-  const [toast, setToast] = useState<{ text: string; ok: boolean; undo?: () => void; seq: number } | null>(null)
+  const [toast, setToast] = useState<{ text: string; ok: boolean; undo?: () => void; act?: { label: string; run(): void }; seq: number } | null>(null)
   const [toastHover, setToastHover] = useState(false)
   const savedText = props.text.saved
   const said = useMemo<Said>(
     () => ({
       saved: (hint, undo) => setToast({ text: savedText(hint), ok: true, undo, seq: Date.now() }),
       say: (text) => setToast({ text, ok: false, seq: Date.now() }),
-      ok: (text) => setToast({ text, ok: true, seq: Date.now() }),
+      ok: (text, undo, act) => setToast({ text, ok: true, undo, act, seq: Date.now() }),
     }),
     [savedText],
   )
@@ -157,11 +158,23 @@ export function SettingsShell(props: SettingsShellProps) {
           <div className="set-body" ref={body}>
             {props.children}
           </div>
-          <div className={'sa-toast' + (toast ? ' show' : '') + (toast?.undo ? ' with-act' : '')} role="status" data-testid="settings-toast" onMouseEnter={() => setToastHover(true)} onMouseLeave={() => setToastHover(false)}>
+          <div className={'sa-toast' + (toast ? ' show' : '') + (toast?.undo || toast?.act ? ' with-act' : '')} role="status" data-testid="settings-toast" onMouseEnter={() => setToastHover(true)} onMouseLeave={() => setToastHover(false)}>
             {toast && (
               <>
                 <Codicon name={toast.ok ? 'pass-filled' : 'info'} size={14} className={toast.ok ? 'ok' : undefined} />
                 <span>{toast.text}</span>
+                {toast.act && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      toast.act!.run()
+                      setToast(null)
+                      setToastHover(false)
+                    }}
+                  >
+                    {toast.act.label}
+                  </button>
+                )}
                 {toast.undo && (
                   <button
                     type="button"
@@ -410,6 +423,65 @@ export function WinBgPicker<T extends string>(props: { label: string; value: T; 
 
 export { FamilyPage, FamilyPic, type FamilyPageProps, type FamilyText } from './family'
 
+/** 主题渐变的两行（画布笔记、画布今日一份）：字是各软件翻好的 */
+export interface WallRowsProps {
+  mix: 'soft' | 'mid' | 'rich'
+  move: boolean
+  speed: 'slow' | 'mid' | 'fast'
+  onMix(v: 'soft' | 'mid' | 'rich'): void
+  onMove(v: boolean): void
+  onSpeed(v: 'slow' | 'mid' | 'fast'): void
+  text: { move: string; speed: string; slow: string; mid: string; fast: string; mix: string; soft: string; normal: string; rich: string; reduced: string; still: string }
+}
+
+/** 渐变：一张浅底卡片两行（设计复审：和外观页别的行一样名字在左、控件在右）——「慢慢动」开关（开着时右边快慢三格），浓淡三格。关着、系统开了「减少动态效果」时名字后面说一句为什么不动 */
+export function WallRows(props: WallRowsProps) {
+  const T = props.text
+  const [reduced, setReduced] = useState(() => matchMedia('(prefers-reduced-motion: reduce)').matches)
+  useEffect(() => {
+    const m = matchMedia('(prefers-reduced-motion: reduce)')
+    const h = () => setReduced(m.matches)
+    m.addEventListener('change', h)
+    return () => m.removeEventListener('change', h)
+  }, [])
+  return (
+    <div className="wall-rows" data-row="wall">
+      <div className="wrow" data-row="wallMove">
+        <span className="wlb">{T.move}</span>
+        <span className="note wall-why">{props.move ? (reduced ? T.reduced : '') : T.still}</span>
+        <span className="sp" />
+        <Toggle on={props.move} label={T.move} onChange={props.onMove} />
+        {props.move && (
+          <Seg
+            label={T.speed}
+            value={props.speed}
+            options={[
+              ['slow', T.slow],
+              ['mid', T.mid],
+              ['fast', T.fast],
+            ]}
+            onChange={props.onSpeed}
+          />
+        )}
+      </div>
+      <div className="wrow" data-row="wallMix">
+        <span className="wlb">{T.mix}</span>
+        <span className="sp" />
+        <Seg
+          label={T.mix}
+          value={props.mix}
+          options={[
+            ['soft', T.soft],
+            ['mid', T.normal],
+            ['rich', T.rich],
+          ]}
+          onChange={props.onMix}
+        />
+      </div>
+    </div>
+  )
+}
+
 /** 方角开关（用户偏好：开关的轨道和滑块都是小圆角方形） */
 export function Toggle(props: { on: boolean; label: string; onChange(v: boolean): void; disabled?: boolean }) {
   return <button className={'sw-toggle' + (props.on ? ' on' : '')} role="switch" aria-checked={props.on} aria-label={props.label} disabled={props.disabled} onClick={() => props.onChange(!props.on)} />
@@ -449,6 +521,94 @@ export interface LookText {
   winBgHintB: string
 }
 
+/** 面板透明度那一行的字（各软件自己翻） */
+export interface GlassText {
+  label: string
+  /** 滑杆两头 */
+  solid: string
+  clear: string
+  /** 现在透多少：{n} 是百分数 */
+  value(n: number): string
+  def: string
+  reset: string
+  /** 这会儿面板不透（A、不用图）时下面那句 */
+  off: string
+  /** 透着时下面那句 */
+  on: string
+}
+
+/**
+ * 面板透明度（task-jgely）：有窗口背景时几块半透明面板透多少。滑杆两头是量过对比度的范围（@cn/design/glass），中间那道刻度是默认（用户认可的那版）。
+ * 拖的时候直接套到窗口上（<html> 的 --isle-shift），停手 300ms 才存；enabled 为 false 时滑杆变灰（面板这会儿是实的）
+ */
+export function GlassRow(props: { text: GlassText; value: number; enabled: boolean; onChange(v: number): void }) {
+  const T = props.text
+  const [v, setV] = useState(props.value)
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pending = useRef<number | null>(null)
+  const save = useRef(props.onChange)
+  save.current = props.onChange
+  useEffect(() => {
+    if (pending.current === null) setV(props.value)
+  }, [props.value])
+  // 关设置时还没存的那一下也存上
+  useEffect(
+    () => () => {
+      if (timer.current) clearTimeout(timer.current)
+      if (pending.current !== null) save.current(pending.current)
+    },
+    [],
+  )
+  const set = (n: number) => {
+    setV(n)
+    applyGlass(n)
+    pending.current = n
+    if (timer.current) clearTimeout(timer.current)
+    timer.current = setTimeout(() => {
+      timer.current = null
+      pending.current = null
+      save.current(n)
+    }, 300)
+  }
+  // 现在这套主题默认透多少（--isle-k）：换了主题时 <html> 上的主题是软件在这一帧之后才套的，下一帧再读一次
+  const [base, setBase] = useState(() => glassPct(0))
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setBase(glassPct(0)))
+    return () => cancelAnimationFrame(id)
+  })
+  const pct = base + v
+  const span = GLASS_MAX - GLASS_MIN
+  return (
+    <>
+      <div className={'pair glass-row' + (props.enabled ? '' : ' off')} data-row="glass">
+        <span>{T.label}</span>
+        <span className="gl-end">{T.solid}</span>
+        <span className="gl-track" style={{ ['--at' as string]: `${((v - GLASS_MIN) / span) * 100}%`, ['--def-k' as string]: (GLASS_DEFAULT - GLASS_MIN) / span }}>
+          <input
+            type="range"
+            min={GLASS_MIN}
+            max={GLASS_MAX}
+            step={1}
+            value={v}
+            disabled={!props.enabled}
+            aria-label={T.label}
+            aria-valuetext={T.value(pct) + (v === GLASS_DEFAULT ? ` · ${T.def}` : '')}
+            onChange={(e) => set(Number(e.currentTarget.value))}
+          />
+          <i className="gl-def" aria-hidden />
+        </span>
+        <span className="gl-end">{T.clear}</span>
+        {/* 轨道右头已经写着「透」，这里只写数 */}
+        <output className="gl-val num">{pct}%</output>
+        <button className="gl-reset" disabled={!props.enabled || v === GLASS_DEFAULT} onClick={() => set(GLASS_DEFAULT)}>
+          {T.reset}
+        </button>
+      </div>
+      <p className="note gl-note">{props.enabled ? T.on : T.off}</p>
+    </>
+  )
+}
+
 export interface AppearancePageProps<W extends string> {
   text: LookText
   /** 自带的十套在前，导入的在后 */
@@ -465,6 +625,10 @@ export interface AppearancePageProps<W extends string> {
   frame: { value: 'a' | 'b'; pv: string; a: { name: string; note: string }; b: { name: string; note: string }; onChange(v: 'a' | 'b'): void }
   /** extra 接在缩略图后面（画布笔记的「从电脑选」） */
   winBg: { value: W; options: readonly { id: W; name: string; bg: string }[]; onChange(v: W): void; extra?: ReactNode }
+  /** 窗口背景选了主题渐变时下面多两行：动不动、动多快，浓淡（task-aph2j）。不给就没有 */
+  wall?: WallRowsProps
+  /** 面板透明度（接在窗口背景缩略图下面） */
+  glass?: { text: GlassText; value: number; enabled: boolean; onChange(v: number): void }
   /** 能力：导入 VS Code 主题。不给就没有导入那一行，导入的主题也不能删 */
   importTheme?: { label: string; note: string; run(): Promise<void>; remove(s: LookSkin): void; removeLabel(name: string): string; removeTip: string }
   /** 能力：首页样式（画布笔记有，画布今日没有）：小标题、后面那句和下面的内容 */
@@ -571,6 +735,8 @@ export function AppearancePage<W extends string>(props: AppearancePageProps<W>) 
       <WinBgPicker label={T.winBg} value={props.winBg.value} options={props.winBg.options} onChange={props.winBg.onChange}>
         {props.winBg.extra}
       </WinBgPicker>
+      {props.wall && <WallRows {...props.wall} />}
+      {props.glass && <GlassRow {...props.glass} />}
 
       {props.home && (
         <>

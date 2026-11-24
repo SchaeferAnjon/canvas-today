@@ -22,9 +22,12 @@ const H_MAX = 560
 export class MenuBar {
   private tray: Tray | null = null
   private win: BrowserWindow | null = null
-  /** 图标旁边写的字（今天还有几条；0 条不写） */
+  /** 图标旁边写的字：排一天正在做的那一块（line），没有就是今天还有几条（0 条不写） */
   private title = ''
   private tip = ''
+  private count = ''
+  /** 排一天（renderer/plan.tsx）：「写报告 · 还剩50分」「14:00 组会」；空的写几条 */
+  private line = ''
 
   constructor(
     private h: {
@@ -47,15 +50,28 @@ export class MenuBar {
     }
   }
 
-  /** 今天还有几条：写在图标旁边（等宽数字，数变了图标不左右跳） */
+  /** 今天还有几条：写在图标旁边（等宽数字，数变了图标不左右跳）；排一天有正在做的那一块时写那一块 */
   setCount(n: number) {
-    const title = n > 0 ? String(n) : ''
+    this.count = n > 0 ? String(n) : ''
     const tip = n > 0 ? `${tr(this.h.lang(), 'appName')} · ${tr(this.h.lang(), 'trayLeft', n)}` : tr(this.h.lang(), 'appName')
-    if (title === this.title && tip === this.tip) return
+    if (tip !== this.tip) {
+      this.tip = tip
+      this.tray?.setToolTip(tip)
+    }
+    this.show()
+  }
+
+  /** 排一天：正在做的那一块、下一块（空串就回到写几条） */
+  setLine(t: string) {
+    this.line = t
+    this.show()
+  }
+
+  private show() {
+    const title = this.line || this.count
+    if (title === this.title) return
     this.title = title
-    this.tip = tip
     this.tray?.setTitle(title, { fontType: 'monospacedDigit' })
-    this.tray?.setToolTip(tip)
   }
 
   set(on: boolean) {

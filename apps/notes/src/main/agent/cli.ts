@@ -14,7 +14,7 @@ import { type ChildProcess, spawn } from 'node:child_process'
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { homedir, userInfo } from 'node:os'
 import { basename, delimiter, dirname, join } from 'node:path'
-import type { EngineId } from '../../shared/agent'
+import type { CliId as EngineId } from '../../shared/ai-sources'
 import { t } from '../../shared/i18n'
 
 export const COMMAND: Record<EngineId, string> = { claude: 'claude', codex: 'codex', gemini: 'gemini', opencode: 'opencode' }

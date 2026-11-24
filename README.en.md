@@ -151,7 +151,7 @@ pnpm build               # build to apps/today/out/ only
 pnpm dist:mac            # a local .app (ad-hoc signed): apps/today/release/mac-arm64/
 ```
 
-Layout: `apps/today` is the app (Electron + React + TypeScript, built with electron-vite); `packages/tasks` reads and writes task lines (no Electron, Canvas Notes uses it too); `packages/design` holds the colours, themes and icons shared with Canvas Notes; `packages/git` calls the system git; `packages/format` provides the three-way merge used by undo. `apps/notes/` only holds the few Canvas Notes files Canvas Today borrows (the theme table, the rules for reading Canvas Notes settings, the updater, two window background photos); see the README there.
+Layout: `apps/today` is the app (Electron + React + TypeScript, built with electron-vite); `packages/tasks` reads and writes task lines (no Electron, Canvas Notes uses it too); `packages/design` holds the colours, themes and icons shared with Canvas Notes; `packages/git` calls the system git; `packages/atomic` writes files atomically (temporary file, fsync, rename, so a crash mid-write never leaves a broken file); `packages/format` provides the three-way merge used by undo. `apps/notes/` only holds the few Canvas Notes files Canvas Today borrows (the theme table, the rules for reading Canvas Notes settings, the updater, two window background photos); see the README there.
 
 This repository is exported from the author's private workspace, one commit per release. To release: `pnpm release` (Developer ID signed, not notarized; see the notes at the top of `apps/today/scripts/release.mjs`).
 

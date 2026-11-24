@@ -6,7 +6,7 @@
  * 合成的那一条算没做完：只要还有一份没做完。勾掉、改日子这些写回每一份（「文件里每一行的状态都对」），由各个 App 照 all 去改。
  */
 import { type ISODate } from './dates'
-import { setDate, setDone, setTime, setTitle } from './edit'
+import { setCancelled, setDate, setDone, setTime, setTitle } from './edit'
 import { editLine, removeBlock } from './file'
 import { parseTaskLine } from './line'
 
@@ -101,13 +101,16 @@ export function copiesOf<T extends DupItem>(items: readonly T[], at: { path: str
  * 提醒、重复、优先级、加子任务、挪走只改显示的那一份（勾掉重复的也只有那一份在下面加下一次）。
  * date 是 undefined：日子不动只改钟点；time 是 undefined：钟点不动
  */
-export type CopyEdit = { op: 'done'; done: boolean } | { op: 'when'; date?: ISODate | null; time?: string | null } | { op: 'title'; title: string } | { op: 'delete' }
+export type CopyEdit = { op: 'done'; done: boolean } | { op: 'cancel' } | { op: 'when'; date?: ISODate | null; time?: string | null } | { op: 'title'; title: string } | { op: 'delete' }
 
 /** 另外一份（第 n 行）跟着改；取消了的那份不勾 */
 export function editCopy(text: string, n: number, e: CopyEdit, today: ISODate): string {
   switch (e.op) {
     case 'done':
       return editLine(text, n, (l) => (parseTaskLine(l)?.cancelled ? l : setDone(l, e.done, today)))
+    case 'cancel':
+      // 不做了：没做完的那几份一起标成 [-]（不然下一份又冒出来）；勾掉了的不动
+      return editLine(text, n, (l) => (parseTaskLine(l)?.done ? l : setCancelled(l, today)))
     case 'when':
       return editLine(text, n, (l) => {
         const x = e.date === undefined ? l : setDate(l, e.date)

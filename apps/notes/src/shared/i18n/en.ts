@@ -5,6 +5,7 @@
  */
 import type { Table } from './core'
 import { COMMON } from './en/common'
+import { PARAREAD } from './en/pararead'
 import { SETTINGS } from './en/settings'
 import { PALETTE } from './en/palette'
 import { SHELL } from './en/shell'
@@ -37,9 +38,13 @@ import { BOARD_SELECT } from './en/board-select'
 import { FEYNMAN_AFTER } from './en/feynman-after'
 import { VOICE } from './en/voice'
 import { CITE } from './en/cite'
-import { LLM } from './en/llm'
 import { RELATED } from './en/related'
 import { FEYNMAN_BOARD } from './en/feynman-board'
+import { GROWTH } from './en/growth'
+import { MCP } from './en/mcp'
+import { AI_SOURCES } from './en/ai-sources'
+import { REPLIES } from './en/replies'
+import { ANSWER_SITES } from './en/answer-sites'
 
 /** 每张分表（测试按文件查重、查占位） */
 export const EN_PARTS: Readonly<Record<string, Table>> = {
@@ -85,12 +90,20 @@ export const EN_PARTS: Readonly<Record<string, Table>> = {
   cite: CITE,
   // 梦游的 AI 判断（task-h7oy8）
   'dream-judge': DREAM_JUDGE,
-  // 本地模型（task-h7oy8）
-  llm: LLM,
   // 费曼学习 · 白板上讲（task-yvabi ②）
   'feynman-board': FEYNMAN_BOARD,
+  replies: REPLIES,
+  answerSites: ANSWER_SITES,
   // 右栏「相关」栏（task-h7oy8）
   related: RELATED,
+  // 生长图（task-h7oy8）
+  growth: GROWTH,
+  // 设置 › 对外接口（task-av5t8）
+  mcp: MCP,
+  // 没装 Claude Code 时的 AI（task-587os）
+  'ai-sources': AI_SOURCES,
+  // ParaRead 联动（画布笔记这一侧）：划线带含义、ParaRead 组件、划线颜色
+  pararead: PARAREAD,
 }
 
 export const EN: Table = Object.assign({}, ...Object.values(EN_PARTS)) as Table

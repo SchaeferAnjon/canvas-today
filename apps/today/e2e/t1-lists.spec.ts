@@ -54,8 +54,8 @@ test('勾掉「读完三篇相关论文」：文件里只那一行变成 - [x] �
     expect(onlyLine(before, run.read('写作/小论文计划.md'), 6)).toBe('- [x] 读完三篇相关论文 📅 2026-11-22 🔼 ✅ 2026-11-22')
     // 挪到「今天勾掉的」那一组
     await expect(page.locator('.center .grp', { hasText: '今天勾掉的' })).toBeVisible()
-    await page.locator('.toast').getByRole('button', { name: '撤销' }).click()
-    await expect(page.locator('.toast')).toContainText('撤销了')
+    await page.locator('.toast').getByRole('button', { name: '撤回' }).click()
+    await expect(page.locator('.toast')).toContainText('撤回了')
     await expect.poll(() => run.read('写作/小论文计划.md')).toBe(before)
   } finally {
     await run.close()
@@ -124,7 +124,7 @@ test('右键：系统菜单（今天、明天、下周的哪天，打开笔记�
     await expect(page.locator('.toast')).toContainText('《Lecture05 笔记》里这一行删掉了')
     await expect.poll(() => run.read('课程/ecp/Lecture05 笔记.md')).toBe(before.replace('- [ ] 交 ecp 作业 2 📅 2026-11-21 23:59 ⏫\n', ''))
     await expect(row(page, '交 ecp 作业 2')).toHaveCount(0)
-    await page.locator('.toast').getByRole('button', { name: '撤销' }).click()
+    await page.locator('.toast').getByRole('button', { name: '撤回' }).click()
     await expect.poll(() => run.read('课程/ecp/Lecture05 笔记.md')).toBe(before)
     await expect(row(page, '交 ecp 作业 2')).toBeVisible()
     // 右键「明天」：改到明天

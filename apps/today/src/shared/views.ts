@@ -106,12 +106,13 @@ export function dayItems(ts: readonly TaskView[], d: ISODate): { timed: TaskView
 
 /**
  * 日历上画的待办（@cn/calendar 的 CalItem）：有日子、没取消的，勾掉的也画（淡一点）；子任务写了日子的也算。
- * 按文件里的先后交进去（路径、行号），日历里钟点一样、都是全天的时候照这个先后排；repeat 是重复写法怎么说（块下面那行小字）
+ * 按文件里的先后交进去（路径、行号），日历里钟点一样、都是全天的时候照这个先后排；repeat 是重复写法怎么说（块下面那行小字）；
+ * 写了估时（[估时:: 30分钟]）的块画那么长，没写的日历默认一小时
  */
 export function calItems(ts: readonly TaskView[], repeat: (r: string) => string): CalItem[] {
   return ts
     .filter((t) => t.date && !t.cancelled && !t.dupOf)
-    .map((t) => ({ key: t.key, title: t.title, date: t.date!, time: t.time, done: t.done, ...(t.repeat ? { note: repeat(t.repeat) } : {}) }))
+    .map((t) => ({ key: t.key, title: t.title, date: t.date!, time: t.time, done: t.done, ...(t.minutes ? { minutes: t.minutes } : {}), ...(t.repeat ? { note: repeat(t.repeat) } : {}) }))
 }
 
 /**

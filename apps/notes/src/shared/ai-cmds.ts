@@ -10,6 +10,7 @@
 import { list, t, tv } from './i18n'
 import { INBOX } from './layout'
 import { PROMPT_MAX } from './sel-bar'
+import { isReplyPlace, type ReplyOut, type ReplyPlace } from './replies'
 
 /** 现在在哪里打 /：文档、书摘、白板、PDF、视频（右栏网页开着视频）、文件夹首页、别的网页、HTML、别处（首页、收件箱…） */
 export type Ctx = 'doc' | 'book' | 'board' | 'pdf' | 'video' | 'folder' | 'web' | 'html' | 'none'
@@ -294,6 +295,11 @@ export interface AiCmd {
   prompt?: string
   /** 放上选中小条时结果去哪（没写是写进笔记） */
   out?: BarOut
+  /**
+   * 回答下面那排的快捷回复（task-eavzx）：在哪几处的回答下面有它、在哪答（这段对话里 / 开一条旁支）。
+   * 点了替你发的那句是 prompt（{这条回答} 这些空），没有 prompt 的（从我的命令里挑的）照勾着的规矩
+   */
+  reply?: { where: ReplyPlace[]; out: ReplyOut }
 }
 
 // 不翻：键，画的地方 t(n, { ctx: '在哪能用' })
@@ -324,6 +330,19 @@ const WRITE_TAG: Record<Write, Tag> = { inplace: ['改这一篇', 'w'], beside: 
 /** 自己的命令名字后面的小标签：写到哪（改是黄底、新建是绿底，和影响卡的文件树同一种颜色），会改文件的还有「先给你看」「能撤回」 */
 // 不翻：小标签是键，画的地方翻
 export const tagsOf = (c: Pick<AiCmd, 'write'>): Tag[] => [WRITE_TAG[c.write], ...(c.write !== 'answer' ? ([['先给你看'], ['能撤回']] as Tag[]) : [])]
+
+/** 快捷回复（task-eavzx）在哪几处的 / 菜单里：AI 对话那一栏（看着文档、白板、文件夹、什么都没开）、读 PDF（HTML 也算）、网页、视频 */
+export function replyCtx(where: readonly ReplyPlace[]): Ctx[] {
+  const out: Ctx[] = []
+  if (where.includes('chat')) out.push('doc', 'book', 'board', 'folder', 'none')
+  if (where.includes('pdf')) out.push('pdf', 'html')
+  if (where.includes('web')) out.push('web')
+  if (where.includes('video')) out.push('video')
+  return out
+}
+
+/** 这条命令在这几处的 / 菜单里能用：照「在哪能用」，快捷回复再照它出现的那几处 */
+const usableIn = (c: AiCmd, active: ReadonlySet<Ctx>) => whereCtx(c.where).some((x) => active.has(x)) || (!!c.reply && replyCtx(c.reply.where).some((x) => active.has(x)))
 
 /** 「在哪能用」勾的几处换成能打 / 的地方：文档也算书摘，网页也算视频 */
 export function whereCtx(where: readonly Where[]): Ctx[] {
@@ -400,7 +419,15 @@ export function aiCmdOf(raw: unknown, store: 'vault' | 'local'): AiCmd | null {
     ...(from ? { from } : {}),
     ...(prompt ? { prompt } : {}),
     ...(o.out === 'note' || o.out === 'answer' ? { out: o.out } : {}),
+    ...replyOf(o.reply),
   }
+}
+
+function replyOf(v: unknown): { reply?: AiCmd['reply'] } {
+  if (!v || typeof v !== 'object') return {}
+  const r = v as Record<string, unknown>
+  const where = Array.isArray(r.where) ? [...new Set(r.where.filter(isReplyPlace))] : []
+  return { reply: { where, out: r.out === 'side' ? 'side' : 'here' } }
 }
 
 /** 提示词按行拆成规矩（/ 菜单、⌘K 里照规矩跑；每行最长 RULE_MAX，最多 MAX_RULES 行） */
@@ -427,6 +454,7 @@ export function aiCmdJson(c: AiCmd): { id: string; name: string; kind: 'ai'; tar
     ...(c.from ? { from: c.from } : {}),
     ...(c.prompt ? { prompt: c.prompt } : {}),
     ...(c.out ? { out: c.out } : {}),
+    ...(c.reply ? { reply: { where: c.reply.where, out: c.reply.out } } : {}),
   }
 }
 
@@ -509,7 +537,7 @@ export function slashGroups(o: { here: Ctx; also?: readonly Ctx[]; q: string; mi
   }
   const hidden = new Set(o.slash.hidden)
   const active = new Set<Ctx>([o.here, ...(o.also ?? [])])
-  const usable = o.mine.filter((c) => whereCtx(c.where).some((x) => active.has(x)))
+  const usable = o.mine.filter((c) => usableIn(c, active))
   const mine = ordered(usable.filter((c) => !hidden.has(c.id) && hit(c.name)).map(itemOfMine), o.slash.order)
   let ph: string | undefined
   if (!q && !mine.length) {
@@ -533,7 +561,7 @@ export function slashGroups(o: { here: Ctx; also?: readonly Ctx[]; q: string; mi
 export function hiddenHere(o: { here: Ctx; also?: readonly Ctx[]; mine: readonly AiCmd[]; slash: SlashConfig }): SlashItem[] {
   const active = new Set<Ctx>([o.here, ...(o.also ?? [])])
   const hidden = new Set(o.slash.hidden)
-  const mine = o.mine.filter((c) => hidden.has(c.id) && whereCtx(c.where).some((x) => active.has(x))).map(itemOfMine)
+  const mine = o.mine.filter((c) => hidden.has(c.id) && usableIn(c, active)).map(itemOfMine)
   const title = ctxTitle(o.here)
   const built = BUILTINS.filter((b) => hidden.has(b.id) && (b.lib || (title && b.ctx.includes(o.here)))).map(itemOfBuiltin)
   return [...mine, ...built]

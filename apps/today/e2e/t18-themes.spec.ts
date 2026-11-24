@@ -34,7 +34,7 @@ test('导入 VS Code 主题：存进画布笔记的 themes/、马上用上、多
     // 画布今日没有首页、窗口背景不能从电脑选：这两样不出，也不空着
     await expect(s.getByRole('heading', { name: /首页样式/ })).toHaveCount(0)
     await expect(s.getByRole('radio', { name: '从电脑选' })).toHaveCount(0)
-    await expect(s.getByRole('radiogroup', { name: '窗口背景' }).getByRole('radio')).toHaveText(['不用图', '极光照片', '冰洞照片'])
+    await expect(s.getByRole('radiogroup', { name: '窗口背景' }).getByRole('radio')).toHaveText(['主题渐变', '纯色', '极光照片', '冰洞照片'])
     await expect(s.getByText('导入的VS Code主题')).toHaveCount(0)
 
     // 样子同画布笔记：导入按钮 30 高圆头、跟着系统那一行一块浅底

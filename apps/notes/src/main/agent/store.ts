@@ -5,14 +5,16 @@
  * 以前全库只存一份（chat-<库>.json）：第一次用到时迁成一个地方「以前的对话」，不丢。
  */
 import { createHash } from 'node:crypto'
-import { mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, rmSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { type ChatSummary, LEGACY } from '../../shared/ai-chats'
 import { t } from '../../shared/i18n'
 import type { ChatSide, EngineId, StoredMsg } from '../../shared/agent'
 import { type AiPick, type AiPrefs, CLAUDE_DEFAULT, normalizePick, normalizePrefs, resolvePick } from '../../shared/ai-features'
+import { atomicWriteSync } from '@cn/atomic'
+import { ALL_IDS, API_DEFAULT, type CliId, CLI_IDS, isApi, isCli, isLocal, KEY_JUDGE } from '../../shared/ai-sources'
 
-const ENGINES: EngineId[] = ['claude', 'codex', 'gemini', 'opencode']
+const ENGINES: EngineId[] = ALL_IDS
 
 /** 一个地方的对话 */
 export interface PlaceChat {
@@ -58,8 +60,7 @@ export class AgentStore {
     const p = join(this.dir, name)
     mkdirSync(dirname(p), { recursive: true })
     // 先写临时文件再换名，写到一半退出也不会坏
-    writeFileSync(p + '.tmp', JSON.stringify(value))
-    renameSync(p + '.tmp', p)
+    atomicWriteSync(p, JSON.stringify(value))
   }
 
   /** 默认那家（设置 › AI 的「默认」） */
@@ -79,15 +80,15 @@ export class AgentStore {
   }
 
   /** 用户在引擎菜单「装在别处？指定位置…」选的命令行（CN-87），找命令时排第一 */
-  cliPaths(): Partial<Record<EngineId, string>> {
+  cliPaths(): Partial<Record<CliId, string>> {
     const c = this.read<{ cli?: unknown }>('settings.json', {}).cli
-    const out: Partial<Record<EngineId, string>> = {}
-    if (c && typeof c === 'object') for (const id of ENGINES) if (typeof (c as Record<string, unknown>)[id] === 'string') out[id] = (c as Record<string, string>)[id]
+    const out: Partial<Record<CliId, string>> = {}
+    if (c && typeof c === 'object') for (const id of CLI_IDS) if (typeof (c as Record<string, unknown>)[id] === 'string') out[id] = (c as Record<string, string>)[id]
     return out
   }
 
   setCliPath(id: EngineId, path: string) {
-    if (!ENGINES.includes(id)) throw new Error(t('没有这个引擎'))
+    if (!isCli(id)) throw new Error(t('没有这个引擎'))
     this.write('settings.json', { ...this.read<object>('settings.json', {}), cli: { ...this.cliPaths(), [id]: path } })
   }
 
@@ -222,6 +223,44 @@ export class AgentStore {
   }
 
   /** 全能模式（2026-11-19 用户要的，默认开）：AI 对话和读 PDF 共用这一个开关，记在软件设置目录 */
+  /**
+   * 在三选一卡上接上一家（task-587os）：以后默认用它（AI 对话跟默认）；小活用这一家便宜的那个（本机模型用同一个）；
+   * Claude API 的梦游照设计页第 5 节用 Haiku 5.5 · Low（门槛 0.85 在判断那边按 Haiku 定）
+   */
+  connect(pick: AiPick) {
+    const n = normalizePick(pick)
+    if (!n) throw new Error(t('AI 参数不对'))
+    const p = this.prefs()
+    const features = { ...p.features }
+    delete features.chat
+    if (isApi(n.engine)) {
+      const quick = API_DEFAULT[n.engine].quick[0]!
+      features.quick = { engine: n.engine, model: quick }
+      if (n.engine === 'anthropic') features.dream = { engine: KEY_JUDGE.engine, model: KEY_JUDGE.model, effort: KEY_JUDGE.effort }
+      else delete features.dream
+    } else if (isLocal(n.engine)) {
+      features.quick = n
+      // 梦游不用本机模型（2026-11-23 用户定）：跟默认会跟到本机模型，这里不写，梦游那边自己找能判的
+      delete features.dream
+    } else {
+      features.quick = n.engine === 'claude' ? { engine: 'claude', model: 'haiku' } : n
+      delete features.dream
+    }
+    this.setPrefs({ default: n, features })
+  }
+
+  /** 第一次开 AI、第一次梦游前那一句说明看过没有 */
+  introSeen(): { ai: boolean; dream: boolean } {
+    const i = this.read<{ intro?: { ai?: unknown; dream?: unknown } }>('settings.json', {}).intro
+    // 测试实例默认当看过（别的测试的空对话不多出这一句）；CN_AI_INTRO=1 的测试看它
+    if (process.env.CN_E2E === '1' && process.env.CN_AI_INTRO !== '1' && !i) return { ai: true, dream: true }
+    return { ai: i?.ai === true, dream: i?.dream === true }
+  }
+
+  setIntroSeen(what: 'ai' | 'dream') {
+    this.write('settings.json', { ...this.read<object>('settings.json', {}), intro: { ...this.introSeen(), [what]: true } })
+  }
+
   omni(): boolean {
     return this.read<{ omni?: unknown }>('settings.json', {}).omni !== false
   }

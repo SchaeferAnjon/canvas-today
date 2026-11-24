@@ -9,6 +9,7 @@
  * 打开、下载、换到 ParaRead 只记下来（test-mode 换掉了 shell）；不联网，除非给了 o.test.url。
  */
 import { HUB_URL, type Installed, linkOn } from '@cn/family'
+import { parareadOpenUrl } from '@cn/format'
 import { findInstalled, installedFromFile, loadList, readLinks, refreshList, watchLinks, writeLink } from '@cn/family/node'
 import { app, ipcMain, shell } from 'electron'
 import { execFile } from 'node:child_process'
@@ -77,15 +78,19 @@ export function registerFamily(o: FamilyHost) {
     await shell.openExternal(a.download)
   })
   ipcMain.handle('family:hub', () => shell.openExternal(HUB_URL))
-  /** PDF「⋯ › 在ParaRead里读（双语）」：用装着的 ParaRead 打开库里这份 PDF */
-  ipcMain.handle('family:readInParaRead', async (_e, rel: unknown) => {
+  /**
+   * 用装着的 ParaRead 打开库里这份 PDF（PDF「⋯ › 在ParaRead里读（双语）」、文件夹首页 ParaRead 组件「继续读」「读」）：
+   * 走深链 pararead://open?file=<绝对路径>&page=<读到哪>&vault=<库>&back=<从哪个文件夹首页来>（写法在 @cn/format 的 pararead-link.ts，ParaRead 认同一份）
+   */
+  ipcMain.handle('family:readInParaRead', async (_e, rel: unknown, opt: unknown) => {
     const v = o.vault()
     if (!v || typeof rel !== 'string') throw new Error('PDF 的路径不对')
-    const file = v.abs(rel)
+    const p = (opt && typeof opt === 'object' ? opt : {}) as { page?: unknown; back?: unknown; view?: unknown }
+    const url = parareadOpenUrl({ file: v.abs(rel), ...(typeof p.page === 'number' ? { page: p.page } : {}), vault: v.root, ...(typeof p.back === 'string' ? { back: p.back } : {}), ...(p.view === 'bilingual' || p.view === 'original' ? { view: p.view } : {}) })
     const pr = (await known()).pararead
     if (!pr) throw new Error('这台Mac上没装ParaRead')
-    if (o.test) return record(`用 ParaRead 打开 ${rel}`)
-    await new Promise<void>((resolve, reject) => execFile('/usr/bin/open', ['-a', pr.path, file], { timeout: 10_000 }, (err) => (err ? reject(new Error(`ParaRead 没打开：${err.message}`)) : resolve())))
+    if (o.test) return record(`用 ParaRead 打开 ${url}`)
+    await new Promise<void>((resolve, reject) => execFile('/usr/bin/open', ['-a', pr.path, url], { timeout: 10_000 }, (err) => (err ? reject(new Error(`ParaRead 没打开：${err.message}`)) : resolve())))
   })
 
   // 联动开关：另一个软件（或 Git 拉下来）改了，这边跟着变

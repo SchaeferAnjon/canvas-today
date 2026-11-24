@@ -26,6 +26,7 @@ const task = (p: Partial<TaskView>): TaskView => {
     doing: false,
     dupOf: null,
     dups: [],
+    minutes: null,
     date: null,
     time: null,
     remind: null,

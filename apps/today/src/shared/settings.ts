@@ -2,11 +2,13 @@
  * 画布今日自己的设置（userData/settings.json）：语言、外观（默认跟画布笔记一样）、菜单栏、两边的栏开不开、自动检查更新、提醒事项。
  * 库不另存一份：先看画布笔记的设置里上次打开的库（两个软件用同一个库），没有才用这里记的。
  */
-import { allSkins, type Appearance, DEFAULT_SETTINGS as NOTES_DEFAULT, normalizeSettings, type SkinInfo } from '../../../notes/src/shared/appearance'
+import { normalizeGlass } from '@cn/design/glass'
+import { allSkins, type Appearance, DEFAULT_SETTINGS as NOTES_DEFAULT, normalizeSettings, type SkinInfo, WALL_MIXES, WALL_SPEEDS, type WallMix, type WallSpeed } from '../../../notes/src/shared/appearance'
 import type { Lang } from './i18n'
 import { DEFAULT_QUICK_KEY, isCombo } from './quick'
 
-export type TodayAppearance = Pick<Appearance, 'followSystem' | 'day' | 'night' | 'skin' | 'frame' | 'winBg'>
+/** 外观和画布笔记同一套（task-aph2j：主题渐变、浓淡、动不动也一样）；画布今日不能从电脑选图 */
+export type TodayAppearance = Pick<Appearance, 'followSystem' | 'day' | 'night' | 'skin' | 'frame' | 'winBg' | 'wallMix' | 'wallMove' | 'wallSpeed' | 'glass'>
 
 /**
  * 提醒事项（每台设备各记各的）：连上了没有、镜像开没开、镜像进哪个列表（名字；id 是这台设备上 EventKit 给的）。
@@ -26,6 +28,18 @@ export const DEFAULT_REM: RemSettings = { connected: false, mirror: true, list: 
 export interface CalSettings {
   show: boolean
 }
+
+/**
+ * 排一天（方向 B）：打开时先排一天、菜单栏写正在做的那一块、日记放在哪（路径样子，shared/plan.ts journalPlace；null 是自己认）。
+ * 时间块默认不写进系统日历当「忙」（2026-11-23 用户同意推荐 ④），写的那一项以后再加
+ */
+export interface PlanSettings {
+  onOpen: boolean
+  tray: boolean
+  journal: string | null
+}
+
+export const DEFAULT_PLAN: PlanSettings = { onOpen: true, tray: true, journal: null }
 
 export interface TodaySettings {
   lang: Lang
@@ -51,6 +65,7 @@ export interface TodaySettings {
   updateCheckedAt?: number
   reminders: RemSettings
   calendar: CalSettings
+  plan: PlanSettings
 }
 
 const notesLook = NOTES_DEFAULT.appearance
@@ -58,7 +73,18 @@ const notesLook = NOTES_DEFAULT.appearance
 export const DEFAULT_TODAY: TodaySettings = {
   lang: 'zh',
   followNotes: true,
-  appearance: { followSystem: notesLook.followSystem, day: notesLook.day, night: notesLook.night, skin: notesLook.skin, frame: notesLook.frame, winBg: notesLook.winBg },
+  appearance: {
+    followSystem: notesLook.followSystem,
+    day: notesLook.day,
+    night: notesLook.night,
+    skin: notesLook.skin,
+    frame: notesLook.frame,
+    winBg: notesLook.winBg,
+    wallMix: notesLook.wallMix,
+    wallMove: notesLook.wallMove,
+    wallSpeed: notesLook.wallSpeed,
+    glass: notesLook.glass,
+  },
   tray: true,
   quickKey: DEFAULT_QUICK_KEY,
   left: true,
@@ -67,6 +93,7 @@ export const DEFAULT_TODAY: TodaySettings = {
   familyFetch: true,
   reminders: DEFAULT_REM,
   calendar: { show: false },
+  plan: DEFAULT_PLAN,
 }
 
 function normalizeRem(raw: unknown): RemSettings {
@@ -80,6 +107,18 @@ function normalizeRem(raw: unknown): RemSettings {
   }
 }
 
+function normalizePlan(raw: unknown): PlanSettings {
+  const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
+  // 日记的样子要带 {date}（或年月日三样）、是 .md、不往库外面走
+  const j = typeof r.journal === 'string' ? r.journal.trim() : ''
+  const okJournal = /\.md$/i.test(j) && (j.includes('{date}') || ['{YYYY}', '{MM}', '{DD}'].every((k) => j.includes(k))) && !j.split('/').some((x) => x === '..' || x.startsWith('.')) && !j.startsWith('/')
+  return {
+    onOpen: typeof r.onOpen === 'boolean' ? r.onOpen : DEFAULT_PLAN.onOpen,
+    tray: typeof r.tray === 'boolean' ? r.tray : DEFAULT_PLAN.tray,
+    journal: okJournal ? j : null,
+  }
+}
+
 /** 读出来的设置一项项检查，不对的用默认值。user：导入的 VS Code 主题（和画布笔记同一份；删掉了的不认，回到默认；白天只认浅色、夜里只认深色，同画布笔记） */
 export function normalizeToday(raw: unknown, sysLang: Lang = 'zh', user: readonly SkinInfo[] = []): TodaySettings {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
@@ -87,7 +126,9 @@ export function normalizeToday(raw: unknown, sysLang: Lang = 'zh', user: readonl
   const d = DEFAULT_TODAY.appearance
   const all = allSkins(user)
   const skin = (v: unknown, fb: string, tone?: 'light' | 'dark') => all.find((s) => s.id === v && (!tone || s.tone === tone))?.id ?? fb
-  const winBg = a.winBg === 'none' || a.winBg === 'aurora' || a.winBg === 'cave' ? a.winBg : d.winBg
+  // 有主题渐变以前的设置（没有 wallMix）：A 从来不铺窗口背景，旧的 A 先当「纯色」，打开还是原来的样子（同画布笔记 normalizeSettings）
+  const old = !('wallMix' in a)
+  const winBg = old && a.frame === 'a' ? 'none' : a.winBg === 'wall' || a.winBg === 'none' || a.winBg === 'aurora' || a.winBg === 'cave' ? a.winBg : d.winBg
   return {
     lang: r.lang === 'en' || r.lang === 'zh' ? r.lang : sysLang,
     followNotes: typeof r.followNotes === 'boolean' ? r.followNotes : DEFAULT_TODAY.followNotes,
@@ -98,6 +139,10 @@ export function normalizeToday(raw: unknown, sysLang: Lang = 'zh', user: readonl
       skin: skin(a.skin, d.skin),
       frame: a.frame === 'a' ? 'a' : a.frame === 'b' ? 'b' : d.frame,
       winBg,
+      wallMix: WALL_MIXES.includes(a.wallMix as WallMix) ? (a.wallMix as WallMix) : d.wallMix,
+      wallMove: typeof a.wallMove === 'boolean' ? a.wallMove : d.wallMove,
+      wallSpeed: WALL_SPEEDS.includes(a.wallSpeed as WallSpeed) ? (a.wallSpeed as WallSpeed) : d.wallSpeed,
+      glass: normalizeGlass(a.glass),
     },
     tray: typeof r.tray === 'boolean' ? r.tray : DEFAULT_TODAY.tray,
     quickKey: isCombo(r.quickKey) ? r.quickKey : DEFAULT_TODAY.quickKey,
@@ -110,11 +155,23 @@ export function normalizeToday(raw: unknown, sysLang: Lang = 'zh', user: readonl
     ...(typeof r.updateCheckedAt === 'number' && Number.isFinite(r.updateCheckedAt) && r.updateCheckedAt > 0 ? { updateCheckedAt: r.updateCheckedAt } : {}),
     reminders: normalizeRem(r.reminders),
     calendar: { show: (r.calendar as { show?: unknown } | undefined)?.show === true },
+    plan: normalizePlan(r.plan),
   }
 }
 
 /** 画布笔记设置里的外观换成画布今日能用的：老主题名、导入的 VS Code 主题照画布笔记自己的规矩换（user 是两边共用的导入主题，删掉了的回到默认）；自己选的背景图画布今日拿不到，当极光照片 */
 export function lookFromNotes(raw: unknown, user: readonly SkinInfo[] = []): TodayAppearance {
   const a = normalizeSettings(raw, user).appearance
-  return { followSystem: a.followSystem, day: a.day, night: a.night, skin: a.skin, frame: a.frame, winBg: a.winBg === 'custom' ? 'aurora' : a.winBg }
+  return {
+    followSystem: a.followSystem,
+    day: a.day,
+    night: a.night,
+    skin: a.skin,
+    frame: a.frame,
+    winBg: a.winBg === 'custom' ? 'aurora' : a.winBg,
+    wallMix: a.wallMix,
+    wallMove: a.wallMove,
+    wallSpeed: a.wallSpeed,
+    glass: a.glass,
+  }
 }

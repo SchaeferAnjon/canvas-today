@@ -15,7 +15,6 @@ export const BOARD_SELECT: Table = {
   AI整理: 'AI tidy',
   'AI 把这几张重新归类、排好、起标题：先给你看改前改后，收下才写': 'AI regroups, orders and titles these cards: you see before and after first; nothing is written until you accept',
   '出卡：AI 先把这几张改成问答卡，一张张过，再送进 Anki': 'Make cards: AI turns these into Q&A cards, you review each, then they go to Anki',
-  复制: 'Copy',
   移到别的笔记: 'Move to another note',
 
   // ---------- 对齐菜单 ----------
@@ -58,7 +57,7 @@ export const BOARD_SELECT: Table = {
   '合成了一张：这{n}段挪到一起、字不改，前面一行记着「这{n}段是一张」': (p) => `Merged: ${count(p.n, 'paragraph')} sit together unchanged, a line above marks them as one card`,
   '拆开了：去掉了前面那一行注释，{n}段各是各的卡': (p) => `Split: the marker line is gone, ${count(p.n, 'paragraph')} are separate cards again`,
   '复制了一份：文档末尾多了这{n}段，各带一行位置': (p) => `Duplicated: ${count(p.n, 'paragraph')} added at the end, each with a position line`,
-  '复制了{n}张：贴进文档是这{n}段原文，贴进白板是{n}张卡': (p) => `Copied ${cards(p.n)}: paste into a document for the text, onto a board for cards`,
+  '拷贝了{n}张：贴进文档是这{n}段原文，贴进白板是{n}张卡': (p) => `Copied ${cards(p.n)}: paste into a document for the text, onto a board for cards`,
   '挪了{n}张到《{name}》：两篇一次提交，撤回两篇一起回去': (p) => `Moved ${cards(p.n)} to “${p.name}”: both files in one commit; undo restores both`,
   '《{name}》刚被别处改过，这次没挪': '“{name}” just changed elsewhere; nothing moved',
   '移到哪篇（拖到标签上也行）': 'Move to which note (or drag onto its tab)',
@@ -127,7 +126,7 @@ export const BOARD_SELECT: Table = {
   包进提示块: 'Wrap in a callout',
   '挪了{n}块：md 里这{n}段整段挪过去，字不变': (p) => `Moved ${count(p.n, 'block')}: the paragraphs moved as they are`,
   '删了{n}块：md 里这{n}段删了': (p) => `Deleted ${count(p.n, 'block')}`,
-  '复制了{n}块：贴进文档是这{n}段原文，贴进白板是{n}张卡': (p) => `Copied ${count(p.n, 'block')}: paste into a document for the text, onto a board for cards`,
+  '拷贝了{n}块：贴进文档是这{n}段原文，贴进白板是{n}张卡': (p) => `Copied ${count(p.n, 'block')}: paste into a document for the text, onto a board for cards`,
   '剪了{n}块：在别处 {k} 贴回来': (p) => `Cut ${count(p.n, 'block')}: ${p.k} to paste them elsewhere`,
   '复制了一份：这{n}段下面多了一样的{n}段': (p) => `Duplicated: the same ${count(p.n, 'paragraph')} added below`,
   '正文、标题不能缩进：md 里缩进的正文会变成代码块；列表、待办能缩': 'Text and headings can’t be indented (indented text becomes a code block in Markdown); lists and to-dos can',

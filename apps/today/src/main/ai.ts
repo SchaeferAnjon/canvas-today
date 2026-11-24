@@ -15,6 +15,9 @@ import { type Busy, fitSchedule, freeSlots, parseSteps, SCHED_SYSTEM, type Sched
 import { type When, WHEN_AI_SYSTEM, whenAiPrompt, whenFromAi } from '@cn/tasks'
 import { fakeWhenAnswer } from '../../../notes/src/shared/when-ai'
 import { findCli } from '../../../notes/src/main/agent/cli'
+import { apiEngine, localEngine, probeLocal } from '../../../notes/src/main/agent/engine-api'
+import { isApi, isCli, isEngineId, isLocal } from '../../../notes/src/shared/ai-sources'
+import { needBorrow, todayKey } from './ai-keys'
 
 export const FAKE = () => process.env.CT_AI_FAKE === '1' || process.env.CN_AI_FAKE === '1'
 
@@ -28,7 +31,7 @@ export function aiPick(notesDir: string | null): AiPick {
       if ((e as NodeJS.ErrnoException).code !== 'ENOENT' && !(e instanceof SyntaxError)) throw e
     }
   }
-  const legacy = typeof raw.engine === 'string' && ['claude', 'codex', 'gemini', 'opencode'].includes(raw.engine) ? (raw.engine as EngineId) : undefined
+  const legacy = isEngineId(raw.engine) ? raw.engine : undefined
   const prefs = raw.prefs === undefined && !legacy ? INITIAL_PREFS : normalizePrefs(raw.prefs, legacy)
   return resolvePick(prefs, 'quick')
 }
@@ -37,12 +40,35 @@ export function aiPick(notesDir: string | null): AiPick {
 export const aiLabel = (p: AiPick) => ({ engine: p.engine, label: ENGINE_LABEL[p.engine], full: pickLabel(p) })
 
 const engines: Partial<Record<EngineId, Engine>> = {}
-const engineOf = (id: EngineId): Engine => (engines[id] ??= id === 'claude' ? claudeEngine() : id === 'codex' ? codexEngine() : id === 'gemini' ? geminiEngine() : opencodeEngine())
+/**
+ * 那一家的引擎：命令行照旧；Claude API 这类直接问接口（Key 用画布今日自己存的那份，task-587os）；本机模型问 Ollama、LM Studio。
+ * 画布今日只问不动手，不给自带的 OpenCode
+ */
+export const engineOf = (id: EngineId): Engine =>
+  (engines[id] ??= isApi(id) ? apiEngine(id, { key: todayKey }) : isLocal(id) ? localEngine(id) : id === 'claude' ? claudeEngine() : id === 'codex' ? codexEngine() : id === 'gemini' ? geminiEngine() : opencodeEngine())
+
+/**
+ * 要的那把 Key 画布今日还没有、画布笔记有：先问一句「用画布笔记那把？」（界面认 message 前面的【借 Key】和后面的家）
+ */
+export class BorrowNeeded extends Error {
+  constructor(readonly engine: string) {
+    super(`【借 Key】${engine}`)
+  }
+}
+
+/** 这一家现在能不能问（认时间这种悄悄问的，不能问就不问） */
+async function canAsk(id: EngineId): Promise<boolean> {
+  if (isCli(id)) return !!findCli(id)
+  if (isApi(id)) return !!todayKey(id)
+  return (await probeLocal(id)).on
+}
 
 /** 启动后在后台取一次登录 shell 的 PATH（从访达打开时找得到 Homebrew、npm 装的命令行） */
 export const warmUp = () => (FAKE() ? Promise.resolve([]) : loadShellPath())
 
 async function ask(pick: AiPick, system: string, prompt: string, cwd: string, signal: AbortSignal): Promise<string> {
+  const borrow = needBorrow(pick.engine)
+  if (borrow) throw new BorrowNeeded(borrow)
   const model = process.env.CT_AI_MODEL || pick.model
   const effort = process.env.CT_AI_EFFORT || pick.effort
   const r = await engineOf(pick.engine).run({ prompt, system, cwd, signal, onText: () => {}, ...(model ? { model } : {}), ...(effort ? { effort } : {}) })
@@ -66,7 +92,14 @@ function fakeSteps(title: string): string[] {
   return m[title] ?? ['想清楚第一步做什么', '做完一半时检查一遍', '收尾，写一句结论']
 }
 
+/** 要的那把 Key 画布今日还没有、画布笔记有：先问「用画布笔记那把？」（假 AI 也照问，e2e 要走这一步） */
+function checkBorrow(pick: AiPick) {
+  const b = needBorrow(pick.engine)
+  if (b) throw new BorrowNeeded(b)
+}
+
 export async function aiSplit(pick: AiPick, x: SplitInput, cwd: string, signal: AbortSignal): Promise<string[]> {
+  checkBorrow(pick)
   if (FAKE()) {
     await sleep(Number(process.env.CT_AI_FAKE_MS ?? 600), signal)
     if (x.title.includes('（测试：AI 出错）')) throw new Error('Claude Code 退出了（1）：测试用的失败')
@@ -78,6 +111,7 @@ export async function aiSplit(pick: AiPick, x: SplitInput, cwd: string, signal: 
 }
 
 export async function aiSchedule(pick: AiPick, now: { date: string; time: string }, cands: SchedCandidate[], busy: Busy[], cwd: string, signal: AbortSignal): Promise<Slot[]> {
+  checkBorrow(pick)
   if (!cands.length) return []
   const answer = FAKE() ? (await sleep(Number(process.env.CT_AI_FAKE_MS ?? 600), signal), JSON.stringify(freeSlots(cands, busy, now))) : await ask(pick, SCHED_SYSTEM, schedulePrompt(now, cands, busy), cwd, signal)
   return fitSchedule(answer, cands, busy, now)
@@ -97,7 +131,7 @@ export async function aiWhen(pick: AiPick, text: string, now: string, cwd: strin
       await sleep(Number(process.env.CT_AI_FAKE_MS ?? 300), signal)
       answer = fakeWhenAnswer(line, now)
     } else {
-      if (!findCli(pick.engine)) return null
+      if (!(await canAsk(pick.engine))) return null
       const model = pick.engine === 'claude' ? process.env.CT_WHEN_MODEL || 'haiku' : pick.model
       const r = await engineOf(pick.engine).run({ prompt: whenAiPrompt(line, now), system: WHEN_AI_SYSTEM, cwd, signal, onText: () => {}, ...(model ? { model } : {}) })
       answer = r.text

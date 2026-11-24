@@ -66,7 +66,7 @@ test('任务行：点日子那一格弹选择器改钟点，关上说一句、�
     await expect(picker(page)).toHaveCount(0)
     const toast = page.locator('.toast')
     await expect(toast).toContainText('补实验图')
-    await toast.getByRole('button', { name: '撤销' }).click()
+    await toast.getByRole('button', { name: '撤回' }).click()
     await expect.poll(() => run.read('写作/小论文计划.md')).toBe(before)
 
     // 详情「其他…」：清掉

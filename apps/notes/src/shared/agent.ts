@@ -6,13 +6,24 @@ import type { Material } from './materials'
 import type { ActTally } from './ai-act'
 import type { AiCommitFailed, CommitInfo } from './api'
 
-export type EngineId = 'claude' | 'codex' | 'gemini' | 'opencode'
+/**
+ * 哪一家：本机命令行四家（照旧排第一），API Key 四家，本机模型两家（task-587os，三条路见 shared/ai-sources.ts）。
+ * 存在设置、对话里的都是这几个字
+ */
+export type EngineId = 'claude' | 'codex' | 'gemini' | 'opencode' | 'anthropic' | 'openai' | 'deepseek' | 'openrouter' | 'ollama' | 'lmstudio'
 
 export interface EngineInfo {
   id: EngineId
   label: string
-  /** 能用的命令行路径（找到了、`--version` 跑得通）；没找到或运行不了是 null */
+  /**
+   * 能用的命令行路径（找到了、`--version` 跑得通）；没找到或运行不了是 null。
+   * API Key、本机模型（task-587os）没有命令行：Key 验过、本机模型开着有模型时是「api:anthropic」「local:ollama」这样的记号，用不了是 null
+   */
   path: string | null
+  /** 哪条路：命令行、API Key、本机模型 */
+  route?: 'cli' | 'api' | 'local'
+  /** API Key：最后 4 位（界面「能用 · ••••3kQa · 存在钥匙串」） */
+  tail?: string
   /** 给界面看的在哪找到（CN-87）：「~/.local/bin」「/opt/homebrew/bin」「在 Codex.app 里找到」；没找到是「没找到」 */
   where: string
   /** 找到了但运行不了（`--version` 出错、3 秒没反应）：一句中文原因，和「没找到」分开说 */

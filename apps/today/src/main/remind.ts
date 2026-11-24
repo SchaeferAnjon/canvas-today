@@ -6,7 +6,7 @@
  * 测试模式里通知换成记录器：globalThis.ctNotifs 是弹过的，globalThis.ctNotifAct(第几条, 'done' | '10m' | '1h' | 'tomorrow' | 'open' | 'click') 像人一样点。
  */
 import { Notification } from 'electron'
-import { appendFile, mkdir, readdir, readFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { eventLine, logPath, parseEvents, type Planned, planReminders, type RemindEvent, type Snooze, snoozeUntil } from '@cn/tasks'
 import type { NotifShot, TaskView } from '../shared/api'
@@ -14,6 +14,7 @@ import { type Lang, tr } from '../shared/i18n'
 import { isoOf, localStamp, whenLabel } from '../shared/when'
 import { E2E } from './test-mode'
 import type { TaskVault } from './vault'
+import { atomicAppend } from '@cn/atomic'
 
 export type NotifAction = 'done' | Snooze | 'open' | 'click'
 
@@ -225,7 +226,8 @@ export class Reminders {
     const rel = this.logFile()
     const abs = this.vault.abs(rel)
     await mkdir(dirname(abs), { recursive: true })
-    await appendFile(abs, eventLine(e))
+    // 库里的文件（会提交、会同步到别的设备）：读出、接上一行、原子写回，不会留下半行
+    await atomicAppend(abs, eventLine(e))
     this.events.push(e)
     this.deps.wrote([rel], e.ev === 'snooze' ? `画布今日：「${e.title ?? e.id}」推迟到 ${e.until}` : e.ev === 'done' ? `画布今日：从提醒勾掉「${e.title ?? e.id}」` : `画布今日：「${e.title ?? e.id}」响过提醒`)
     this.soon()

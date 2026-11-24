@@ -26,16 +26,24 @@ test('拆成小步：想着、拆好了列出来、收下写进那一行下面�
     await expect(box.locator('.it')).toHaveText(['把三组实验结果导出成表', '画准确率曲线', '画消融对比柱状图', '图注和编号对上正文'])
     // 还没收下：文件不动
     expect(run.read('写作/小论文计划.md')).toBe(before)
+    // 收不收那一套（task-eavzx，和画布笔记同一个组件）：从左到右 不要（无边框）· 收下（实心），收下在最右
+    const bar = box.getByTestId('ai-split-bar')
+    await expect(bar.locator('button')).toHaveText(['不要', '收下'])
+    await expect(bar.locator('[data-act="reject"]')).toHaveClass(/ghost/)
+    await expect(bar.locator('[data-act="accept"]')).toHaveClass(/solid/)
     await box.getByRole('button', { name: '收下' }).click()
     await expect(page.locator('.toast')).toContainText('加了4步子任务')
+    // 底部提示里是「撤回」：和画布笔记同字、同一颗（无边框、discard 图标）
+    await expect(page.locator('.toast [data-act="undo"]')).toHaveText('撤回')
+    await expect(page.locator('.toast [data-act="undo"] svg.ci')).toBeVisible()
     await expect(page.locator('.toast')).toContainText('写进了《小论文计划》那一行下面，缩进一格的「- [ ]」')
     await expect
       .poll(() => run.read('写作/小论文计划.md'))
       .toBe(before.replace('- [ ] 补实验图 📅 2026-11-25 🔼\n', '- [ ] 补实验图 📅 2026-11-25 🔼\n    - [ ] 把三组实验结果导出成表\n    - [ ] 画准确率曲线\n    - [ ] 画消融对比柱状图\n    - [ ] 图注和编号对上正文\n'))
     await expect(d.locator('.subs .s')).toHaveText(['把三组实验结果导出成表', '画准确率曲线', '画消融对比柱状图', '图注和编号对上正文'])
     await expect.poll(() => commits(run.vault)[0]).toBe('画布今日：「补实验图」拆成4步')
-    // 撤销：一次全拿掉
-    await page.locator('.toast').getByRole('button', { name: '撤销' }).click()
+    // 撤回：一次全拿掉
+    await page.locator('.toast').getByRole('button', { name: '撤回' }).click()
     await expect.poll(() => run.read('写作/小论文计划.md')).toBe(before)
     // 不要：收起，不写
     await d.getByRole('button', { name: '拆成小步' }).click()
@@ -113,7 +121,7 @@ test('帮我排进空着的时间：避开日程和有钟点的、虚线框、�
     const project = run.read('项目/画布今日.md')
     await expect(page.locator('.cal-col[data-drop="day:2026-11-22"] .cal-blk:not(.ghost):not(.ev)', { hasText: '读完三篇相关论文' })).toBeVisible()
     // 撤销：几篇一起退回
-    await page.locator('.toast').getByRole('button', { name: '撤销' }).click()
+    await page.locator('.toast').getByRole('button', { name: '撤回' }).click()
     await expect.poll(() => run.read('写作/小论文计划.md')).toBe(paper)
     await expect.poll(() => run.read('收件箱/待办.md')).toBe(inbox)
     await expect.poll(() => run.read('项目/画布今日.md')).toBe(project.replace('📅 2026-11-23 10:30', '📅 2026-11-23'))
