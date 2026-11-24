@@ -368,7 +368,7 @@ export const countKindIn = (md: string, key: string, note: string) => highlights
 export function removeSection(md: string, id: string, note: string): string {
   for (const c of heads(md)) {
     const s = parseReadingNote(md.slice(c.from, c.to), note)[0]
-    if (s?.id !== id) continue
+    if (s?.id !== id || s.doc) continue
     const out = md.slice(0, c.from) + md.slice(c.to)
     return c.to === md.length ? out.replace(/\n+$/, '\n') : out
   }

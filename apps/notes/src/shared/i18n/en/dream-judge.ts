@@ -52,6 +52,8 @@ export const DREAM_JUDGE: Table = {
   '文件夹角色::项目': 'Projects',
   '文件夹角色::领域': 'Areas',
   '文件夹角色::资料': 'Resources',
+  '文件夹角色::词条': 'Wiki',
+  词条页放这里: 'Wiki pages go here',
   '文件夹角色::归档': 'Archive',
   '文件夹角色::写作': 'Writing',
   '文件夹角色::生活': 'Life',

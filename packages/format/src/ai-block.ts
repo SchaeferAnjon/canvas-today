@@ -29,16 +29,20 @@ export interface AiWrote {
   marked?: boolean
 }
 
-/** 链回一段 AI 对话的那一条：哪段对话（地方的 key）、哪条回答；括号也转掉，写在 md 链接 (…) 里不断 */
-export const chatLink = (key: string, msg: number) =>
-  `canvas-notes://chat?key=${encodeURIComponent(key).replace(/[()]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`)}&msg=${msg}`
+const linkEnc = (s: string) => encodeURIComponent(s).replace(/[()]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`)
+
+/**
+ * 链回一段 AI 对话的那一条：哪段对话（地方的 key）、哪条回答；括号也转掉，写在 md 链接 (…) 里不断。
+ * th：读 PDF / 网页 / 视频时那一处的名字（AI 对话写进笔记的新写法，ai-note.ts：同一处的几问归成一处）
+ */
+export const chatLink = (key: string, msg: number, th?: string) => `canvas-notes://chat?key=${linkEnc(key)}&msg=${msg}${th ? `&th=${linkEnc(th)}` : ''}`
 
 /** 认链回对话的链接（文档里点了「回到 AI 对话」）；不是就是 null */
-export function parseChatLink(url: string): { key: string; msg: number } | null {
-  const m = /^canvas-notes:\/\/chat\?key=([^&\s]+)&msg=(\d+)$/.exec(url)
+export function parseChatLink(url: string): { key: string; msg: number; th?: string } | null {
+  const m = /^canvas-notes:\/\/chat\?key=([^&\s]+)&msg=(\d+)(?:&th=([^&\s]+))?$/.exec(url)
   if (!m) return null
   try {
-    return { key: decodeURIComponent(m[1]!), msg: Number(m[2]) }
+    return { key: decodeURIComponent(m[1]!), msg: Number(m[2]), ...(m[3] ? { th: decodeURIComponent(m[3]) } : {}) }
   } catch {
     return null
   }

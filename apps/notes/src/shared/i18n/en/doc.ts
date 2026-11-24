@@ -119,7 +119,10 @@ export const DOC: Table = {
   '没用到 · {name}': 'Unused · {name}',
   '没有名字里带「{q}」的': 'Nothing named “{q}”',
   没有文中没用到的图: 'No unused images',
-  '点一张在访达中显示 · 双击跳到文中那一处 · 右键拷贝、删除': 'Click to show in Finder · double-click to jump to it · right-click to copy or delete',
+  '单击跳到文中那一处 · 双击放大 · 右键更多': 'Click to jump to it · double-click to enlarge · right-click for more',
+  '附件用了几处::{n}处': (p) => count(p.n, 'use'),
+  看大图: 'View large',
+  跳到文中: 'Jump to it',
 
   // ---------- 文档里嵌白板、嵌一节、文末「提到这篇的」（renderer/doc-embeds.tsx） ----------
   双击打开这一篇: 'Double-click to open',

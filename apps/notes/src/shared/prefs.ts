@@ -61,8 +61,6 @@ export interface PdfPrefs {
   zoom: 'width' | 'page' | 'actual'
   /** 打开 PDF 时把 AI 打开 */
   openAi: boolean
-  /** 读 PDF 的笔记里后台写每一轮的标题和小结 */
-  recap: boolean
   /** 出卡送 Anki 时旁支里问的也算（task-tz7y3，默认算；卡背面「原文」是被问的那一句） */
   ankiSides: boolean
 }
@@ -76,6 +74,8 @@ export interface WebPrefs {
   newTab: 'bookmarks' | 'blank'
   /** 右栏网页里的下载放哪：下载文件夹、库里的「附件/下载」、每次问 */
   downloads: 'downloads' | 'vault' | 'ask'
+  /** 右栏看过的网页记进左栏「最近」（只记标题和网址，存在本机设置目录；关了不再记，「最近」里也不列，2026-11-24） */
+  keepRecent: boolean
 }
 
 export interface SyncPrefs {
@@ -97,16 +97,25 @@ export interface CitePrefs {
   skip: string[]
 }
 
+/** 费曼学习（design/feynman-long）：「这次要讲到」单子上追问几轮，记住上次选的（不按点记） */
+export interface FeynmanPrefs {
+  /** rounds 三轮、long 聊到底 */
+  mode: 'rounds' | 'long'
+  /** 选聊到底时单子下面那句灰字说过了（以后只在悬停「聊到底」时出） */
+  longSeen: boolean
+}
+
 export const AUTO_SYNC_CHOICES = [0, 30, 60, 1440] as const
 export const FONT_SIZES = [14, 15, 16, 17, 18] as const
 
 export const DEFAULT_GENERAL: GeneralPrefs = { reopen: true, tray: true, quickKey: defaultKeysOf('quick-note')[0]!, quickSrc: true }
 export const DEFAULT_EDITOR: EditorPrefs = { font: 'system', size: 15, lineHeight: 'normal', width: 'narrow', newView: 'doc', spell: false, boardShrink: true, boardDots: true, semantic: true }
 export const DEFAULT_FILES: FilesPrefs = { newWhere: 'picked', delAsk: 'images', showTodo: false, noteViews: {} }
-export const DEFAULT_PDF: PdfPrefs = { zoom: 'width', openAi: false, recap: true, ankiSides: true }
-export const DEFAULT_WEB: WebPrefs = { engine: 'google', newTab: 'bookmarks', downloads: 'downloads' }
+export const DEFAULT_PDF: PdfPrefs = { zoom: 'width', openAi: false, ankiSides: true }
+export const DEFAULT_WEB: WebPrefs = { engine: 'google', newTab: 'bookmarks', downloads: 'downloads', keepRecent: true }
 export const DEFAULT_SYNC: SyncPrefs = { autoMinutes: 0, pullOnOpen: false, pushOnQuit: false, backup: 'off', backupDir: null }
 export const DEFAULT_CITE: CitePrefs = { names: true, skip: [] }
+export const DEFAULT_FEYNMAN: FeynmanPrefs = { mode: 'rounds', longSeen: false }
 
 type Raw = Record<string, unknown>
 const obj = (v: unknown): Raw => (v && typeof v === 'object' ? (v as Raw) : {})
@@ -159,7 +168,7 @@ export function normalizeFiles(v: unknown): FilesPrefs {
 
 export function normalizePdf(v: unknown): PdfPrefs {
   const r = obj(v)
-  return { zoom: oneOf(r.zoom, ['width', 'page', 'actual'], DEFAULT_PDF.zoom), openAi: bool(r.openAi, DEFAULT_PDF.openAi), recap: bool(r.recap, DEFAULT_PDF.recap), ankiSides: bool(r.ankiSides, DEFAULT_PDF.ankiSides) }
+  return { zoom: oneOf(r.zoom, ['width', 'page', 'actual'], DEFAULT_PDF.zoom), openAi: bool(r.openAi, DEFAULT_PDF.openAi), ankiSides: bool(r.ankiSides, DEFAULT_PDF.ankiSides) }
 }
 
 export function normalizeWeb(v: unknown): WebPrefs {
@@ -168,6 +177,7 @@ export function normalizeWeb(v: unknown): WebPrefs {
     engine: oneOf(r.engine, ['google', 'bing', 'baidu', 'ddg'], DEFAULT_WEB.engine),
     newTab: oneOf(r.newTab, ['bookmarks', 'blank'], DEFAULT_WEB.newTab),
     downloads: oneOf(r.downloads, ['downloads', 'vault', 'ask'], DEFAULT_WEB.downloads),
+    keepRecent: bool(r.keepRecent, DEFAULT_WEB.keepRecent),
   }
 }
 
@@ -176,6 +186,11 @@ export function normalizeCite(v: unknown): CitePrefs {
   const r = obj(v)
   const skip = Array.isArray(r.skip) ? [...new Set(r.skip.filter((x): x is string => typeof x === 'string').map((x) => x.trim()).filter((x) => x && x.length <= 80))].slice(0, 300) : []
   return { names: bool(r.names, DEFAULT_CITE.names), skip }
+}
+
+export function normalizeFeynman(v: unknown): FeynmanPrefs {
+  const r = obj(v)
+  return { mode: oneOf(r.mode, ['rounds', 'long'], DEFAULT_FEYNMAN.mode), longSeen: bool(r.longSeen, DEFAULT_FEYNMAN.longSeen) }
 }
 
 export function normalizeSync(v: unknown): SyncPrefs {

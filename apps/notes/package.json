@@ -4,6 +4,8 @@
   "description": "Canvas Today 借用的 Canvas Notes 文件，路径和 SchaeferAnjon/canvas-notes 里一样",
   "license": "GPL-3.0-or-later",
   "dependencies": {
+    "@cn/ai-chat": "workspace:*",
+    "@cn/ai-engines": "workspace:*",
     "@cn/atomic": "workspace:*",
     "@cn/design": "workspace:*",
     "@cn/family": "workspace:*",

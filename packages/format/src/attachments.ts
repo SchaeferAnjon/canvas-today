@@ -153,10 +153,10 @@ export interface ImageRef {
 }
 
 /**
- * 一篇笔记里用到的图，按在文中出现的先后，同一张只算第一次（「属性」里列附件、删笔记时数图用）。
- * 代码块和开头的属性里的不算。
+ * 一篇笔记里用到的图，按在文中出现的先后，同一张只算第一次（「属性」里列附件、删笔记时数图用）；
+ * all：用了几处列几处（附件弹层里点一张图，一处一处跳过去）。代码块和开头的属性里的不算。
  */
-export function imageRefs(text: string, notePath: string): ImageRef[] {
+export function imageRefs(text: string, notePath: string, all = false): ImageRef[] {
   const out: ImageRef[] = []
   const seen = new Set<string>()
   let heading: string | null = null
@@ -186,7 +186,7 @@ export function imageRefs(text: string, notePath: string): ImageRef[] {
     blank = false
     for (const m of line.matchAll(/!\[[^\]\n]*\]\((<[^>\n]+>|[^)\s]+)(?:\s+"[^"\n]*")?\s*\)/g)) {
       const p = linkTarget(notePath, m[1]!)
-      if (!p || !IMAGE.test(p) || seen.has(p)) continue
+      if (!p || !IMAGE.test(p) || (!all && seen.has(p))) continue
       seen.add(p)
       out.push({ path: p, where: heading ?? `第 ${para} 段`, offset: at + m.index! })
     }

@@ -367,7 +367,57 @@ const marked = `---
 > ==a Bi-LSTM is introduced as a temporal refinement layer== <!-- cn:hl=p2-h6 k=confused -->
 `
 
+/**
+ * AI 对话写进笔记的新写法（ai-note.ts，2026-11-24）：ParaRead 写的看不懂那一段（旧写法）后面接着问的、新写法的一节，
+ * 带框的图、选字问的引用、旁支、多段材料、用户在回答里改过一句（头上「改过」）、自己在后面补的一句
+ */
+const askDoc = `${marked}
+## 第 2 页 · BST-GATNet
+
+### 那去掉 Bi-LSTM 会怎样？
+
+—— [第 2 页](2026_C72_BST-GATNet.pdf#page=2&rect=0.51,0.635,0.437,0.033)
+
+> [!ai] AI 回答 · Claude Code · Opus 5.5 · 改过 · [回到 AI 对话](canvas-notes://chat?key=read%3A%E8%AF%BE%E7%A8%8B%2Fecp%2F2026_C72_BST-GATNet.pdf&msg=12&th=2026_C72_BST-GATNet-p2-5)
+> 时间上前后几秒的变化就看不到了（我补：看表 3）。
+>
+> | 去掉 | F1 |
+> |---|---|
+> | 无 | 0.81 |
+
+#### 旁支：F1 是什么？
+
+> 看表 3
+> —— 在「那去掉 Bi-LSTM 会怎样？」的回答里
+
+> [!ai] 旁支回答 · Claude Code · Opus 5.5 · [回到 AI 对话](canvas-notes://chat?key=read%3A%E8%AF%BE%E7%A8%8B%2Fecp%2F2026_C72_BST-GATNet.pdf&msg=14&th=2026_C72_BST-GATNet-p2-5)
+> 精确率和召回率的调和平均。
+
+我自己补一句：F1 越高越好。
+
+## 第 3 页
+
+### ①和②哪个更好
+说说理由
+
+![我框的|268](../../附件/2026_C72_BST-GATNet/p3-1.png)
+
+—— [第 3 页](2026_C72_BST-GATNet.pdf#page=3&rect=0.1,0.2,0.5,0.3)
+
+> 一段
+> —— AI的回答 · 第3页
+
+![粘贴的图|180](../../附件/2026_C72_BST-GATNet/p3-1-ab12cd34.png)
+
+> [!ai] AI 回答 · Codex · GPT-5.5 · [回到 AI 对话](canvas-notes://chat?key=read%3A%E8%AF%BE%E7%A8%8B%2Fecp%2F2026_C72_BST-GATNet.pdf&msg=20&th=2026_C72_BST-GATNet-p3-1)
+> ① 更好。
+`
+
 export const FIXTURES: Record<string, Uint8Array> = {
+  // AI 对话写进笔记的新写法接在旧的看不懂那段后面（task-g2qg9）
+  '2026_C72_BST-GATNet 新写法 笔记.md': enc(askDoc),
+  // 网页的 AI 笔记（挂在剪藏那篇下面，CRLF）
+  '读书 · AI 笔记.md': enc('---\r\n类型: AI 笔记\r\n所属笔记: "[[读书]]"\r\n---\r\n# 读书 · AI 笔记\r\n\r\n## 6.1. 从全连接层到卷积\r\n\r\n### 讲解一下\r\n\r\n> 首先，多层感知机的输入是二维图像\r\n> —— [6.1.2 多层感知机的限制 ↩](https://zh.d2l.ai/chapter_cnn/why-conv.html#:~:text=首先，多层感知机)\r\n\r\n> [!ai] AI 回答 · Claude Code · Opus 5.5 · [回到 AI 对话](canvas-notes://chat?key=read%3Aweb%3Ahttps%3A%2F%2Fzh.d2l.ai%2Fchapter_cnn%2Fwhy-conv.html&msg=2&th=web-zh.d2l.ai-1)\r\n> 卷积靠两条直觉：平移不变、局部。\r\n'),
   '2026_C72_BST-GATNet 笔记.md': enc(marked),
   '数学符号.md': enc(MATH_DOC),
   '旁支挂在讲解下面.md': enc(docWithSides),

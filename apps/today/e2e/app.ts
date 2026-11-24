@@ -73,8 +73,9 @@ export async function launch(o: LaunchOpts = {}): Promise<Running> {
   }
 
   const app = await electron.launch({
-    executablePath: electronPath as unknown as string,
-    args: [join(__dirname, '../out/main/index.js')],
+    // CT_PKG=<打好的 Canvas Today.app>：起包里的那一份（发版时拿真包跑某条流程）
+    executablePath: process.env.CT_PKG ? join(process.env.CT_PKG, 'Contents/MacOS/Canvas Today') : (electronPath as unknown as string),
+    args: process.env.CT_PKG ? [] : [join(__dirname, '../out/main/index.js')],
     env: {
       ...process.env,
       CT_E2E: '1',

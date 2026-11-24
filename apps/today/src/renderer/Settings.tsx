@@ -20,7 +20,7 @@ import { comboOf, DEFAULT_QUICK_KEY, QUICK_KEY_SUGGEST, quickKeyOften, quickKeyP
 import type { TodayAppearance, TodaySettings } from '../shared/settings'
 import { updateError, updateLine } from '../shared/update'
 import { nowMs, refreshAi, reloadState, saveSettings, setLook, useData, useLang } from './store'
-import { type ApiId, SOURCE_LABEL } from '../../../notes/src/shared/ai-sources'
+import { type ApiId, SOURCE_LABEL } from '@cn/ai-engines/shared'
 import { EngineLogo, useT } from './ui'
 
 export type SettingsPage = 'general' | 'plan' | 'look' | 'calrem' | 'ai' | 'vault' | 'family'

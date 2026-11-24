@@ -10,9 +10,10 @@ import { dirname, join } from 'node:path'
 import { type ChatSummary, LEGACY } from '../../shared/ai-chats'
 import { t } from '../../shared/i18n'
 import type { ChatSide, EngineId, StoredMsg } from '../../shared/agent'
-import { type AiPick, type AiPrefs, CLAUDE_DEFAULT, normalizePick, normalizePrefs, resolvePick } from '../../shared/ai-features'
+import type { NoteTarget } from '../../shared/ai-note'
+import { type AiPick, type AiPrefs, CLAUDE_DEFAULT, normalizePick, normalizePrefs, resolvePick } from '@cn/ai-engines/shared'
 import { atomicWriteSync } from '@cn/atomic'
-import { ALL_IDS, API_DEFAULT, type CliId, CLI_IDS, isApi, isCli, isLocal, KEY_JUDGE } from '../../shared/ai-sources'
+import { ALL_IDS, API_DEFAULT, type CliId, CLI_IDS, isApi, isCli, isLocal, KEY_JUDGE } from '@cn/ai-engines/shared'
 
 const ENGINES: EngineId[] = ALL_IDS
 
@@ -36,6 +37,8 @@ export interface PlaceChat {
   sides?: ChatSide[]
   /** 旁支自己的会话号：旁支编号 → 每家的会话（第一问从主对话分叉来的；新对话时和主对话的一起清掉） */
   sideSessions?: Record<string, Partial<Record<EngineId, string>>>
+  /** 这段对话记进哪篇（AI 对话记笔记开关，shared/ai-note.ts；没选过没有：文档记进挂在下面的 AI 笔记，没开东西先问）；新对话清掉 */
+  noteTo?: NoteTarget
 }
 
 /** 对话菜单要的：每个地方叫什么、问了几问、最后什么时候问的（只记问过的） */
@@ -286,12 +289,20 @@ export class AgentStore {
     this.write(this.placeFile(vault, place), pick ? { ...c, pick } : c)
   }
 
-  /** 新对话：这个地方的对话、会话号、选的模型和 effort、旁支都清掉（新对话从「AI 对话」那一行开始） */
+  /** 记下这段对话记进哪篇（null：回到没选过） */
+  setNoteTo(vault: string, place: string, to: NoteTarget | null) {
+    const { noteTo: _old, ...c } = this.chat(vault, place)
+    void _old
+    this.write(this.placeFile(vault, place), to ? { ...c, noteTo: to } : c)
+  }
+
+  /** 新对话：这个地方的对话、会话号、选的模型和 effort、旁支、记进哪篇都清掉（新对话从「AI 对话」那一行开始） */
   clear(vault: string, place: string) {
-    const { pick: _old, sides: _sides, sideSessions: _ss, ...c } = this.chat(vault, place)
+    const { pick: _old, sides: _sides, sideSessions: _ss, noteTo: _to, ...c } = this.chat(vault, place)
     void _old
     void _sides
     void _ss
+    void _to
     this.write(this.placeFile(vault, place), { ...c, msgs: [], sessions: {} })
     this.writeIndex(vault, place, null)
   }
@@ -300,7 +311,7 @@ export class AgentStore {
   move(vault: string, from: string, to: string, label: string) {
     if (from === to) return
     const c = this.chat(vault, from)
-    if (!c.msgs.length && !Object.keys(c.sessions).length && !c.pick) return
+    if (!c.msgs.length && !Object.keys(c.sessions).length && !c.pick && !c.noteTo) return
     this.write(this.placeFile(vault, to), { ...c, place: to, label })
     rmSync(join(this.dir, this.placeFile(vault, from)), { force: true })
     this.writeIndex(vault, from, null)

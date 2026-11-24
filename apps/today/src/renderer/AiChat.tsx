@@ -5,7 +5,7 @@
  * 输入框底行：谁来答 · 模型 · 想多久（只管这一段，默认跟画布笔记设置里「AI 对话」那一行）。
  */
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
-import type { AiPick, ModelOption } from '../../../notes/src/shared/ai-features'
+import type { AiPick, ModelOption } from '@cn/ai-engines/shared'
 import type { ChatInfo, Dropped, PlanChange, TodayMsg } from '../shared/ai-chat'
 import type { ChatInfoState } from '../shared/api'
 import { type Lang, TABLES, tr } from '../shared/i18n'
@@ -13,8 +13,7 @@ import { isoOf, mdLabel, whenLabel } from '../shared/when'
 import { prioText, setPreview, UNDONE_EVENT } from './ai-preview'
 import { useData, useLang } from './store'
 import { EngineLogo, Ic, useT } from './ui'
-import { ChangeBar, UndoButton } from '@cn/design/answer-bar'
-import '@cn/design/answer-bar.css'
+import { ChangeBar, UndoButton } from '@cn/ai-chat/answer-bar'
 import { noteLabel } from './views'
 
 const KEY = 'ct-ai-chat'

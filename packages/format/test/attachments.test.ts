@@ -91,6 +91,13 @@ describe('一篇笔记里用到的图（属性里列附件、删笔记连图一�
     ])
     expect(text.slice(refs[1]!.offset, refs[1]!.offset + 4)).toBe('![柱状')
   })
+  it('all：同一张用了几处列几处（附件弹层里点图一处一处跳）；[!ai] 块里、脚注里的图也认', () => {
+    const refs = imageRefs(text, note, true).filter((r) => r.path.endsWith('截图 1.png'))
+    expect(refs.map((r) => text.slice(r.offset, r.offset + 5))).toEqual(['![](.', '![同一张'])
+    const paired = '# x 笔记\n\n## 第 2 页\n\n![我框的|268](附件/x/p2-1.png)\n\n> [!ai] AI 讲解\n> 看这张：\n> ![](附件/x/p2-1.png)\n\n[^p2-1-1]: ![粘贴的图|180](附件/x/p2-1.png)\n'
+    const all = imageRefs(paired, 'x 笔记.md', true)
+    expect(all.map((r) => paired.slice(r.offset).split('\n')[0])).toEqual(['![我框的|268](附件/x/p2-1.png)', '![](附件/x/p2-1.png)', '![粘贴的图|180](附件/x/p2-1.png)'])
+  })
   it('所有相对链接（图和普通链接，宁多不少）：去掉 #页码', () => {
     expect([...linkedPaths(text, note)].sort()).toEqual(['课程/ecp/Lecture05.pdf', '课程/ecp/不算.png', '附件/板书.jpg', '附件/课程/ecp/Lecture05 笔记/截图 1.png', '附件/课程/ecp/Lecture05 笔记/截图 2.png', '课程/ecp/附件/不算.png'].sort())
   })

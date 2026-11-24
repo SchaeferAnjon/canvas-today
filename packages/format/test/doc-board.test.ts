@@ -76,19 +76,22 @@ export const TRAVEL = `# 冰岛十天环岛
 const cardsOf = (t: string) => splitDoc(t).columns.map((c) => [c.title, c.cards.map((u) => u.kind)])
 
 describe('文档切到白板：分卡（方向 A）', () => {
-  it('Lecture05 笔记：名字不成卡；开头一组没有列头；## 是列，### 是小标题；连着的「问过 AI」合成一列；冒号那句带上代码块；分隔线是空隙', () => {
+  it('Lecture05 笔记：名字不成卡；开头一组没有列头；## 是列，### 是小标题；问过 AI 一处一列；冒号那句带上代码块；分隔线是空隙', () => {
     const b = splitDoc(LECTURE)
     expect(b.title).toBe('Lecture05 笔记')
     expect(cardsOf(LECTURE)).toEqual([
       [null, ['text']],
       ['这一讲讲什么', ['text', 'list']],
-      ['问过 AI', ['ask', 'ask']],
+      ['第 3 页 · 计算栈的九层结构', ['ask']],
+      ['第 5 页 · 加速器为何又快又省', ['ask']],
       ['用代码验证', ['code', 'gap', 'table']],
     ])
     expect(b.columns[1]!.cards[1]!.sub).toBe('九层结构')
-    expect(b.columns[3]!.cards[0]!.text).toBe('各跑一遍：\n\n```python\nprint(1)\n```')
-    expect(b.columns[2]!.ask).toBe(true)
-    expect(b.columns[2]!.cards[0]!.text.startsWith('## 第 3 页 · 计算栈的九层结构')).toBe(true)
+    expect(b.columns[4]!.cards[0]!.text).toBe('各跑一遍：\n\n```python\nprint(1)\n```')
+    expect(b.columns[2]!).toMatchObject({ ask: true, page: 3 })
+    // 以前的格式（没有身份注释）：整节一张，列头是标题那一行
+    expect(b.columns[2]!.cards[0]!.ask).toEqual({ part: 'old', head: '## 第 3 页 · 计算栈的九层结构' })
+    expect(b.columns[2]!.cards[0]!.text.startsWith('> [!question] 我的疑惑')).toBe(true)
   })
 
   it('旅行稿：冒号那句带上待办；连着的图合成图集；视频后面的时刻挂在视频卡下面', () => {
@@ -258,7 +261,7 @@ $$
 
   it('问过 AI 的一节用 [!ai] 写讲通的讲法（新写法）也是问答卡', () => {
     const t = '# 笔记\n\n## 第 5 页 · 旋转矩阵\n[第 5 页](a.pdf#page=5) · 10:20\n\n> [!ai] AI 讲解 · Claude Code · Opus 5.5 · 看了第 5 页\n> 先看图。\n\n[完整对话 · 1 轮](../c.md)\n'
-    expect(cardsOf(t)).toEqual([['问过 AI', ['ask']]])
+    expect(cardsOf(t)).toEqual([['第 5 页 · 旋转矩阵', ['ask']]])
   })
 
   it('用 # 分节的文档：# 就是列', () => {
@@ -527,5 +530,101 @@ describe('AI 讲解下面挂着的旁支（task-4edsc）', () => {
     expect(units[0]!.text).toBe('> [!ai] AI 讲解 · Claude Code\n> 一句话。\n\n> [!side] 问\n> > 一句话。\n>\n> 答\n\n> [!side] 接着问\n>\n> 又答')
     // 没有 [!ai] 在前面的 [!side]（读 PDF 笔记里挂在回答后面的）不并
     expect(splitDoc('## 讲\n\n回答\n\n> [!side] 问\n>\n> 答\n').columns[0]!.cards.map((u) => u.kind)).toEqual(['text', 'callout'])
+  })
+})
+
+/** 混排的一篇（2026-11-24 用户批的「切白板的样子」，7b、7c）：开头自己的字、两处网页剪藏、两问新写法、自己打的字、一条旁支 */
+const MIXED = `# 卷积
+
+## 读书
+
+先看 6.1 再看 6.2。
+
+> 首先，多层感知机的输入是二维图像。
+—— [6.1.2 多层感知机的限制 · 动手学深度学习](https://zh.d2l.ai/why-conv.html#:~:text=a)
+
+### ①这部分看不懂
+
+> ① 四阶权重张量
+> —— [6.1.2 多层感知机的限制 · 动手学深度学习](https://zh.d2l.ai/why-conv.html#:~:text=b)
+
+![我框的|180](附件/卷积/截图%201.png)
+
+> [!ai] AI 回答 · Claude Code · Opus 5.5 · [回到 AI 对话](canvas-notes://chat?key=file%3Aa.md&msg=1)
+> 每个隐藏像素都连每个输入像素。
+
+我的理解：参数太多。
+
+> 6.1.2.1. 平移不变性
+—— [6.1.2.1 平移不变性 · 动手学深度学习](https://zh.d2l.ai/why-conv.html#:~:text=c)
+
+> 严格来说，卷积层是个错误的叫法。
+—— [6.2.1. 互相关运算 — 动手学深度学习 2.0.0 documentation](https://zh.d2l.ai/conv-layer.html)
+
+### 为什么输出变小了
+
+> [!ai] AI 回答 · Claude Code · Opus 5.5 · [回到 AI 对话](canvas-notes://chat?key=file%3Aa.md&msg=2)
+> 核不能伸出边界。
+
+#### 旁支：补零呢？
+
+> 不能伸出边界
+> —— 在「为什么输出变小了」的回答里
+
+> [!ai] 旁支回答 · Claude Code · Opus 5.5 · [回到 AI 对话](canvas-notes://chat?key=file%3Aa.md&msg=3)
+> 补零以后一样大。
+
+最后补一句。
+
+## 别的
+
+一段。
+`
+
+describe('混排的一节（7b、7c）', () => {
+  it('按「##」一列、按剪藏来源分小列（6.1.2.1 跟着 6.1.2），问的 ### 不切列；问答成组，旁支挂在组里；卡都是原文里的一截', () => {
+    const b = splitDoc(MIXED)
+    expect(b.columns.map((c) => [c.title, c.slice ? [c.slice.section, c.slice.first] : null, !!c.head])).toEqual([
+      ['读书', ['读书', true], true],
+      ['6.1.2 多层感知机的限制', ['读书', false], false],
+      ['6.2.1 互相关运算', ['读书', false], false],
+      ['别的', null, true],
+    ])
+    const [lead, c1, c2] = b.columns
+    expect(lead!.cards.map((u) => u.text)).toEqual(['先看 6.1 再看 6.2。'])
+    expect(c1!.cards.map((u) => u.kind + (u.group ? `(${u.group.map((g) => g.ask!.part).join(',')})` : ''))).toEqual(['quote', 'ask(q,qa)', 'text', 'quote'])
+    expect(c2!.cards.map((u) => u.kind + (u.group ? `(${u.group.map((g) => g.ask!.part).join(',')})` : ''))).toEqual(['quote', 'ask(q,qa,sideq,qa)', 'text'])
+    const g = c1!.cards[1]!
+    expect(g.text.startsWith('### ①这部分看不懂')).toBe(true)
+    expect(g.group![0]!.text).toBe('### ①这部分看不懂\n\n> ① 四阶权重张量\n> —— [6.1.2 多层感知机的限制 · 动手学深度学习](https://zh.d2l.ai/why-conv.html#:~:text=b)\n\n![我框的|180](附件/卷积/截图%201.png)')
+    expect(g.group![1]!.text).toMatch(/^> \[!ai\] AI 回答[\s\S]*每个隐藏像素都连每个输入像素。$/)
+    for (const c of b.columns) for (const u of c.cards) {
+      expect(MIXED.slice(u.from, u.to)).toBe(u.text)
+      for (const x of u.group ?? []) expect(MIXED.slice(x.from, x.to)).toBe(x.text)
+    }
+    // 拖进小列（null）：插在那一小列最后一张后面；挪整节按整节的末尾
+    expect(c1!.end).toBe(c1!.cards[3]!.to)
+    const moved = moveColumn(MIXED, lead!, null)
+    expect(moved.indexOf('## 别的')).toBeLessThan(moved.indexOf('## 读书'))
+    expect(moved.indexOf('最后补一句')).toBeGreaterThan(moved.indexOf('## 读书'))
+    // 每张卡（组和组里的）都有名字
+    const keys = unitKeys(b)
+    expect(keys.size).toBe(b.columns.flatMap((c) => c.cards).reduce((n, u) => n + 1 + (u.group?.length ?? 0), 0))
+  })
+
+  it('整组拖到空白处：问的标题前面一行位置，组整个摆出去；切回来去掉那一行就是原文', () => {
+    const b = splitDoc(MIXED)
+    const g = b.columns[2]!.cards[1]!
+    const out = placeUnit(MIXED, g, 900, 40)
+    expect(out.replace(/<!-- card id=d1 x=900 y=40 -->\n/, '')).toBe(MIXED)
+    const nb = splitDoc(out)
+    expect(nb.placed.map((u) => u.group?.map((x) => x.ask!.part))).toEqual([['q', 'qa', 'sideq', 'qa']])
+    // 小列里只剩一处来源（6.2.1 的剪藏还在）：照旧分小列
+    expect(nb.columns.filter((c) => c.slice).length).toBe(3)
+  })
+
+  it('没有问答的一节剪了几处网页：照旧一节一列（小列只给混排的节）；全是问答的配对笔记照旧一问一列', () => {
+    const plain = MIXED.replace(/### ①这部分看不懂[\s\S]*?我的理解：参数太多。\n\n/, '').replace(/### 为什么输出变小了[\s\S]*?补零以后一样大。\n\n/, '')
+    expect(splitDoc(plain).columns.map((c) => c.title)).toEqual(['读书', '别的'])
   })
 })

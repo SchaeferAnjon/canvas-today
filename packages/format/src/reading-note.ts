@@ -70,6 +70,7 @@
 import { aiCallout, calloutWords, parseAiCalloutHead, splitAiBody } from './ai-callout'
 import { encodePath, formatPdfAnchor, parsePdfAnchor, type Rect } from './pdf-link'
 import { AI_KEY, setProp } from './props'
+import { askSectionsOf } from './ai-note'
 
 export interface Figure {
   path: string
@@ -85,13 +86,16 @@ export interface FailedTry {
 }
 
 /** 多段引用带的一块材料（这一段末尾的脚注）：引用的字和来源，或一张图（库里的路径） */
-export type AskMat = { kind: 'quote'; text: string; src: string } | { kind: 'image'; path: string; src: string }
+/** 带的材料：引用（href 给了是网页上引的，来源写成回到那一段的链接）、图 */
+export type AskMat = { kind: 'quote'; text: string; src: string; href?: string } | { kind: 'image'; path: string; src: string }
 
 /** 一问一答：问题是发出去的原话（带的材料在字里是 ①②），回答是 AI 的原文 */
 export interface AskTurn {
   q: string
   a: string
   mats?: AskMat[]
+  /** 新写法（ai-note.ts）记的一问：哪段对话的哪条回答（AI 块头上「回到 AI 对话」那个链接） */
+  ref?: { key: string; msg: number }
 }
 
 /** 一条旁支：在回答里选中的那一句，和在旁支里问的几问 */
@@ -162,6 +166,11 @@ export interface AskSection {
   cropTr?: string
   /** 选字问的那段原文（task-yp8l7）：写成图下面、第一问上面的一个引用块（选字问不截图） */
   quote?: string
+  /**
+   * AI 对话写进笔记的新写法（ai-note.ts，2026-11-24）：普通文档的一问一个小标题、一块 AI 回答，只往后加。
+   * 这时 qas 是从文件里认出来的，每一问带 ref；不能 upsertSection 整段换（那是旧写法的），加问走 appendAsk
+   */
+  doc?: true
 }
 
 export const CONVO_DIR = '.canvas-notes/对话'
@@ -710,7 +719,10 @@ function decode(p: string): string {
 interface Chunk {
   from: number
   to: number
+  /** 旧写法的一段（cn:thread、完整对话链接那种） */
   section: AskSection | null
+  /** 新写法（ai-note.ts）的一节里 AI 记的问，按那一处收成的几段 */
+  asks: AskSection[]
 }
 
 /** 按「## 」切成块（代码块里的不算）；第一块之前是开头（属性、一级标题） */
@@ -725,15 +737,15 @@ function chunks(md: string, note: string): { head: string; list: Chunk[] } {
   }
   const list = starts.map((from, k) => {
     const to = starts[k + 1] ?? md.length
-    return { from, to, section: parseSection(md.slice(from, to), note) }
+    const section = parseSection(md.slice(from, to), note)
+    return { from, to, section, asks: section ? [] : askSectionsOf(md.slice(from, to), note) }
   })
   return { head: md.slice(0, starts[0] ?? md.length), list }
 }
 
+/** 笔记里 AI 记的每一处：旧写法一段一处；新写法（ai-note.ts）一节里按那一处收（同一处的几问在别的节里也有时各算各的） */
 export function parseReadingNote(md: string, note: string): AskSection[] {
-  return chunks(md, note)
-    .list.map((c) => c.section)
-    .filter((s): s is AskSection => !!s)
+  return chunks(md, note).list.flatMap((c) => (c.section ? [c.section] : c.asks))
 }
 
 /**
@@ -741,6 +753,8 @@ export function parseReadingNote(md: string, note: string): AskSection[] {
  * 用户自己写的段落、开头的属性原样不动。
  */
 export function upsertSection(md: string, s: AskSection, note: string): string {
+  // 新写法（ai-note.ts）只往后加、撤回拿掉一问，不整段重写（用户在笔记里改的字不被冲掉）
+  if (s.doc) throw new Error('新写法的一处不能整段换：加问用 appendAsk')
   const text = renderSection(s, note)
   const { list } = chunks(md, note)
   const same = list.find((c) => c.section?.id === s.id)

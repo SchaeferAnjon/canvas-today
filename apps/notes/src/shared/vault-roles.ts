@@ -23,6 +23,7 @@ export type Role =
   | 'project'
   | 'area'
   | 'resource'
+  | 'wiki'
   | 'archive'
   | 'writing'
   | 'life'
@@ -31,11 +32,11 @@ export type Role =
   | 'attach'
   | 'unsure'
 
-export const ROLES: readonly Role[] = ['inbox', 'clip', 'reading', 'course', 'journal', 'weekly', 'project', 'area', 'resource', 'archive', 'writing', 'life', 'chrono', 'meta', 'attach', 'unsure']
+export const ROLES: readonly Role[] = ['inbox', 'clip', 'reading', 'course', 'journal', 'weekly', 'project', 'area', 'resource', 'wiki', 'archive', 'writing', 'life', 'chrono', 'meta', 'attach', 'unsure']
 
 /** 写进 梦游.md 的角色名：中文库写中文，英文库写英文；读的时候两种都认（不翻：文件格式） */
-const ROLE_ZH: Record<Role, string> = { inbox: '收件箱', clip: '剪藏', reading: '阅读', course: '课程', journal: '日记', weekly: '周记', project: '项目', area: '领域', resource: '资料', archive: '归档', writing: '写作', life: '生活', chrono: '按时间', meta: '模板', attach: '附件', unsure: '不确定' }
-const ROLE_EN: Record<Role, string> = { inbox: 'Inbox', clip: 'Clippings', reading: 'Reading', course: 'Courses', journal: 'Journal', weekly: 'Weekly', project: 'Projects', area: 'Areas', resource: 'Resources', archive: 'Archive', writing: 'Writing', life: 'Life', chrono: 'By date', meta: 'Templates', attach: 'Attachments', unsure: 'Unsure' }
+const ROLE_ZH: Record<Role, string> = { inbox: '收件箱', clip: '剪藏', reading: '阅读', course: '课程', journal: '日记', weekly: '周记', project: '项目', area: '领域', resource: '资料', wiki: '词条', archive: '归档', writing: '写作', life: '生活', chrono: '按时间', meta: '模板', attach: '附件', unsure: '不确定' }
+const ROLE_EN: Record<Role, string> = { inbox: 'Inbox', clip: 'Clippings', reading: 'Reading', course: 'Courses', journal: 'Journal', weekly: 'Weekly', project: 'Projects', area: 'Areas', resource: 'Resources', wiki: 'Wiki', archive: 'Archive', writing: 'Writing', life: 'Life', chrono: 'By date', meta: 'Templates', attach: 'Attachments', unsure: 'Unsure' }
 /** 文件里写的角色名（库语言） */
 export const roleWord = (r: Role) => (vaultLang() === 'en' ? ROLE_EN : ROLE_ZH)[r]
 /** 给 AI 的提示词里的角色名（提示词本身是中文） */
@@ -51,6 +52,7 @@ const ROLE_ALIASES: [Role, string[]][] = [
   ['project', ['project']],
   ['area', ['area']],
   ['resource', ['resource']],
+  ['wiki', ['moc', 'mocs', '词条页', '百科', 'maps of content']],
   ['clip', ['clipping', 'clip']],
   ['journal', ['daily', 'diary']],
 ]
@@ -148,11 +150,12 @@ const NAMES: [Role, RegExp][] = [
   ['weekly', /^(weekly|weeklies|weekly ?notes?|weekly ?reviews?|周记|周报|每周|weeks?)$/i],
   ['project', /^(projects?|项目|专案|proj)$/i],
   ['area', /^(areas?|areas? of responsibility|领域|责任)$/i],
-  ['resource', /^(resources?|资料|资源|参考|references?|wiki|knowledge|知识|知识库|topics?|主题|permanent|zettel|zettels|zettelkasten|slip-?box|evergreen|cards?|卡片|series|系列)$/i],
+  ['wiki', /^(wikis?|mocs?|maps? of content|词条|词条页|百科|glossary|encyclopedia)$/i],
+  ['resource', /^(resources?|资料|资源|参考|references?|knowledge|知识|知识库|topics?|主题|permanent|zettel|zettels|zettelkasten|slip-?box|evergreen|cards?|卡片|series|系列)$/i],
   ['archive', /^(archives?|archived|归档|存档|旧|old)$/i],
   ['writing', /^(writing|writings|写作|drafts?|草稿|posts?|blog|博客|essays?|文稿|创作|creative|作品|published|专栏|公众号|自媒体|文案|outputs?)$/i],
   ['life', /^(life|personal|生活|个人|日常|family|家庭|health|健康|finance|财务|理财|travel|旅行)$/i],
-  ['meta', /^(meta|templates?|模板|config|settings|system|系统|设置|元数据|mocs?|maps?|index|索引|dashboards?|home|首页|scripts?)$/i],
+  ['meta', /^(meta|templates?|模板|config|settings|system|系统|设置|元数据|maps?|index|索引|dashboards?|home|首页|scripts?)$/i],
   ['attach', /^(attachments?|assets?|images?|imgs?|pictures?|pics?|media|files|附件|图片|excalidraw|resources? files)$/i],
 ]
 export function roleByName(folder: string): Role | null {
@@ -172,7 +175,8 @@ const DESC: [Role, RegExp][] = [
   ['weekly', /周记|每周|周报|weekly/i],
   ['project', /项目|截止|有目标|project|deadline/i],
   ['area', /领域|责任|areas? of|ongoing/i],
-  ['resource', /资料|参考|系列|知识|resource|reference|wiki|topic/i],
+  ['wiki', /词条|百科|\bwiki\b|\bmocs?\b|maps of content/i],
+  ['resource', /资料|参考|系列|知识|resource|reference|topic/i],
   ['archive', /归档|存档|archive/i],
   ['writing', /写作|文案|脚本|创作|发表|博客|writing|drafts?|blog/i],
   ['life', /生活|日常|健康|life|personal/i],
@@ -473,6 +477,19 @@ export function parseRolesMd(text: string): RolesConfig {
     rows.push({ folder, role, why: (m[3] ?? '').trim(), sure: 'high' })
   }
   return { rows, confirmed }
+}
+
+/** 第一次建词条页时建的最外层文件夹（库语言） */
+export const entryDir = () => (vaultLang() === 'en' ? 'Wiki' : '词条')
+
+/**
+ * 词条页放哪（梦游对比滚动这一轮，用户定不再放收件箱）：词条角色的最外层文件夹，.canvas-notes/梦游.md 里用户定过的（不在 guessed 里的）先，
+ * 再是认得出来的（词条、MOC、Wiki……）；都没有是「词条」（第一次建时建）
+ */
+export function entryHome(view: { rows: readonly RoleRow[]; guessed?: readonly string[] }): string {
+  const tops = view.rows.filter((r) => r.role === 'wiki' && !r.folder.includes('/'))
+  const mine = tops.find((r) => !view.guessed?.includes(r.folder))
+  return (mine ?? tops[0])?.folder ?? entryDir()
 }
 
 /** 今天（YYYY-MM-DD，本地时间） */

@@ -1,22 +1,19 @@
 /**
  * AI（v2 原型：详情「拆成小步」、日历「帮我排进空着的时间」）：用画布笔记 设置 › AI 里「小活」那一家（v2：「用画布笔记设置里同一家，
  * 按钮上画那一家的标志」；没装画布笔记、没设过是 Claude Code · Haiku），交给这台 Mac 上那一家的命令行问一次、不给工具
- * （画布笔记的 apps/notes/src/main/agent/engines.ts、cli.ts，不另存密钥）。答案先给人看，收下才写进库里（一次改动，能撤销）。
+ * （共用包 @cn/ai-engines 的 engines.ts、cli.ts，不另存密钥）。答案先给人看，收下才写进库里（一次改动，能撤销）。
  * CT_AI_FAKE=1（画布笔记的 CN_AI_FAKE=1 也认）：不调模型，照原型给固定的回答（e2e）；CT_AI_FAKE_MS 是假装想多久。
  * CT_AI_MODEL、CT_AI_EFFORT 换模型和想多久（真 AI 测试用便宜的）。
  */
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { EngineId } from '../../../notes/src/shared/agent'
-import { ENGINE_LABEL, INITIAL_PREFS, normalizePrefs, pickLabel, resolvePick, type AiPick } from '../../../notes/src/shared/ai-features'
-import { loadShellPath } from '../../../notes/src/main/agent/cli'
-import { claudeEngine, codexEngine, type Engine, geminiEngine, opencodeEngine } from '../../../notes/src/main/agent/engines'
+import { ENGINE_LABEL, INITIAL_PREFS, normalizePrefs, pickLabel, resolvePick, type AiPick } from '@cn/ai-engines/shared'
+import { createEngines, type Engine, findCli, loadShellPath, probeLocal } from '@cn/ai-engines'
 import { type Busy, fitSchedule, freeSlots, parseSteps, SCHED_SYSTEM, type SchedCandidate, schedulePrompt, type Slot, SPLIT_SYSTEM, type SplitInput, splitPrompt } from '../shared/ai-plan'
 import { type When, WHEN_AI_SYSTEM, whenAiPrompt, whenFromAi } from '@cn/tasks'
 import { fakeWhenAnswer } from '../../../notes/src/shared/when-ai'
-import { findCli } from '../../../notes/src/main/agent/cli'
-import { apiEngine, localEngine, probeLocal } from '../../../notes/src/main/agent/engine-api'
-import { isApi, isCli, isEngineId, isLocal } from '../../../notes/src/shared/ai-sources'
+import { isApi, isCli, isEngineId, isLocal } from '@cn/ai-engines/shared'
 import { needBorrow, todayKey } from './ai-keys'
 
 export const FAKE = () => process.env.CT_AI_FAKE === '1' || process.env.CN_AI_FAKE === '1'
@@ -39,13 +36,12 @@ export function aiPick(notesDir: string | null): AiPick {
 /** 界面上写的：哪一家（按钮上画它的标志）、「Claude Code · Haiku」 */
 export const aiLabel = (p: AiPick) => ({ engine: p.engine, label: ENGINE_LABEL[p.engine], full: pickLabel(p) })
 
-const engines: Partial<Record<EngineId, Engine>> = {}
 /**
- * 那一家的引擎：命令行照旧；Claude API 这类直接问接口（Key 用画布今日自己存的那份，task-587os）；本机模型问 Ollama、LM Studio。
- * 画布今日只问不动手，不给自带的 OpenCode
+ * 那一家的引擎（共用包的 createEngines，和画布笔记同一张表）：命令行照旧；Claude API 这类直接问接口（Key 用画布今日自己存的那份，task-587os）；
+ * 本机模型问 Ollama、LM Studio。画布今日只问不动手，不给自带的 OpenCode；各家装没装由 ai-chat.ts 自己列（Key 还认画布笔记那把）
  */
-export const engineOf = (id: EngineId): Engine =>
-  (engines[id] ??= isApi(id) ? apiEngine(id, { key: todayKey }) : isLocal(id) ? localEngine(id) : id === 'claude' ? claudeEngine() : id === 'codex' ? codexEngine() : id === 'gemini' ? geminiEngine() : opencodeEngine())
+const engines = createEngines({ key: todayKey, sourceReady: (id) => isApi(id) && !!todayKey(id), sourceModels: () => [] })
+export const engineOf = (id: EngineId): Engine => engines.engine(id)
 
 /**
  * 要的那把 Key 画布今日还没有、画布笔记有：先问一句「用画布笔记那把？」（界面认 message 前面的【借 Key】和后面的家）

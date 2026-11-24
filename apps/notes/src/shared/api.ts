@@ -4,8 +4,9 @@ import type { AutoApi } from './automation'
 import type { SourcesApi } from './sources'
 import type { AiAct, AiEvent, BridgeOp, ChatSide, EngineId, EngineInfo, SideTurnRequest, StoredMsg, TurnRequest, TurnResult } from './agent'
 import type { ChatSummary } from './ai-chats'
-import type { AiFeature, AiPick, AiPrefs, ModelOption } from './ai-features'
-import type { ApiId, LocalId } from './ai-sources'
+import type { AiFeature, AiPick, AiPrefs, ModelOption } from '@cn/ai-engines/shared'
+import type { NoteTarget } from './ai-note'
+import type { ApiId, LocalId } from '@cn/ai-engines/shared'
 import type { AppSettings, SettingsPatch } from './appearance'
 import type { ThemeFile } from './vscode-theme'
 import type { HomeConfig } from './home'
@@ -571,6 +572,9 @@ export interface CnApi {
   /** 这个对话自己选的模型、effort（CN-91 方向 C，只管这个对话）；没选过是 null */
   aiChatPick(place: string): Promise<AiPick | null>
   aiChatSetPick(place: string, pick: AiPick | null): Promise<void>
+  /** 这段对话记进哪篇（AI 对话记笔记开关）；没选过是 null */
+  aiChatNote(place: string): Promise<NoteTarget | null>
+  aiChatSetNote(place: string, to: NoteTarget | null): Promise<void>
   /** 对话记录存在软件设置目录（不进库），关了再开还在 */
   /** 这个地方的 AI 对话（D 组 CN-132：每个文件、文件夹、首页、收件箱各一份；place 是 renderer/ai-place.ts 的 key） */
   aiChatLoad(place: string): Promise<StoredMsg[]>

@@ -81,9 +81,12 @@ export const BOARD: Table = {
   '子白板：新建一块白板，这里放一张指向它的卡片': 'Sub-board: a board inside this board; creates a new board and puts a card linking to it here',
   // 列
   开头: 'Intro',
-  '问过 AI': 'Asked AI',
-  '问过 AI::{n}处': (p) => count(p.n, 'question'),
   '双击改列名；按住列名拖到空白处摆在那里': 'Double-click to rename; drag the name to empty space to place the column there',
+  按住拖到空白处摆在那里: 'Drag to empty space to place the column there',
+  划的线: 'Highlights',
+  框的图: 'Boxed area',
+  选的字: 'Selected text',
+  这一页: 'This page',
   引用了这一节: 'cited this section',
   '还有{n}张，点开': (p) => `${p.n} more · Show`,
   'AI 总结的 · {engine}': 'Summarized by AI · {engine}',
@@ -249,4 +252,8 @@ export const BOARD: Table = {
 
   // ---------- 改卡的编辑器（doc-board/unit-editor.tsx） ----------
   这张卡的字: 'Card text',
+
+  // ---------- 回答限高（doc-board/cards.tsx 的 Folded） ----------
+  展开全文: 'Show all',
+  '回答::收起': 'Show less',
 }

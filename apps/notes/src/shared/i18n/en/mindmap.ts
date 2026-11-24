@@ -16,6 +16,7 @@ export const MINDMAP: Table = {
   '组织结构：中心在上，一层层往下': 'Org chart: center on top, levels below',
   收起到第一层: 'Collapse to first level',
   全部展开: 'Expand all',
+  全部收起: 'Collapse all',
   '记在这篇的属性里：{prop}': 'Saved in this note’s properties: {prop}',
 
   // ---------- 导图上：新主题、右键菜单、折叠圆点、加号 ----------

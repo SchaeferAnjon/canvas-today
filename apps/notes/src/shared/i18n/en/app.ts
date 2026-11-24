@@ -13,14 +13,21 @@ export const APP: Table = {
   放回右栏: 'Back to right sidebar',
   还原: 'Restore',
   // 不叫 Fill window：macOS 窗口菜单自带 Fill 是把窗口铺满屏幕（设计复审）
-  网页占满: 'Expand page',
   收起左栏: 'Hide left sidebar',
   展开左栏: 'Show left sidebar',
   收起右栏: 'Hide right sidebar',
   展开右栏: 'Show right sidebar',
   '搜索{vault}：笔记、PDF、命令、网址': 'Search {vault}: notes, PDFs, commands, URLs',
-  '还原：中间那篇回来，网页回到原来的宽': 'Restore: the center note comes back and the page returns to its previous width',
-  '网页占满：中间那篇让出地方，剪的照样记进它': 'Expand page: the center note steps aside; clips still go into it',
+  中间这栏: 'Center column',
+  占满这一栏: 'Fill window with this column',
+  占满这一格: 'Fill window with this pane',
+  左边这格: 'Left pane',
+  右边这格: 'Right pane',
+  上面这格: 'Top pane',
+  下面这格: 'Bottom pane',
+  '占满：{name}': 'Fill window: {name}',
+  '{name} 占满 · {key} 或 Esc 回去': '{name} fills the window · {key} or Esc to go back',
+  '{name} 占满 · Esc 回去': '{name} fills the window · Esc to go back',
 
   // ---------- 右栏「大纲」（renderer/shell/OutlineView.tsx）、左栏的分隔线（shell/SideSash.tsx） ----------
   PDF自带的目录: 'PDF contents',
@@ -151,6 +158,17 @@ export const APP: Table = {
   左栏收着: 'left sidebar hidden',
   左栏开着: 'left sidebar open',
   中间栏收着: 'center hidden',
+
+  // ---------- 书桌回到刚才：左栏「书桌」最上面那张「刚才」、说明（renderer/read-along/Desks.tsx）、底栏那句（renderer/shell/StatusBar.tsx） ----------
+  '书桌::刚才': 'Before',
+  '刚才：切到书桌「{name}」之前的样子': 'Before: how things were before switching to desk “{name}”',
+  '切到「{name}」之前': 'Before “{name}”',
+  '书桌记下中间开着哪几篇、右栏哪几个网页、各自读到哪一段。点一张就换成那一套，按后退回到换之前。':
+    'A desk remembers which notes are open in the center, which web pages are on the right, and where you were reading in each. Click one to switch to it; Back returns you to how things were before.',
+  '存在库里 {path}，跟着 Git 走。': 'Saved in the vault at {path}, tracked by Git.',
+  '已切到书桌「{name}」': 'Switched to desk “{name}”',
+  回到刚才: 'Go back',
+  回到切书桌之前的样子: 'Back to how things were before switching desks',
 
   // ---------- 外壳：图标栏的格子、右键（renderer/App.tsx） ----------
   '书桌：存好的一整套（笔记、网页、读到哪）': 'Desks: saved sets of notes, web pages and reading spots',

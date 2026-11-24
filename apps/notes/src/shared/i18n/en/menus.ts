@@ -21,7 +21,9 @@ export const MENUS: Table = {
   存进附件: 'Save to Attachments',
   '图存进了{path}': 'Image saved to {path}',
   插进文档: 'Insert into doc',
-  图插进了文档光标处: 'Image inserted at the cursor',
+  图剪进了文档光标处: 'Image clipped at the cursor',
+  '问 AI 这张图': 'Ask AI about this image',
+  '右栏 AI 没打开': 'The AI panel isn’t open',
   剪成卡片: 'Clip as card',
   剪进文档: 'Clip to doc',
   // 问 AI 时输入框里那块引用的来源

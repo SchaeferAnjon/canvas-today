@@ -7,6 +7,7 @@ import {
   DEFAULT_FILES,
   DEFAULT_GENERAL,
   DEFAULT_CITE,
+  DEFAULT_FEYNMAN,
   DEFAULT_PDF,
   DEFAULT_SYNC,
   DEFAULT_WEB,
@@ -17,10 +18,12 @@ import {
   normalizeFiles,
   normalizeGeneral,
   normalizeCite,
+  normalizeFeynman,
   normalizePdf,
   normalizeSync,
   normalizeWeb,
   type CitePrefs,
+  type FeynmanPrefs,
   type PdfPrefs,
   type SyncPrefs,
   type WebPrefs,
@@ -142,6 +145,8 @@ export interface AppSettings {
   sync: SyncPrefs
   /** 设置 › AI：回答里提到的笔记名自动认成链接（task-3e53q） */
   cite: CitePrefs
+  /** 费曼学习：追问三轮还是聊到底，记住上次选的（design/feynman-long） */
+  feynman: FeynmanPrefs
 }
 
 /** 界面改设置时给的一处：外观、梦游和新的几组只给改了的那几项 */
@@ -159,6 +164,7 @@ export interface SettingsPatch {
   web?: Partial<WebPrefs>
   sync?: Partial<SyncPrefs>
   cite?: Partial<CitePrefs>
+  feynman?: Partial<FeynmanPrefs>
 }
 
 /** 渐变默认慢慢动（task-aph2j 按耗电实测定，交付页 49-主题渐变施工「耗电」一节：慢慢动比不动多 2 到 4% CPU，打字、滚动不卡；用户「能动是更好」） */
@@ -195,6 +201,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   web: DEFAULT_WEB,
   sync: DEFAULT_SYNC,
   cite: DEFAULT_CITE,
+  feynman: DEFAULT_FEYNMAN,
 }
 
 /**
@@ -244,6 +251,7 @@ export function normalizeSettings(raw: unknown, user: readonly SkinInfo[] = []):
     web: normalizeWeb(r.web),
     sync: normalizeSync(r.sync),
     cite: normalizeCite(r.cite),
+    feynman: normalizeFeynman(r.feynman),
   }
 }
 

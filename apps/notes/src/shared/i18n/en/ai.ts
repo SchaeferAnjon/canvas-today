@@ -2,11 +2,17 @@
 import { count, type Table } from '../core'
 
 export const AI: Table = {
-  // ---------- 输入框（renderer/composer.tsx、shared/materials.ts） ----------
+  // ---------- 输入框（@cn/ai-chat 的 composer.tsx、materials.ts） ----------
+  回到网页里这一段: 'Back to this passage on the page',
   '最多{n}块': (p) => `Up to ${count(p.n, 'item')}`,
   '最多{n}张': (p) => `Up to ${count(p.n, 'image')}`,
   粘贴的图: 'Pasted image',
   这张图讲的是什么: 'What’s in this image?',
+  '这张图没附上：{why}': 'Couldn’t attach the image: {why}',
+  '这张 SVG 图画不出来': 'Couldn’t render this SVG image',
+  '这张图读不出来': 'Couldn’t read this image',
+  松手附上这张图: 'Drop to attach this image',
+  网页上的图: 'Image from the web',
   '{count} · 字里的 ①② 是它们的位置': '{count} · ①② in the text mark where they go',
   '{n}段引用': (p) => count(p.n, 'quote'),
   引用的材料不对: 'The quoted material isn’t valid',
@@ -30,7 +36,7 @@ export const AI: Table = {
     'Off: AI works only inside the vault (creates, rewrites, renames, moves and deletes notes, creates folders). It doesn’t touch other files, run commands or search the web.',
   '两种都是一轮改动提交一次，能撤回；AI对话和读PDF共用这一个开关。': 'Either way, each round of changes is one commit you can undo. AI chat and PDF reading share this switch.',
 
-  // ---------- 谁来答 · 模型 · effort（renderer/ai-picker.tsx；思考深度默认档写 Auto） ----------
+  // ---------- 谁来答 · 模型 · effort（@cn/ai-chat 的 ai-picker.tsx；思考深度默认档写 Auto） ----------
   'AI 引擎': 'AI engine',
   谁来答: 'Who answers',
   '谁来答：{name}': 'Who answers: {name}',
@@ -66,6 +72,8 @@ export const AI: Table = {
   最近在别处问的: 'Recent elsewhere',
   '这是在「{name}」问的': 'Asked in “{name}”',
   '回到「{name}」': 'Back to “{name}”',
+  '留在这个对话': 'Stay in this chat',
+  '这段放进输入框了，回车问': 'Added to the box. Press Return to ask',
   看得到: 'Can see',
   '选中的{n}个': (p) => `${p.n} selected`,
 
@@ -113,7 +121,7 @@ export const AI: Table = {
   '停下了 · 什么也没改': 'Stopped · nothing changed',
   '没做完（软件关了）': 'Didn’t finish (the app was closed)',
 
-  // ---------- 出错（shared/ai-errors.ts、renderer/ai-error.tsx） ----------
+  // ---------- 出错（shared/ai-errors.ts、@cn/ai-chat 的 ai-error.tsx） ----------
   没答出来: 'No answer',
   '被{vendor}的安全检查拦下了，常是误拦': 'Blocked by {vendor}’s safety check, often by mistake',
   '{name}还没登录：在终端里运行{cmd}登录一下': '{name} isn’t signed in. Run {cmd} in Terminal to sign in',
@@ -162,11 +170,13 @@ export const AI: Table = {
   '软件按名字认的：名字加了书名号': 'Linked by name: the name is in quotes',
   不是这篇: 'Not this one',
 
-  // ---------- 对话目录（renderer/chat-toc.tsx，task-3e53q） ----------
+  // ---------- 对话目录（@cn/ai-chat 的 chat-toc.tsx，task-3e53q） ----------
   这段对话的目录: 'Chat contents',
   '这段对话 · {n} 问': (p) => `This chat · ${count(p.n, 'question')}`,
   '↑↓ 选 · ↵ 跳过去': '↑↓ pick · ↵ go',
   '（图和材料）': '(images and materials)',
   '第{page}页 · {text}': 'Page {page} · {text}',
   框的那块: 'The boxed area',
+  // 对话往上翻着看时底下出了新字（@cn/ai-chat 的 follow.tsx）
+  新回答: 'New response',
 }

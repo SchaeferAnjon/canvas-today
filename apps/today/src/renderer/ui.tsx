@@ -1,15 +1,22 @@
 /** 小零件：图标、勾选框、一句话的提示条 */
-import { Codicon, type CodiconName } from '@cn/design'
-import { UndoButton } from '@cn/design/answer-bar'
-import '@cn/design/answer-bar.css'
-import claude from '@notes-assets/engine-logos/claude.svg?raw'
-import codex from '@notes-assets/engine-logos/codex.svg?raw'
-import deepseek from '@notes-assets/engine-logos/deepseek.svg?raw'
-import openrouter from '@notes-assets/engine-logos/openrouter.svg?raw'
-import gemini from '@notes-assets/engine-logos/gemini.png'
+import { Codicon, codiconEl, type CodiconName } from '@cn/design'
+import { UndoButton } from '@cn/ai-chat/answer-bar'
+import { setAiChatHost, uiNow } from '@cn/ai-chat/context'
+import claude from '@ai-chat-assets/engine-logos/claude.svg?raw'
+import codex from '@ai-chat-assets/engine-logos/codex.svg?raw'
+import deepseek from '@ai-chat-assets/engine-logos/deepseek.svg?raw'
+import openrouter from '@ai-chat-assets/engine-logos/openrouter.svg?raw'
+import gemini from '@ai-chat-assets/engine-logos/gemini.png'
 import type { TaskView } from '../shared/api'
 import { type Args, type Key, tr } from '../shared/i18n'
 import { useLang } from './store'
+
+// 共用的回答下面那排、撤回按钮（@cn/ai-chat）按名字画图标：画布今日用同一套 Codicons，字由调用的地方交进去
+setAiChatHost({
+  ...uiNow(),
+  icon: (name, o = {}) => <Codicon name={name as CodiconName} {...(o.size ? { size: o.size } : {})} {...(o.className ? { className: o.className } : {})} />,
+  iconEl: (name, size) => codiconEl(name as CodiconName, size),
+})
 
 export function Ic({ n, s = 16 }: { n: CodiconName; s?: number }) {
   return <Codicon name={n} size={s} />

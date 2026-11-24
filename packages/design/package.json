@@ -16,9 +16,7 @@
     "./drag-end": "./src/drag-end.ts",
     "./glass": "./src/glass.ts",
     "./wall": "./src/wall.ts",
-    "./wall.css": "./src/wall.css",
-    "./answer-bar": "./src/answer-bar.tsx",
-    "./answer-bar.css": "./src/answer-bar.css"
+    "./wall.css": "./src/wall.css"
   },
   "dependencies": {
     "@cn/family": "workspace:*"

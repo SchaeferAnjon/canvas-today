@@ -10,6 +10,7 @@ import type { SkinInfo } from '../../../notes/src/shared/appearance'
 import { lookFromNotes, normalizeToday, type TodayAppearance, type TodaySettings } from '../shared/settings'
 import { E2E } from './test-mode'
 import { atomicWriteSync } from '@cn/atomic'
+import { notesSettingsDir } from '@cn/ai-engines'
 
 export class SettingsFile {
   constructor(
@@ -43,7 +44,7 @@ export class SettingsFile {
 export function notesDataDir(home: string): string | null {
   if (process.env.CT_NOTES_DATA) return process.env.CT_NOTES_DATA
   if (E2E) return null
-  return join(home, 'Library', 'Application Support', 'canvas-notes')
+  return notesSettingsDir(home)
 }
 
 export function readNotesSettings(dir: string | null): Record<string, unknown> | null {

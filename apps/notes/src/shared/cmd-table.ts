@@ -101,7 +101,7 @@ export const KEYMAP: readonly KeyDef[] = [
   T('left-desks', '左栏：书桌', 'app', 'go', { home: 'more', hint: '存好的一整套：笔记、网页、读到哪' }),
   T('left-trash', '左栏：最近删掉的', 'app', 'go', { home: 'more', hint: '30天里删掉的，能放回原来的文件夹' }),
   T('find-file', '找文件', 'app', 'go', { keys: ['⌥⌘F'], home: 'more', hint: '左栏目录树上面的框，打字筛' }),
-  T('fold-center', '网页占满 / 还原', 'app', 'go', { keys: ['⌃⌘\\'], home: 'more', hint: '右栏网页占满，剪的照样记进中间那篇' }),
+  T('fold-center', '当前这栏占满 / 还原', 'app', 'go', { keys: ['⌃⌘\\'], home: 'more', hint: '焦点在哪栏就占满哪栏，别的栏让开；再按或 Esc 回原样' }),
   T('dream-report', '打开梦游报告', 'app', 'go', { keys: ['⇧⌘D'], home: 'go', hint: '左栏' }),
   T('inbox', '打开收件箱', 'app', 'go', { home: 'go' }),
   T('recent', '最近', 'app', 'go', { home: 'go', hint: '按时间看全部笔记' }),
@@ -124,6 +124,10 @@ export const KEYMAP: readonly KeyDef[] = [
 
   // ---- 看法和缩放
   T('toggle-view', '白板 / 文档切换', 'app', 'view', { keys: ['⌘E'], home: 'more', hint: '同一篇的两种看法' }),
+  // 中间栏分屏：⌘\ 一族四个都有主了（左栏、右栏、网页占满、网页栏顶上），用 ⌃\；⌘1 / ⌘2 照 VS Code 换格
+  T('split-center', '分屏 / 合成一格', 'app', 'view', { keys: ['⌃\\'], home: 'more', hint: '中间的当前标签复制一份放到右边；分着时合回一格' }),
+  T('pane-1', '到左边（上面）那一格', 'app', 'view', { keys: ['⌘1'], hint: '中间分成两格时' }),
+  T('pane-2', '到右边（下面）那一格', 'app', 'view', { keys: ['⌘2'], hint: '中间分成两格时；没分时向右分屏' }),
   T('zoom-in', '放大', 'app', 'view', { keys: ['⌘=', '⇧⌘='], noForward: true, hint: '白板、PDF；别处放大整个窗口' }),
   T('zoom-out', '缩小', 'app', 'view', { keys: ['⌘-'], noForward: true, hint: '白板、PDF；别处缩小整个窗口' }),
   T('zoom-reset', '原大', 'app', 'view', { keys: ['⌘0'], noForward: true, hint: '白板 100%，PDF 适合宽度' }),

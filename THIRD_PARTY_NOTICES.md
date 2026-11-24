@@ -21,7 +21,7 @@ Canvas Today（画布今日）本身按 GPL-3.0-or-later 授权（见 `LICENSE`�
 
 ## Claude 的标志
 
-右边图标栏「AI（以后）」那一格的 Claude 标志（`apps/notes/src/renderer/assets/engine-logos/claude.svg`）取自 LobeHub Icons（https://github.com/lobehub/lobe-icons ，MIT，版权 (c) LobeHub）。标志本身是 Anthropic 的商标，这里只用来标明那一格以后接的是哪家的命令行。
+右边图标栏「AI（以后）」那一格的 Claude 标志（`packages/ai-chat/src/assets/engine-logos/claude.svg`）取自 LobeHub Icons（https://github.com/lobehub/lobe-icons ，MIT，版权 (c) LobeHub）。标志本身是 Anthropic 的商标，这里只用来标明那一格以后接的是哪家的命令行。
 
 ## 随包分发的库（许可证按 `pnpm licenses list --prod` 核过，2026-11-22）
 

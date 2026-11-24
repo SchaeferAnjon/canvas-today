@@ -45,6 +45,7 @@ import { MCP } from './en/mcp'
 import { AI_SOURCES } from './en/ai-sources'
 import { REPLIES } from './en/replies'
 import { ANSWER_SITES } from './en/answer-sites'
+import { AI_NOTE_CHAT } from './en/ai-note-chat'
 
 /** 每张分表（测试按文件查重、查占位） */
 export const EN_PARTS: Readonly<Record<string, Table>> = {
@@ -104,6 +105,8 @@ export const EN_PARTS: Readonly<Record<string, Table>> = {
   'ai-sources': AI_SOURCES,
   // ParaRead 联动（画布笔记这一侧）：划线带含义、ParaRead 组件、划线颜色
   pararead: PARAREAD,
+  // 别处的 AI 对话记笔记开关（2026-11-24）
+  'ai-note-chat': AI_NOTE_CHAT,
 }
 
 export const EN: Table = Object.assign({}, ...Object.values(EN_PARTS)) as Table

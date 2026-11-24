@@ -16,10 +16,8 @@ export const AGENT: Table = {
   全文不对: 'Invalid full text',
   'AI 参数不对': 'Invalid AI request',
   停下了: 'Stopped',
-  旁支不对: 'Invalid side thread',
   可视化参数不对: 'Invalid visual request',
   'AI 没做出能打开的网页，再点一次试试': 'AI didn’t make a page that opens; try again',
-  '笔记刚被改过，写不进去，等一下再问一轮会再记': 'The notes just changed and couldn’t be saved; the next question will save them again',
   提交的参数不对: 'Invalid commit request',
   截图的位置不对: 'Invalid screenshot area',
   那一页已经关了: 'That page is closed',
@@ -42,7 +40,7 @@ export const AGENT: Table = {
   '「{a}」和「{b}」都是别的笔记类型': '“{a}” and “{b}” are both other note types',
   加不进去: 'Couldn’t add',
 
-  // ---------- AI 引擎（main/agent/engines.ts、jsonrpc.ts、store.ts）：AI 没答出来时的原话 ----------
+  // ---------- AI 引擎（@cn/ai-engines 的 engines.ts、jsonrpc.ts，main/agent/store.ts）：AI 没答出来时的原话 ----------
   '退出码 {n}': 'Exit code {n}',
   不知道为什么: 'unknown reason',
   '{name} 启动不了：{error}': '{name} won’t start: {error}',
@@ -71,7 +69,7 @@ export const AGENT: Table = {
   '{name} 等了 {s} 秒没回应': '{name} got no reply in {s} s',
   没有这个引擎: 'No such engine',
 
-  // ---------- 找命令行、自查、拉模型、更新（main/agent/cli.ts、engine-check.ts、engine-models.ts、engine-update.ts、engine-watch.ts） ----------
+  // ---------- 找命令行、自查、拉模型、更新（@cn/ai-engines 的 cli.ts、engine-check.ts、engine-models.ts、engine-update.ts、engine-watch.ts） ----------
   '没找到 claude 命令。装 Claude Code：curl -fsSL https://claude.ai/install.sh | bash，再在终端里运行一次 claude 登录。':
     'The claude command wasn’t found. Install Claude Code with curl -fsSL https://claude.ai/install.sh | bash, then run claude once in Terminal to sign in.',
   '没找到 codex 命令。装 Codex：brew install codex 或 npm i -g @openai/codex，再运行一次 codex 登录。': 'The codex command wasn’t found. Install Codex with brew install codex or npm i -g @openai/codex, then run codex once to sign in.',

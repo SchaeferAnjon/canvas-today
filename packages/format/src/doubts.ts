@@ -52,7 +52,8 @@ function walk(pdf: string, s: AskSection, lecture?: number): { items: DoubtItem[
   const out: DoubtItem[] = []
   const used = new Set<string>()
   const add = (q: string, a: string, quote?: string): number => {
-    let id = out.length ? `${s.id}#${hash(`${quote ?? ''}\n${q}`)}` : s.id
+    // 新写法（ai-note.ts）的一处和同一处旧写法那段身份一样：第一问也带上问题的 hash，不和旧那段的那一条撞
+    let id = out.length || s.doc ? `${s.id}#${hash(`${quote ?? ''}\n${q}`)}` : s.id
     for (let k = 2; used.has(id); k++) id = `${s.id}#${hash(`${quote ?? ''}\n${q}`)}-${k}`
     used.add(id)
     out.push({ id, ...base, section: { ...s, doubts: [q], good: answerLead(a), points: [], failed: [] }, ...(quote !== undefined ? { quote } : {}), answer: a })

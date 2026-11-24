@@ -6,7 +6,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { CalBar, type CalMode, daysFrom, hasEvents, MiniMonth, MonthGrid, monthWeeks, shiftMonth, useWhenInput, WeekGrid } from '@cn/calendar'
 import { parseQuick, type Quick, weekday } from '@cn/tasks'
 import type { AddCtx, AiSlot, Snapshot, TaskView } from '../shared/api'
-import { type ApiId, PROVIDER_NAME } from '../../../notes/src/shared/ai-sources'
+import { type ApiId, PROVIDER_NAME } from '@cn/ai-engines/shared'
 import { INBOX_NOTE } from '../shared/brand'
 import { repeatLabel, tr } from '../shared/i18n'
 import { calItems, cntToday, type Group, groupsOf, type Nav, open, quadOf } from '../shared/views'
@@ -16,8 +16,7 @@ import { prioText, usePreview } from './ai-preview'
 import type { PlanChange } from '../shared/ai-chat'
 import { nowLocal, refreshAi, useCalEvents, useData, useLang } from './store'
 import { Check, EngineLogo, Ic, useT } from './ui'
-import { ChangeBar } from '@cn/design/answer-bar'
-import '@cn/design/answer-bar.css'
+import { ChangeBar } from '@cn/ai-chat/answer-bar'
 
 /** 一篇笔记在界面上叫什么：收件箱那篇叫「收件箱/待办」（照原型），别的是文件名 */
 export function noteLabel(path: string): string {

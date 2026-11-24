@@ -40,6 +40,10 @@ export interface CalloutWords {
   backToChat: string
   /** 头一个词：AI 对话里一条回答插进文档（task-83vl3） */
   answer: string
+  /** AI 对话写进笔记（ai-note.ts）：旁支那一问的小标题开头、旁支回答的头一个词、旁支引用那句下面的来源 */
+  sideHead: string
+  sideAnswer: string
+  inAnswer(q: string): string
 }
 
 export const ZH_CALLOUT_WORDS: CalloutWords = {
@@ -55,6 +59,9 @@ export const ZH_CALLOUT_WORDS: CalloutWords = {
   edited: '改过',
   backToChat: '回到 AI 对话',
   answer: 'AI 回答',
+  sideHead: '旁支：',
+  sideAnswer: '旁支回答',
+  inAnswer: (q) => `在「${q}」的回答里`,
 }
 
 export const EN_CALLOUT_WORDS: CalloutWords = {
@@ -70,6 +77,9 @@ export const EN_CALLOUT_WORDS: CalloutWords = {
   edited: 'edited',
   backToChat: 'Back to AI chat',
   answer: 'AI answer',
+  sideHead: 'Side: ',
+  sideAnswer: 'Side answer',
+  inAnswer: (q) => `in the answer to “${q}”`,
 }
 
 let words = ZH_CALLOUT_WORDS

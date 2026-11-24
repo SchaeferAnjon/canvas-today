@@ -3,10 +3,11 @@
  * - 一颗就是命令库（库里 .canvas-notes/命令.json）里的一条：自带的三颗（还是不懂、换个方式讲、做个可视化）和自己的 AI 命令里勾了
  *   「回答下面那排」的（AiCmd.reply：在哪能用、在哪答）；和选中小条、「存成命令」、⌘K、/ 菜单是同一份；
  * - 三段：排上（不设上限，放不下的自动进 ⋯）/ 收进 ⋯ / 不出现，表存在命令.json 的 replies；
- * - 每颗在 AI 对话、读 PDF（含 HTML）、网页、视频哪里出现照它自己的「在哪能用」；默认读 PDF 三颗、网页和视频前两颗、AI 对话一颗不放。
+ * - 每颗在 AI 对话、读 PDF（含 HTML）、网页、视频哪里出现照它自己的「在哪能用」；默认读 PDF 三颗，网页、视频、AI 对话前两颗（AI 对话原来一颗不放，r100 改）。
  * 点一下替你在这段对话里发那句话（{这条回答} 这些空先填好），和自己打字发出去一样。
  * 纯数据和纯函数；不依赖 Electron、不依赖 Node（ParaRead、iPad 版照着移植）。
  */
+import { fillPrompt } from './sel-bar'
 
 /** 哪一处的回答：AI 对话、读 PDF（HTML 也算）、网页上框着问、视频问框 */
 export type ReplyPlace = 'chat' | 'pdf' | 'web' | 'video'
@@ -45,8 +46,10 @@ export interface ReplyBuiltin {
 
 // 不翻：名字是键，画的地方 t()；say 原样发（读 PDF 后台记笔记认这几个字）
 export const REPLY_BUILTINS: readonly ReplyBuiltin[] = [
-  { id: 'still', name: '还是不懂', icon: 'ai', where: ['pdf', 'web', 'video'], say: '还是不懂' }, // 不翻
-  { id: 'another', name: '换个方式讲', icon: 'lightbulb', where: ['pdf', 'web', 'video'], say: '换个方式讲' }, // 不翻
+  // AI 对话也默认排上这两颗（用户 r100：那一排不能是空的；以前定的是 AI 对话一颗不放）。
+  // 在哪出现跟着代码走、不存进命令.json：存过命令.json 的，没把这两颗挪去「不出现」的照新默认在 AI 对话出现，挪过的不动
+  { id: 'still', name: '还是不懂', icon: 'ai', where: ['chat', 'pdf', 'web', 'video'], say: '还是不懂' }, // 不翻
+  { id: 'another', name: '换个方式讲', icon: 'lightbulb', where: ['chat', 'pdf', 'web', 'video'], say: '换个方式讲' }, // 不翻
   { id: 'viz', name: '做个可视化', icon: 'graph', where: ['pdf'], say: '做个可视化', viz: true, note: '读 PDF · HTML · AI 觉得适合画图时' }, // 不翻
 ]
 const BUILTIN_IDS = new Set(REPLY_BUILTINS.map((b) => b.id))
@@ -173,3 +176,45 @@ export const SAY_MAX = 2000
 
 /** 「存成快捷回复」从你发的那句取名字：去掉标点，取前几个字 */
 export const replyNameOf = (text: string) => text.replace(/[\s，。！？、,.!?；;：:「」"'“”（）()]+/g, '').slice(0, REPLY_NAME_MAX)
+
+// ---------------------------------------------------------------- 回答里选中一句的小菜单（task 回答里选中放自定义命令）
+
+/**
+ * AI 回答里选中一句弹的小菜单（side/AskBox），「问这句」下面列出自己的 AI 命令（命令.json 里 kind: ai 的，和选中小条、快捷回复同一份）：
+ * 点一条拿选中的那句当 {选中的字} 去跑，答在旁支里（和「问这句」一样开旁支）。
+ * 默认自己的命令都列出（用户 r106「把我们自定义的那些放进去」），去掉勾的记在命令.json 的 answerSel.off（不出现名单，空着不写这个键）；
+ * 记成「不出现」而不是给每条命令的 where 加一处：已经存过的命令不用改文件就出现，旧版读到不认识的键也原样写回。
+ * 自带的三颗快捷回复（还是不懂……）不在这里：它们问的是整条回答。
+ */
+export interface AnswerSelConfig {
+  off: string[]
+}
+
+/** 小菜单里最多露几条，多了收进「更多…」 */
+export const ANSWER_SEL_CAP = 4
+
+export const defaultAnswerSel = (): AnswerSelConfig => ({ off: [] })
+
+export function normalizeAnswerSel(raw: unknown): AnswerSelConfig {
+  const o = (raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}) as Record<string, unknown>
+  return { off: Array.isArray(o.off) ? [...new Set(o.off.filter((x): x is string => typeof x === 'string' && isOwnId(x)))] : [] }
+}
+
+/** 写进命令.json 的样子；默认的（一条都没去掉勾）是 null（不写） */
+export const answerSelJson = (c: AnswerSelConfig): Record<string, unknown> | null => (c.off.length ? { off: c.off } : null)
+
+export const answerSelOn = (c: AnswerSelConfig, id: string) => !c.off.includes(id)
+
+/** 勾上、去掉勾 */
+export const setAnswerSel = (c: AnswerSelConfig, id: string, on: boolean): AnswerSelConfig =>
+  on ? (c.off.includes(id) ? { off: c.off.filter((x) => x !== id) } : c) : c.off.includes(id) ? c : { off: [...c.off, id] }
+
+/** 小菜单里那几条：照命令的先后，前 ANSWER_SEL_CAP 条露着，其余在「更多…」 */
+export function answerSelItems<T extends { id: string }>(c: AnswerSelConfig, mine: readonly T[]): { shown: T[]; more: T[] } {
+  const on = mine.filter((x) => answerSelOn(c, x.id))
+  return { shown: on.slice(0, ANSWER_SEL_CAP), more: on.slice(ANSWER_SEL_CAP) }
+}
+
+/** 点了一条交给旁支的那句：{选中的字} 填选中的那句，{这条回答}、{你问的那句} 照快捷回复填；都没写的照原样（旁支开头本来就带着那句） */
+export const answerSelSay = (say: string, vars: { sel: string; answer?: string; question?: string }): string =>
+  fillReply(fillPrompt(say, { sel: `「${vars.sel.trim()}」` }).text, { answer: vars.answer ?? '', question: vars.question ?? '' })

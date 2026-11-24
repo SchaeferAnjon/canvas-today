@@ -1,8 +1,8 @@
 /** 主进程和界面之间说的话（window.ct）。界面只拿到索引的样子，改文件一律交给主进程。 */
 import type { CalEvent } from '@cn/calendar'
 import type { EngineId } from '../../../notes/src/shared/agent'
-import type { ApiId } from '../../../notes/src/shared/ai-sources'
-import type { AiPick, ModelOption } from '../../../notes/src/shared/ai-features'
+import type { ApiId } from '@cn/ai-engines/shared'
+import type { AiPick, ModelOption } from '@cn/ai-engines/shared'
 import type { ChatInfo, TodayMsg } from './ai-chat'
 import type { CloseItem } from './plan'
 import type { FocusRecord, Habit, Prio, RingBy, When, WhenFields } from '@cn/tasks'

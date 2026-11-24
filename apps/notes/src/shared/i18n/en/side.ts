@@ -23,12 +23,13 @@ export const SIDE: Table = {
   '在答…': 'Answering…',
   这条回答: 'This answer',
   插进主对话: 'Insert into main chat',
+  放进主对话: 'Add to main chat',
   '接着问这条旁支…': 'Ask more in this side thread…',
   '问这句…（直接 ↵ 就是「{q}」）': 'Ask about this… (↵ alone: “{q}”)',
   '↵ 发送': '↵ send',
   '改名…': 'Rename…',
   删掉这条旁支: 'Delete this side thread',
-  // ---------- 文档、白板卡、问框里的旁支（side/doc-side.tsx、file-side.tsx、reading/marks.ts） ----------
+  // ---------- 文档、白板卡、问框里的旁支（side/doc-side.tsx、file-side.tsx、@cn/ai-chat 的 side/marks.ts） ----------
   没有回答: 'No reply',
   '{n} 问': (p) => count(p.n, 'question'),
   '旁支 · {name}': 'Side thread · {name}',
@@ -52,4 +53,6 @@ export const SIDE: Table = {
   '和主对话同一个开关；{where}。': 'Same switch as the main chat; {where}.',
   '在右栏 AI 输入框下面那行改，设置 › AI 里也能改': 'change it under the AI input in the right panel, or in Settings › AI',
   '收起旁支后，在输入框下面那行改': 'close the side thread and change it under the input',
+  '从最近里去掉': 'Remove from Recent',
+  '开配对的笔记「{name}」': 'Open the paired note “{name}”',
 }

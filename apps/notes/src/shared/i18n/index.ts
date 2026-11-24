@@ -8,6 +8,7 @@
 import { CTX_SEP, fill, type Lang, listText, type Params, translate } from './core'
 import { EN } from './en'
 import { vaultLang } from './vault'
+import { setI18n } from '@cn/ai-engines/shared'
 
 export { count, fill, holes, keyOf, LANG_NAMES, LANG_SETTINGS, langOfLocale, isLangSetting, resolveLang, type Lang, type LangSetting, type Params } from './core'
 export { onVaultLang, setVaultLang, vaultLang } from './vault'
@@ -89,3 +90,6 @@ export function zhOf(s: string, depth = 0): string | null {
   }
   return null
 }
+
+// 共用的 AI 包（@cn/ai-engines）里的字也照这里的表翻：引到这个文件的进程（主进程、界面、画布今日借用的那几个文件）都交一次
+setI18n({ t, list: (items) => list(items) })
