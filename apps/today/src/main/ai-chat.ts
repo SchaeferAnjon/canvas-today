@@ -5,14 +5,18 @@
  *   要它只回一张改动单（shared/ai-chat.ts 的 CHAT_SYSTEM），readChat 查过才给人看。
  * - 存哪：和画布笔记的 AI 对话放在一起（画布笔记 userData/ai/chats/<库>/<地方>.json，地方是 today:<编号>，用画布笔记的 AgentStore），
  *   画布笔记的对话菜单里也列得出。没有画布笔记设置目录（测试不给）时放在画布今日自己的 userData/ai。
+ * - 带图（输入框里贴的、拖进来的、「+」选的，最多 4 张）：存在画布笔记设置目录的 pasted/（和画布笔记 AI 对话贴的图同一个地方，
+ *   画布笔记打开这段对话也看得到），问的时候按名字读出来，和画布笔记一样交给引擎（EngineRun.images，@cn/ai-engines 的 PastedImages）；
+ *   照旧一次问、不给工具、只回改动单。
  * CT_AI_FAKE=1：不调模型，shared/ai-chat.ts 的 fakeChatAnswer 照话里的词答（e2e）；各家都当装好了。
+ *   CT_AI_FAKE_LOG=<文件>：假 AI 每问一次在这个文件里记一行（收到几张图、每张多大、什么格式），e2e 拿来比对。
  */
-import { mkdirSync, readFileSync } from 'node:fs'
+import { appendFileSync, mkdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { EngineId } from '../../../notes/src/shared/agent'
 import { ENGINE_LABEL, type AiPick, fitPick, INITIAL_PREFS, modelsOf, type ModelOption, normalizePick, normalizePrefs, pickLabel, resolvePick } from '@cn/ai-engines/shared'
 import { AgentStore } from '../../../notes/src/main/agent/store'
-import { type Engine, locateCli, setCustomCli } from '@cn/ai-engines'
+import { type Engine, type EngineImage, locateCli, PastedImages, setCustomCli } from '@cn/ai-engines'
 import { ALL_IDS, isApi, isCli, isEngineId } from '@cn/ai-engines/shared'
 import { needBorrow, notesHasKey, todayKey } from './ai-keys'
 import { CHAT_SYSTEM, chatPlace, chatPrompt, chatTitle, type ChatCtx, type ChatInfo, type ChatReply, fakeChatAnswer, historyText, readChat, type TodayMsg } from '../shared/ai-chat'
@@ -32,6 +36,8 @@ export interface ChatEngine {
 
 export class TodayChats {
   readonly store: AgentStore
+  /** 输入框里贴的图 */
+  readonly pasted: PastedImages
   private engines: Partial<Record<EngineId, Engine>> = {}
 
   /** notesDir：画布笔记的设置目录（读它的 AI 设置、对话放进它的 ai/chats）；没有时用 fallback */
@@ -40,6 +46,7 @@ export class TodayChats {
     fallback: string,
   ) {
     this.store = new AgentStore(join(notesDir ?? fallback, 'ai'))
+    this.pasted = new PastedImages(join(notesDir ?? fallback, 'pasted'))
   }
 
   private notesAi(): { prefs?: unknown; engine?: unknown; cli?: unknown } {
@@ -126,8 +133,8 @@ export class TodayChats {
     return (this.engines[id] ??= engineOf(id))
   }
 
-  /** 问一次：交回 AI 的原话（真的）或假 AI 照词答的 */
-  async ask(pick: AiPick, ctx: ChatCtx, msgs: TodayMsg[], text: string, cwd: string, signal: AbortSignal): Promise<ChatReply> {
+  /** 问一次：交回 AI 的原话（真的）或假 AI 照词答的；text 已经带上了材料那几行（withMaterials），images 是一起给的图 */
+  async ask(pick: AiPick, ctx: ChatCtx, msgs: TodayMsg[], text: string, cwd: string, signal: AbortSignal, images: EngineImage[] = []): Promise<ChatReply> {
     const borrow = needBorrow(pick.engine)
     if (borrow) throw new BorrowNeeded(borrow)
     let answer: string
@@ -137,13 +144,15 @@ export class TodayChats {
         signal.addEventListener('abort', () => (clearTimeout(t), reject(Object.assign(new Error('停下了'), { name: 'AbortError' }))))
       })
       if (text.includes('（测试：AI 出错）')) throw new Error(`${ENGINE_LABEL[pick.engine]} 退出了（1）：测试用的失败`)
-      answer = fakeChatAnswer(text, ctx)
+      const log = process.env.CT_AI_FAKE_LOG
+      if (log) appendFileSync(log, JSON.stringify({ engine: pick.engine, images: images.map((i) => ({ mime: i.mime, bytes: Buffer.from(i.data, 'base64').length })), text }) + '\n')
+      answer = fakeChatAnswer(text, ctx, images.length)
     } else {
       // 工作目录要先有（没有的话命令行起不来，报的是 spawn ENOENT）
       mkdirSync(cwd, { recursive: true })
       const model = process.env.CT_AI_MODEL || pick.model
       const effort = process.env.CT_AI_EFFORT || pick.effort
-      const r = await this.engineOf(pick.engine).run({ prompt: chatPrompt(ctx, historyText(msgs), text), system: CHAT_SYSTEM, cwd, signal, onText: () => {}, ...(model ? { model } : {}), ...(effort ? { effort } : {}) })
+      const r = await this.engineOf(pick.engine).run({ prompt: chatPrompt(ctx, historyText(msgs), text), system: CHAT_SYSTEM, cwd, signal, onText: () => {}, ...(model ? { model } : {}), ...(effort ? { effort } : {}), ...(images.length ? { images } : {}) })
       answer = r.text
     }
     const reply = readChat(answer, ctx)

@@ -37,6 +37,9 @@ export const SELBAR: Table = {
   '这段已经剪过了': 'Already clipped',
   '跳到那一处': 'Go to it',
   '再剪一份': 'Clip again',
+  '这个网站以后剪进收件箱': 'Clips from this site now go to the Inbox',
+  '以后这个网站剪的都进收件箱，一段一张卡片；要换回一篇再来这里选。': 'Clips from this site will go to the Inbox, one card per passage. Come back here to pick a note instead.',
+  '这次剪成一张卡片放进收件箱，下次剪还会问。': 'This clip becomes a card in the Inbox. You’ll be asked again next time.',
 
   // ---------- 设置 › 选中小条：页、预览 ----------
   '选中小条': 'Selection toolbar',

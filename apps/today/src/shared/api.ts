@@ -4,6 +4,7 @@ import type { EngineId } from '../../../notes/src/shared/agent'
 import type { ApiId } from '@cn/ai-engines/shared'
 import type { AiPick, ModelOption } from '@cn/ai-engines/shared'
 import type { ChatInfo, TodayMsg } from './ai-chat'
+import type { Material } from '@cn/ai-chat/materials'
 import type { CloseItem } from './plan'
 import type { FocusRecord, Habit, Prio, RingBy, When, WhenFields } from '@cn/tasks'
 import type { Lang } from './i18n'
@@ -12,6 +13,7 @@ import type { ThemeFile } from '../../../notes/src/shared/vscode-theme'
 
 /** 检查更新的状态：和画布笔记同一个 Updater（apps/notes/src/main/updater.ts），类型也用它的 */
 export type { UpdateState } from '../../../notes/src/shared/api'
+import type { FeedsSrc } from './feeds-link'
 import type { McClass, McLead, McLive, McProject, McSrc } from './mc'
 import type { UpdateState } from '../../../notes/src/shared/api'
 
@@ -60,6 +62,8 @@ export interface TaskView {
   ringBy: RingBy
   /** MeetCaption 写进上课记录的（这一行带 ▶ 时间）：来自哪节课、哪一刻（shared/mc.ts）；别的是 null */
   mc: McSrc | null
+  /** 画布订阅写进来的稍后读（这一行带 canvas-feeds://item/ 链接，shared/feeds-link.ts）；别的没有 */
+  feeds?: FeedsSrc | null
 }
 
 export interface NoteView {
@@ -468,7 +472,14 @@ export interface CtApi {
   chatDefault(): Promise<AiInfo>
   chatList(): Promise<ChatInfo[]>
   chatLoad(id: string): Promise<{ msgs: TodayMsg[]; title: string }>
-  chatAsk(id: string, text: string, job: string): Promise<ChatAskResult>
+  /** mats：这一问带的图（输入框顶上那一排；text 里的 ①② 是它们的位置） */
+  chatAsk(id: string, text: string, job: string, mats?: Material[]): Promise<ChatAskResult>
+  /** 输入框里贴的、拖进来的图存进 pasted/，返回名字 */
+  chatPaste(bytes: Uint8Array, mime: string): Promise<string>
+  /** 底行「+」：系统选图框，最多 room 张 */
+  chatPickImages(room: number): Promise<{ name: string; label: string }[]>
+  /** 存好的图在界面上的 data: 网址（打开以前的对话时取） */
+  chatPasted(name: string): Promise<string>
   chatAccept(id: string, msgId: number, on: number[]): Promise<ChatAcceptResult>
   chatPlanState(id: string, msgId: number, state: 'dropped' | 'undone'): Promise<TodayMsg[]>
   chatPick(id: string, pick: AiPick | null): Promise<{ pick: AiPick; own: boolean; label: string }>
@@ -522,6 +533,8 @@ export interface CtApi {
   mcOpenLive(): Promise<void>
   /** 待办上「来自 ECP 09:43」：在画布笔记里打开那一篇那一秒（canvas-notes://open?file=&t=） */
   mcJump(key: string): Promise<{ ok: boolean; by?: 'notes' | 'default' }>
+  /** 稍后读那一行上「画布订阅」：打开画布订阅的那一篇（canvas-feeds://item/…） */
+  openFeeds(url: string): Promise<{ ok: boolean }>
   remState(): Promise<RemState>
   onRem(cb: (s: RemState) => void): () => void
   /** 连接：第一次系统问一次能不能访问提醒事项 */

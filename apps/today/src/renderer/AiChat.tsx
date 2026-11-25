@@ -2,11 +2,13 @@
  * 右栏 AI 对话（task-ykkoz，设计稿 32-今日AI排日程，样子照画布笔记的 AI 对话框）：
  * 头上对话名（点开换以前的对话）和「+」新对话，「看得到」「能动手」；中间一问一答，AI 回一张改动卡（每条从什么改成什么，勾去掉的不改），
  * 卡没定时中间的清单、日历、四象限画出改完的样子（ai-preview.ts）；「收下」一次写进库（一次提交、能撤销），「不要」什么都不改。
- * 输入框底行：谁来答 · 模型 · 想多久（只管这一段，默认跟画布笔记设置里「AI 对话」那一行）。
+ * 输入框是画布笔记同一个（@cn/ai-chat 的 AiInput，宿主 ai-host.tsx）：⌘V 贴图、拖图进来、「+」选图（最多 4 张），顶上一排缩略图、× 删一张，
+ * 字和图一起粘时先贴字、下面一行「同时有一张图 · 改贴图片」；图随这一问交给 AI（照旧只回改动单）。
+ * 输入框底行：谁来答 · 模型 · 想多久（画布今日自己画的，只管这一段，默认跟画布笔记设置里「AI 对话」那一行）。
  */
-import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { AiPick, ModelOption } from '@cn/ai-engines/shared'
-import type { ChatInfo, Dropped, PlanChange, TodayMsg } from '../shared/ai-chat'
+import { type ChatInfo, chatTitle, type Dropped, type PlanChange, type TodayMsg } from '../shared/ai-chat'
 import type { ChatInfoState } from '../shared/api'
 import { type Lang, TABLES, tr } from '../shared/i18n'
 import { isoOf, mdLabel, whenLabel } from '../shared/when'
@@ -14,6 +16,9 @@ import { prioText, setPreview, UNDONE_EVENT } from './ai-preview'
 import { useData, useLang } from './store'
 import { EngineLogo, Ic, useT } from './ui'
 import { ChangeBar, UndoButton } from '@cn/ai-chat/answer-bar'
+import { AiInput, MatMsg, sendText, useComposer } from '@cn/ai-chat/composer'
+import { imageNames, type Material } from '@cn/ai-chat/materials'
+import { installAiHost, loadPasted, onPastedLoaded } from './ai-host'
 import { noteLabel } from './views'
 
 const KEY = 'ct-ai-chat'
@@ -99,10 +104,21 @@ export function AiChat({ shown, today, ask, onToast, onUndo }: AiChatProps) {
   const [offs, setOffs] = useState<Record<number, number[]>>({})
   const [menu, setMenu] = useState<null | 'chats' | 'engine' | 'model' | 'effort'>(null)
   const [list, setList] = useState<ChatInfo[]>([])
-  const [text, setText] = useState('')
+  /** 输入框上面一行提示（「最多4张」、图没附上的原因），3 秒后收起（同画布笔记 AI 对话） */
+  const [note, setNote] = useState<string | null>(null)
+  const showNote = (n: string) => {
+    setNote(n)
+    setTimeout(() => setNote((x) => (x === n ? null : x)), 3000)
+  }
+  // 宿主跟着界面语言（输入框里那几句；ai-host.tsx 引进来时已经交过一份中文的）
+  useLayoutEffect(() => installAiHost(lang), [lang])
+  const c = useComposer(showNote)
   const box = useRef<HTMLDivElement>(null)
-  const input = useRef<HTMLTextAreaElement>(null)
   const loaded = useRef<string | null>(null)
+  // 以前对话里的图：打开时去主进程取，取到了重画
+  const [, redraw] = useState(0)
+  useEffect(() => onPastedLoaded(() => redraw((x) => x + 1)), [])
+  useEffect(() => loadPasted(msgs.flatMap((m) => imageNames(m.mats))), [msgs])
 
   const refreshInfo = useCallback(() => void window.ct.chatInfo(id).then(setInfo), [id])
   useEffect(() => {
@@ -151,15 +167,16 @@ export function AiChat({ shown, today, ask, onToast, onUndo }: AiChatProps) {
     return () => window.removeEventListener(UNDONE_EVENT, on)
   }, [msgs, id])
 
-  const send = async (raw: string, chat = id) => {
-    const q = raw.trim()
+  /** 问一句：mats 是这一问带的图（输入框里的、重试时那一问的） */
+  const send = async (raw: string, mats: Material[] = [], chat = id) => {
+    const q = sendText(raw, mats)
     if (!q || busy) return
     const job = `chat-${Date.now()}`
-    setText('')
+    c.clear()
     setBusy({ job, text: q })
-    setMsgs((m) => [...m, { id: -1, role: 'user', time: Date.now(), text: q }])
-    if (!title) setTitle(q)
-    const r = await window.ct.chatAsk(chat, q, job)
+    setMsgs((m) => [...m, { id: -1, role: 'user', time: Date.now(), text: q, ...(mats.length ? { mats } : {}) }])
+    if (!title) setTitle(chatTitle(q))
+    const r = await window.ct.chatAsk(chat, q, job, mats.length ? mats : undefined)
     setBusy((b) => (b?.job === job ? null : b))
     if (loaded.current !== chat) return
     setMsgs(r.msgs)
@@ -172,9 +189,9 @@ export function AiChat({ shown, today, ask, onToast, onUndo }: AiChatProps) {
   const newChat = () => {
     if (busy) stop()
     setMenu(null)
-    setText('')
+    c.clear()
     if (msgs.length) setId(newId())
-    input.current?.focus()
+    c.ta.current?.focus()
   }
 
   // ⌘K 里打的那一句：这一段空着就在这一段问，不然开新的一段再问
@@ -188,7 +205,7 @@ export function AiChat({ shown, today, ask, onToast, onUndo }: AiChatProps) {
     const wait = setInterval(() => {
       if (loaded.current !== n) return
       clearInterval(wait)
-      void send(ask.text, n)
+      void send(ask.text, [], n)
     }, 20)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ask?.seq])
@@ -228,11 +245,17 @@ export function AiChat({ shown, today, ask, onToast, onUndo }: AiChatProps) {
   const effort = efforts.find((e) => e.id === pick?.effort)
   const seen = info?.seen
 
-  const userMsg = (m: TodayMsg) => (
-    <div className="aim-u" key={`u${m.id}-${m.time}`}>
-      {m.text}
-    </div>
-  )
+  // 带图的那一句：字里的 ①② 是小圆点数字，下面一行一张小图（和画布笔记发出去的那条一样，MatMsg）
+  const userMsg = (m: TodayMsg) =>
+    m.mats?.length ? (
+      <div className="aim-u aim-um" key={`u${m.id}-${m.time}`}>
+        <MatMsg text={m.text} mats={m.mats} />
+      </div>
+    ) : (
+      <div className="aim-u" key={`u${m.id}-${m.time}`}>
+        {m.text}
+      </div>
+    )
   const aiMsg = (m: TodayMsg, last: boolean) => {
     const p = m.plan
     const on = p ? onOf(m) : []
@@ -258,7 +281,7 @@ export function AiChat({ shown, today, ask, onToast, onUndo }: AiChatProps) {
           <div className="aerr">
             <span>{t('chatFailed', m.error)}</span>
             {last && (
-              <button className="btn sm" onClick={() => void send(msgs[msgs.length - 2]?.text ?? '')}>
+              <button className="btn sm" onClick={() => void send(msgs[msgs.length - 2]?.text ?? '', msgs[msgs.length - 2]?.mats ?? [])}>
                 {t('aiRetry')}
               </button>
             )}
@@ -465,49 +488,48 @@ export function AiChat({ shown, today, ask, onToast, onUndo }: AiChatProps) {
             )}
           </div>
         )}
-        <textarea
-          ref={input}
-          className="ta"
-          rows={2}
-          value={text}
+        {note && (
+          <div className="aim-note" role="status">
+            {note}
+          </div>
+        )}
+        <AiInput
+          c={c}
           placeholder={t('chatPh')}
-          aria-label={t('chatPh')}
-          onChange={(e) => setText(e.target.value)}
+          hint={t('chatKeyHint')}
+          running={!!busy}
+          sendDisabled={!c.text.trim() && !c.mats.length}
+          onSend={() => void send(c.text, c.plain())}
+          onStop={stop}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault()
-              void send(text)
+              void send(c.text, c.plain())
             }
           }}
+          onNotice={showNote}
+          list={box}
+          bar={
+            <>
+              <button className={`aim-pick${menu === 'engine' ? ' open' : ''}`} aria-label={t('chatEngine')} title={t('chatEngine')} onClick={() => setMenu(menu === 'engine' ? null : 'engine')}>
+                <EngineLogo id={pick?.engine} s={14} />
+                <Ic n="chevron-down" s={12} />
+              </button>
+              {models.length > 1 && (
+                <button className={`aim-pick${menu === 'model' ? ' open' : ''}`} aria-label={t('chatModel')} onClick={() => setMenu(menu === 'model' ? null : 'model')}>
+                  {model?.label}
+                  <Ic n="chevron-down" s={12} />
+                </button>
+              )}
+              {efforts.length > 0 && (
+                <button className={`aim-pick${menu === 'effort' ? ' open' : ''}`} aria-label={t('chatEffort')} onClick={() => setMenu(menu === 'effort' ? null : 'effort')}>
+                  {effort?.label ?? efforts[0]!.label}
+                  <Ic n="chevron-down" s={12} />
+                </button>
+              )}
+            </>
+          }
         />
-        <div className="ft">
-          <button className={`aim-pick${menu === 'engine' ? ' open' : ''}`} aria-label={t('chatEngine')} title={t('chatEngine')} onClick={() => setMenu(menu === 'engine' ? null : 'engine')}>
-            <EngineLogo id={pick?.engine} s={14} />
-            <Ic n="chevron-down" s={12} />
-          </button>
-          {models.length > 1 && (
-            <button className={`aim-pick${menu === 'model' ? ' open' : ''}`} aria-label={t('chatModel')} onClick={() => setMenu(menu === 'model' ? null : 'model')}>
-              {model?.label}
-              <Ic n="chevron-down" s={12} />
-            </button>
-          )}
-          {efforts.length > 0 && (
-            <button className={`aim-pick${menu === 'effort' ? ' open' : ''}`} aria-label={t('chatEffort')} onClick={() => setMenu(menu === 'effort' ? null : 'effort')}>
-              {effort?.label ?? efforts[0]!.label}
-              <Ic n="chevron-down" s={12} />
-            </button>
-          )}
-          <span className="sp" />
-          {busy ? (
-            <button className="send on" aria-label={t('chatStop')} title={t('chatStop')} onClick={stop}>
-              <Ic n="debug-stop" s={14} />
-            </button>
-          ) : (
-            <button className={`send${text.trim() ? ' on' : ''}`} aria-label={t('chatSend')} title={t('chatSend')} disabled={!text.trim()} onClick={() => void send(text)}>
-              <Ic n="arrow-up" s={14} />
-            </button>
-          )}
-        </div>
       </div>
     </div>
   )

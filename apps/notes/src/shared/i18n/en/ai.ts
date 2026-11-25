@@ -111,6 +111,7 @@ export const AI: Table = {
   '可以，登录': 'Yes, sign in',
   '可以，付款': 'Yes, pay',
   '可以，上传': 'Yes, upload',
+  '{device}上的 AI 在等那边点头：{what}': 'AI on {device} is waiting for a yes over there: {what}',
   '等点头::不要': 'No',
   'AI 不说是哪个网页时动这一个；你点进别的网页就换成那个': 'AI works on this page unless it names another; click into another page to switch',
   中间栏: 'Center',

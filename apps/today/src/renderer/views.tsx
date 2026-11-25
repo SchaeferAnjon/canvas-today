@@ -18,6 +18,7 @@ import { nowLocal, refreshAi, useCalEvents, useData, useLang } from './store'
 import { Check, EngineLogo, Ic, useT } from './ui'
 import { McSrcChip, McToday } from './mc'
 import { withMcLinks } from '../shared/mc'
+import { withFeedsLink } from '../shared/feeds-link'
 import { ChangeBar } from '@cn/ai-chat/answer-bar'
 
 /** 一篇笔记在界面上叫什么：收件箱那篇叫「收件箱/待办」（照原型），别的是文件名 */
@@ -37,7 +38,7 @@ export function Row({ t, today, sel, flash, timeOnly, showNote = true, quad = fa
   return (
     <div className={`row${sel ? ' on' : ''}${t.done ? ' done' : ''}${t.cancelled ? ' cancel' : ''}${flash ? ' flash' : ''}${pv ? ' aim-hit' : ''}`} data-drag={t.key} data-part="任务行">
       <Check t={t} onToggle={() => a.tick(t)} />
-      <span className="rt">{t.mc?.title ?? t.title}</span>
+      <span className="rt">{t.mc?.title ?? t.feeds?.title ?? t.title}</span>
       {pv && <PreviewMark c={pv} today={today} quad={quad} />}
       <span className="accs">
         {subs > 0 && <SubCount t={t} />}
@@ -50,7 +51,8 @@ export function Row({ t, today, sel, flash, timeOnly, showNote = true, quad = fa
         )}
         {/* MeetCaption 写的：「来自 ECP 09:43」，点了到画布笔记那一篇那一秒；就替掉笔记名那一格 */}
         {t.mc && <McSrcChip t={t} />}
-        {t.path !== INBOX_NOTE && showNote && !t.mc && (
+        {t.feeds && <FeedsChip t={t} />}
+        {t.path !== INBOX_NOTE && showNote && !t.mc && !t.feeds && (
           <span className="acc note">
             <Ic n="file" s={12} />
             {noteLabel(t.path)}
@@ -401,7 +403,7 @@ export function Detail({ x, snap, today }: { x: TaskView | null; snap: Snapshot;
   const lang = useLang()
   const t = useT()
   // MeetCaption 写的那几条：框里不带 ▶ 时间那串，存的时候接回去（shared/mc.ts withMcLinks）
-  const shownTitle = x ? (x.mc?.title ?? x.title) : ''
+  const shownTitle = x ? (x.mc?.title ?? x.feeds?.title ?? x.title) : ''
   const [title, setTitle] = useState(shownTitle)
   const [editing, setEditing] = useState(false)
   const [step, setStep] = useState('')
@@ -439,7 +441,7 @@ export function Detail({ x, snap, today }: { x: TaskView | null; snap: Snapshot;
   const subs = x.subs.map((k) => snap.tasks.find((s) => s.key === k)).filter((s): s is TaskView => !!s)
   const commitTitle = () => {
     setEditing(false)
-    if (title.trim() && title.trim() !== shownTitle) a.field(x, { op: 'title', title: x.mc ? withMcLinks(title.trim(), x.title) : title.trim() })
+    if (title.trim() && title.trim() !== shownTitle) a.field(x, { op: 'title', title: x.mc ? withMcLinks(title.trim(), x.title) : x.feeds ? withFeedsLink(title.trim(), x.title) : title.trim() })
     else setTitle(shownTitle)
   }
   return (
@@ -593,6 +595,7 @@ export function Detail({ x, snap, today }: { x: TaskView | null; snap: Snapshot;
             {t('openNote')}
           </button>
           {x.mc && <McSrcChip t={x} />}
+          {x.feeds && <FeedsChip t={x} />}
         </div>
       </div>
       <div className="dsec">{t('focus')}</div>
@@ -1014,5 +1017,29 @@ export function CalPanel() {
       )}
       <div className="hint calhint">{rem?.active ? t('calHint') : t('calHintNoRem')}</div>
     </div>
+  )
+}
+
+/** 画布订阅写进来的稍后读：行尾「画布订阅」一格（替掉笔记名那一格，样子同 MeetCaption 的「来自…」），点了打开那一篇 */
+function FeedsChip({ t: x }: { t: TaskView }) {
+  const t = useT()
+  const a = useActions()
+  if (!x.feeds) return null
+  return (
+    <span
+      className="acc mcsrc"
+      role="button"
+      data-part="画布订阅的稍后读"
+      data-testid="feeds-chip"
+      title={t('feedsTip')}
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => {
+        e.stopPropagation()
+        a.openFeeds(x)
+      }}
+    >
+      <Ic n="rss" s={11} />
+      {t('feedsFrom')}
+    </span>
   )
 }

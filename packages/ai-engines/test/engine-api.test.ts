@@ -245,9 +245,11 @@ describe('自带 OpenCode 的配置', () => {
   }, 240_000)
 })
 
-describe('真 Key（CN_TEST_ANTHROPIC_API_KEY）', () => {
+// 真去问 Anthropic（花钱、余额不够就挂）：平时跳过，光有 Key 也不跑。
+// 要跑：CN_TEST_LIVE_AI=1 CN_TEST_ANTHROPIC_API_KEY=… pnpm vitest run packages/ai-engines/test/engine-api.test.ts
+describe('真 Key（CN_TEST_LIVE_AI=1 且有 CN_TEST_ANTHROPIC_API_KEY）', () => {
   const key = process.env.CN_TEST_ANTHROPIC_API_KEY
-  it.skipIf(!key)('验 Key 拉到 Sonnet 5.5，Haiku 5.5 · Low 真问一句', async () => {
+  it.skipIf(process.env.CN_TEST_LIVE_AI !== '1' || !key)('验 Key 拉到 Sonnet 5.5，Haiku 5.5 · Low 真问一句', async () => {
     const models = await verifyKey('anthropic', key!)
     expect(models[0]!.id).toBe('claude-sonnet-5-5')
     const text = await askAnthropic(key!, { system: '只回答一个词。', prompt: '1+1 等于几？只写阿拉伯数字。', model: 'claude-haiku-5-5', effort: 'low', signal: AbortSignal.timeout(60_000), onText: () => {} })

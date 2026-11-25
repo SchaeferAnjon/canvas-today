@@ -7,6 +7,7 @@ import type { Table } from './core'
 import { COMMON } from './en/common'
 import { PARAREAD } from './en/pararead'
 import { MEETCAPTION } from './en/meetcaption'
+import { FEEDS } from './en/feeds'
 import { SETTINGS } from './en/settings'
 import { PALETTE } from './en/palette'
 import { SHELL } from './en/shell'
@@ -36,6 +37,7 @@ import { MINDMAP2 } from './en/mindmap2'
 import { BASE_SUMS } from './en/base-sums'
 import { SELBAR } from './en/selbar'
 import { BOARD_SELECT } from './en/board-select'
+import { INK } from './en/ink'
 import { FEYNMAN_AFTER } from './en/feynman-after'
 import { VOICE } from './en/voice'
 import { CITE } from './en/cite'
@@ -85,6 +87,8 @@ export const EN_PARTS: Readonly<Record<string, Table>> = {
   selbar: SELBAR,
   // 白板框选、文档选多块的操作条（task-5ryf9）
   'board-select': BOARD_SELECT,
+  // 白板笔迹（方案 B，2026-11-25）
+  ink: INK,
   // 费曼「讲完以后」（task-yvabi ③）
   'feynman-after': FEYNMAN_AFTER,
   // 费曼的语音输入（task-yvabi）
@@ -108,6 +112,7 @@ export const EN_PARTS: Readonly<Record<string, Table>> = {
   pararead: PARAREAD,
   // MeetCaption 联动（画布笔记这一侧）：文件夹首页组件、上课记录的录音条
   meetcaption: MEETCAPTION,
+  feeds: FEEDS,
   // 别处的 AI 对话记笔记开关（2026-11-24）
   'ai-note-chat': AI_NOTE_CHAT,
 }

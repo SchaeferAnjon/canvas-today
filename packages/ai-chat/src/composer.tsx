@@ -297,6 +297,8 @@ export interface AiInputProps {
   lead?: Lead | null
   /** 三颗；不给就没有（只留「+」和发送） */
   picks?: PicksProps | null
+  /** 底行「+」后面宿主自己画的那几颗（画布今日：谁来答 · 模型 · 想多久，菜单是它自己的，只管这一段对话）；给了就不画 picks */
+  bar?: ReactNode
   running: boolean
   sendDisabled?: boolean
   sendTip?: string
@@ -584,7 +586,7 @@ export function AiInput(p: AiInputProps) {
           <button className="pick add" aria-label={t('加图')} data-tip={t('加图')} data-side="above" onClick={() => void c.pickImages()}>
             <Icon name="add" size={14} />
           </button>
-          {p.picks && (p.picks.none ? <NoAi onSetup={p.picks.none.onSetup} /> : <AiPicks {...p.picks} />)}
+          {p.bar ?? (p.picks && (p.picks.none ? <NoAi onSetup={p.picks.none.onSetup} /> : <AiPicks {...p.picks} />))}
           <span className="k" data-testid="ai-hint">
             {hint}
           </span>

@@ -12,6 +12,7 @@ import { basename, dirname, join, relative, resolve, sep } from 'node:path'
 import { isMcRecord, merge3, prop } from '@cn/format'
 import { type FileTask, type Habit, isHabitPath, keyOf, parseHabit, type RingBy, sameTasks, scanTasks } from '@cn/tasks'
 import type { HabitView, NoteView, Snapshot, TaskView } from '../shared/api'
+import { feedsSrcOf } from '../shared/feeds-link'
 import { mcSrcOf } from '../shared/mc'
 
 const SKIP_DIRS = new Set(['.git', 'node_modules', '.trash', '.obsidian'])
@@ -170,6 +171,7 @@ export class TaskVault {
           // 谁来响：镜像进系统提醒事项的标成 reminders，我们自己就不排通知
           ringBy: this.ringByOf(t.task.id),
           mc: mc && mcSrcOf(t.raw, t.task.title, mc),
+          feeds: feedsSrcOf(t.task.title),
         })
       }
     }

@@ -2,9 +2,17 @@
 // 真跑钩子那条命令（curl，从标准输入给钩子的 JSON），软件放行了它才结束
 import { execFile } from 'node:child_process'
 import { describe, expect, it } from 'vitest'
-import { claudeArgs, GATE_TOOLS, writeGate } from '../src/engines'
+import { claudeArgs, GATE_ALL_TOOLS, GATE_TOOLS, writeGate } from '../src/engines'
 
 const hookOf = (settings: string) => (JSON.parse(settings) as { hooks: { PreToolUse: { matcher: string; hooks: { command: string; timeout: number }[] }[] } }).hooks.PreToolUse[0]!
+
+/** 跑钩子，拿它打到标准输出的（Claude Code 读这一段认放不放行） */
+function hookOut(command: string, input: unknown): Promise<string> {
+  return new Promise((done, fail) => {
+    const p = execFile('/bin/sh', ['-c', command], (e, out) => (e ? fail(e) : done(out)))
+    p.stdin!.end(JSON.stringify(input))
+  })
+}
 
 function runHook(command: string, input: unknown): Promise<number> {
   const at = Date.now()
@@ -48,6 +56,28 @@ describe('writeGate', () => {
     expect(await runHook(cmd, { tool_name: 'Write', tool_input: {} })).toBeLessThan(5000)
     gate.close()
     expect(await runHook(cmd, { tool_name: 'Write', tool_input: { file_path: '/x' } })).toBeLessThan(5000)
+  })
+
+  it('手机全能模式给了 beforeTool：跑命令也拦；不放行时钩子打出 PreToolUse 的 deny 和原因，放行时什么都不打；问到的是这一步的工具、参数、编号', async () => {
+    const asked: [string, Record<string, unknown>, string | undefined][] = []
+    const gate = await writeGate(undefined, async (tool, input, id) => {
+      asked.push([tool, input, id])
+      return String(input.command ?? '').startsWith('rm ') ? '用户在手机上没点头，这一步没做' : null
+    })
+    try {
+      const h = hookOf(gate.settings)
+      expect(h.matcher).toBe(GATE_ALL_TOOLS)
+      expect(GATE_ALL_TOOLS.split('|')).toContain('Bash')
+      const denied = JSON.parse(await hookOut(h.hooks[0]!.command, { tool_name: 'Bash', tool_input: { command: 'rm 甲.md' }, tool_use_id: 'toolu_1' }))
+      expect(denied).toEqual({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: '用户在手机上没点头，这一步没做' } })
+      expect(await hookOut(h.hooks[0]!.command, { tool_name: 'Bash', tool_input: { command: 'ls' }, tool_use_id: 'toolu_2' })).toBe('')
+      expect(asked).toEqual([
+        ['Bash', { command: 'rm 甲.md' }, 'toolu_1'],
+        ['Bash', { command: 'ls' }, 'toolu_2'],
+      ])
+    } finally {
+      gate.close()
+    }
   })
 
   it('全能模式给了钩子设置：命令行带 --settings', () => {

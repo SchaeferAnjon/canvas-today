@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { type ChatCtx, chatPrompt, chatTitle, type CtxTask, fakeChatAnswer, historyText, looksLikePlan, pickTasks, readChat, type TodayMsg } from '../src/shared/ai-chat'
+import { CHAT_SYSTEM, type ChatCtx, chatPrompt, chatTitle, type CtxTask, fakeChatAnswer, historyText, looksLikePlan, pickTasks, readChat, type TodayMsg } from '../src/shared/ai-chat'
 
 const task = (id: string, o: Partial<CtxTask>): CtxTask => ({ id, key: `k-${id}`, title: id, path: '课程/作业.md', line: 1, raw: `- [ ] ${id}`, date: null, time: null, prio: 0, subs: [], child: false, ...o })
 
@@ -39,6 +39,18 @@ describe('AI 对话：问的话', () => {
       { id: 3, role: 'ai', time: 3, text: '', error: '退出了' },
     ]
     expect(historyText(msgs)).toBe('用户：排一下\n你：排好了（用户收下了1条）\n你：（这一问没答上）')
+  })
+  it('前几轮里带过图的那一句写上附了几张（图不再重发）', () => {
+    const name = '0123abcd-0000-4000-8000-0123456789ab.png'
+    const msgs: TodayMsg[] = [{ id: 1, role: 'user', time: 1, text: '照①②排', mats: [{ kind: 'image', name, src: '粘贴的图' }, { kind: 'image', name, src: '粘贴的图' }] }]
+    expect(historyText(msgs)).toBe('用户：照①②排（附了2张图）')
+  })
+  it('规矩里说了附图怎么用：图里的课当占着的时间，图里的新事只在 say 里说', () => {
+    expect(CHAT_SYSTEM).toContain('用户附了图（课表、通知、聊天截图）')
+  })
+  it('假 AI 带图时先说看到了几张', () => {
+    expect(JSON.parse(fakeChatAnswer('你好', ctx, 3)).say).toMatch(/^看到了3张图。/)
+    expect(JSON.parse(fakeChatAnswer('你好', ctx)).say).not.toContain('看到了')
   })
 })
 
@@ -107,6 +119,7 @@ describe('AI 对话：杂项', () => {
   it('对话名：第一句去掉「帮我」，最多 16 个字', () => {
     expect(chatTitle('帮我把这周的作业排进空着的时间')).toBe('把这周的作业排进空着的时间')
     expect(chatTitle('请把下周所有的论文相关的事情都排进上午的空档里')).toBe('把下周所有的论文相关的事情都排进…')
+    expect(chatTitle('①②③照这三张截图排作业')).toBe('照这三张截图排作业')
   })
   it('⌘K 里像要排日程的话', () => {
     for (const s of ['把这周的作业排好', '明天太满了，帮我挪一挪', '收件箱按优先级', 'Reschedule my week', 'Prioritize the inbox']) expect(looksLikePlan(s)).toBe(true)

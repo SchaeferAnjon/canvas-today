@@ -1455,11 +1455,12 @@ select.sel {
 }
 
 /* ---------- 四象限 ---------- */
+/* 四格等宽等高：minmax(0, 1fr)（1fr 是 minmax(auto, 1fr)，最小宽是里面最长的那一行，长标题把一列撑宽、另一列挤成一条，r162） */
 .quad {
   flex: 1;
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  grid-template-rows: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
   gap: 10px;
   padding: 4px 24px 20px;
   min-height: 0;
@@ -1471,6 +1472,7 @@ select.sel {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  min-width: 0;
   background: var(--card);
 }
 .q .qh {
@@ -1482,6 +1484,13 @@ select.sel {
 .q .qh b {
   font-weight: 600;
   font-size: 14px;
+  white-space: nowrap;
+}
+.q .qh .t3 {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 .q .qn {
   width: 20px;
@@ -1508,6 +1517,23 @@ select.sel {
 }
 .q .row {
   height: 34px;
+}
+/* 格子窄（窗口窄、右栏开着）时标题优先：先收笔记名，再窄收日子，标题至少留几个字 */
+.q {
+  container-type: inline-size;
+}
+.q .row .rt {
+  min-width: 5em;
+}
+@container (max-width: 340px) {
+  .q .row .acc.note {
+    display: none;
+  }
+}
+@container (max-width: 220px) {
+  .q .row .acc.when {
+    display: none;
+  }
 }
 
 /* ---------- AI（原型 detail() 的 .ai、calView 的 .aibar）：虚线框，先给看，收下才写 ---------- */
@@ -2717,42 +2743,29 @@ select.sel {
   color: var(--t3);
   flex: none;
 }
+/* 输入框（@cn/ai-chat 的 AiInput，样子在它的 composer.css，和画布笔记同一个）外面一层：菜单、提示从这里往上弹，左右对齐输入框（外边距 12） */
 .aim-in {
   flex: none;
-  margin: 8px 12px 12px;
-  padding: 8px 10px 6px;
-  border-radius: 12px;
-  background: var(--card);
-  box-shadow:
-    0 0 0 1px var(--line2),
-    0 1px 3px rgba(0, 0, 0, 0.04);
   position: relative;
 }
-.aim-in .ta {
-  display: block;
-  width: 100%;
-  min-height: 38px;
-  max-height: 140px;
-  padding: 2px;
-  border: 0;
-  outline: 0;
-  resize: none;
-  background: transparent;
-  color: var(--t1);
-  font: inherit;
-}
-.aim-in .ta::placeholder {
-  color: var(--t3);
-}
-.aim-in .ft {
-  display: flex;
-  align-items: center;
+.aim-in .aiin .ft {
   gap: 2px;
-  min-height: 28px;
-  font-size: 12px;
 }
-.aim-in .ft .sp {
-  flex: 1;
+.aim-note {
+  position: absolute;
+  left: 12px;
+  bottom: calc(100% - 2px);
+  z-index: 20;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--card);
+  box-shadow: var(--shadow-up);
+  font-size: 12px;
+  color: var(--t2);
+}
+/* 带图的那一句：气泡里字在上、一行一张小图在下（MatMsg） */
+.aim-u.aim-um {
+  white-space: normal;
 }
 .aim-pick {
   display: inline-flex;
@@ -2771,25 +2784,11 @@ select.sel {
 .aim-pick > .ci:last-child {
   color: var(--t3);
 }
-.aim-in .send {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  background: var(--fill2);
-  color: var(--t3);
-  flex: none;
-}
-.aim-in .send.on {
-  background: var(--solid);
-  color: var(--solid-t);
-}
 .aim-menu {
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: calc(100% + 6px);
+  left: 12px;
+  right: 12px;
+  bottom: calc(100% - 2px);
   padding: 6px;
   border-radius: 12px;
   background: var(--pop);

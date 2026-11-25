@@ -83,8 +83,8 @@ export interface GitState {
   branch: string | null
   /** 库正在 rebase / merge（同步的 pull --rebase 途中，或终端里做到一半）：底栏写「正在同步」，提交、同步先不让点 */
   busy: 'rebase' | 'merge' | null
-  /** 没提交的文件 */
-  changes: { path: string; code: string }[]
+  /** 没提交的文件；internal：软件自己的文件（主进程照 @cn/git 的 isInternalPath 标） */
+  changes: { path: string; code: string; internal?: boolean }[]
   /** 本周（周一起）的提交数 */
   weekCommits: number
   hasRemote: boolean
@@ -111,8 +111,11 @@ export interface CommitInfo {
   hash: string
   date: string
   subject: string
-  /** exists：这个路径现在库里还有文件（历史面板右键「打开」能不能点）；只有 history() 给 */
-  files: { path: string; added: number; removed: number; exists?: boolean }[]
+  /**
+   * exists：这个路径现在库里还有文件（历史面板右键「打开」能不能点）；internal：是软件自己的文件（主进程照 @cn/git 的 isInternalPath 标，
+   * 界面不另写名单、也引不了 @cn/git）。两样都只有 history() 给
+   */
+  files: { path: string; added: number; removed: number; exists?: boolean; internal?: boolean }[]
 }
 
 /** 历史里「放回」（CN-108）：放回了哪几篇（原处有同名的放成「名字 2」，to 和 from 不同），共同的文件夹，放回那次的提交号 */
@@ -329,14 +332,18 @@ export interface CnApi {
   trashFiles(paths: string[]): Promise<void>
   /** 速记：一句话进收件箱，返回新文件路径 */
   capture(text: string): Promise<string>
-  /** 网页里剪的一段进收件箱（带来源），返回新文件路径 */
-  clipToInbox(clip: Clip): Promise<string>
+  /** 网页里剪的一段进收件箱（带来源），返回新文件路径；folder：这个网站选了剪进一个文件夹（'' 是库的最外层），卡片进它 */
+  clipToInbox(clip: Clip & { folder?: string }): Promise<string>
+  /** 网页右键图「剪成卡片」：收件箱（或 folder）新建一张卡片，图存进它的附件；alt 是图注，title、url 是来源一行（回到那张图） */
+  clipImageCard(c: { src: string; alt: string; title: string; url: string; name?: string; folder?: string }): Promise<string>
+  /** 网页上剪成卡片的那几张（frontmatter 的 source 是这一页，# 后面不算）：网页上打 💬 */
+  webCards(url: string): Promise<{ path: string; text: string }[]>
   /**
    * 整页剪藏右栏开着的网页（AI 的 /剪藏这一页、网页面板的剪刀按钮都用它）：正文转成 md 进收件箱新的一篇，
    * frontmatter 带 created 和 source，单独一次提交（可撤回）；返回新文件的库内路径和那次提交（AI 的回答下面画「改了1个文件 · 撤回」用）。
-   * webUrl 是右栏开着的网址：当前网页不是它时，找开着这个网址的那个标签剪。
+   * webUrl 是右栏开着的网址：当前网页不是它时，找开着这个网址的那个标签剪。folder：这个网站选了剪进一个文件夹时进它（不给进收件箱）。
    */
-  clipCurrentPage(arg?: { webUrl?: string | null }): Promise<{ path: string; commit: CommitInfo | null }>
+  clipCurrentPage(arg?: { webUrl?: string | null; folder?: string | null }): Promise<{ path: string; commit: CommitInfo | null }>
   /** Chrome 的用户（导入登录用） */
   chromeProfiles(): Promise<{ id: string; name: string; account?: string }[]>
   /** 把 Chrome 某个用户的登录状态导入内置浏览器 */
@@ -401,6 +408,10 @@ export interface CnApi {
   boardCommit(paths: string[], message: string): Promise<string | null>
   /** 撤回 boardCommit 那一次（反向提交） */
   boardRevert(hash: string): Promise<string>
+  /** 白板笔迹（附件/<白板>/笔迹.ink，@cn/format 的 ink.ts）的全文；没有这个文件是 '' */
+  inkRead(notePath: string): Promise<string>
+  /** 写白板笔迹（盘上的和 base 不一样先按编号合并），写完提交这一个文件 */
+  inkWrite(notePath: string, text: string, base: string, message: string): Promise<InkWriteResult>
   /** 数据库一次改好几篇（关联两边写、补上对不上的、撤回）：before 和盘上不一样就一篇都不写；写好一次提交 */
   baseWrite(writes: { path: string; before: string; after: string }[], message: string): Promise<BaseWriteResult>
   /** 数据库 AI 列（task-i921u）：跑一批（一次 3 格，写好一格存一格，跑完或停下一次提交）、停下、撤回这一批 */
@@ -885,4 +896,11 @@ export interface AiPrefsView {
 export interface StrandedNote {
   path: string
   stash: string | null
+}
+
+/** 写白板笔迹的结果：写进去的全文（合并过就是合好的）、是不是和外面改的合过、提交号（库不是 Git 仓库是 null） */
+export interface InkWriteResult {
+  text: string
+  merged: boolean
+  commit: string | null
 }

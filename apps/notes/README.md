@@ -2,6 +2,7 @@
 
 Canvas Today 的样子和 Canvas Notes（画布笔记）一样，下面这些文件原样拷自 [SchaeferAnjon/canvas-notes](https://github.com/SchaeferAnjon/canvas-notes) 的同一路径（导出时顺着 Canvas Today 源码的 import 自动找出来的）。要改请去那边改，这里在下一次导出时会被换掉。
 
+- `apps/notes/e2e/fixtures/png.ts`
 - `apps/notes/src/main/agent/recover.ts`
 - `apps/notes/src/main/agent/store.ts`
 - `apps/notes/src/main/family.ts`
@@ -56,12 +57,14 @@ Canvas Today 的样子和 Canvas Notes（画布笔记）一样，下面这些文
 - `apps/notes/src/shared/i18n/en/doc.ts`
 - `apps/notes/src/shared/i18n/en/dream-judge.ts`
 - `apps/notes/src/shared/i18n/en/editor.ts`
+- `apps/notes/src/shared/i18n/en/feeds.ts`
 - `apps/notes/src/shared/i18n/en/feynman-after.ts`
 - `apps/notes/src/shared/i18n/en/feynman-board.ts`
 - `apps/notes/src/shared/i18n/en/file-text.ts`
 - `apps/notes/src/shared/i18n/en/find.ts`
 - `apps/notes/src/shared/i18n/en/folder.ts`
 - `apps/notes/src/shared/i18n/en/growth.ts`
+- `apps/notes/src/shared/i18n/en/ink.ts`
 - `apps/notes/src/shared/i18n/en/mcp.ts`
 - `apps/notes/src/shared/i18n/en/meetcaption.ts`
 - `apps/notes/src/shared/i18n/en/menus.ts`

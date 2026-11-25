@@ -251,6 +251,7 @@ function Desk() {
       },
       openNote: (path, line) =>
         void window.ct.openNote(path, line).then((r) => (!r.ok ? show(t('noNotesApp')) : r.by === 'default' ? show(t('openedNoteDefault', note(path))) : show(line === undefined ? t('openedNoteOnly', note(path)) : t('openedNote', note(path), line + 1)))),
+      openFeeds: (x) => void (x.feeds && window.ct.openFeeds(x.feeds.url).then((r) => !r.ok && show(t('noFeedsApp')))),
       mcJump: (x) =>
         void window.ct.mcJump(x.key).then((r) => (!r.ok ? show(t('noNotesApp')) : r.by === 'default' ? show(t('openedNoteDefault', note(x.path))) : show(t('mcJumped', note(x.path), x.mc?.clock ?? '')))),
       mcStart: (key, name) =>

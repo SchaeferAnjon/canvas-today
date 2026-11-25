@@ -75,6 +75,12 @@ export interface EngineRun {
    * path 是它给的路径（绝对的）。只有 Claude Code 认（PreToolUse 钩子），别家照常直接写
    */
   beforeWrite?(path: string): Promise<void>
+  /**
+   * 全能模式下命令行自己的一步（跑命令、写文件……）做之前问一声（手机全能模式：删文件、推送、跑改库外东西的命令先在手机上点头）：
+   * 返回 null 照做，返回一句话就不做、把这句话交给 AI 当原因。id 是这一步的编号（和 onStep 的 id 一样，命令行给了才有）。
+   * 只有 Claude Code 认（PreToolUse 钩子），别家不认：调的人只在 Claude Code 上给它
+   */
+  beforeTool?(tool: string, input: Record<string, unknown>, id?: string): Promise<string | null>
   signal: AbortSignal
   onText(delta: string): void
 }
@@ -222,10 +228,14 @@ function mcpConfigFile(mcp: NonNullable<EngineRun['mcp']>): { path: string; remo
 /**
  * 全能模式下 Claude Code 自己写文件前等软件点头（EngineRun.beforeWrite）：这一轮起一个只听本机的小服务，
  * PreToolUse 钩子用 curl 把要写的那一步（JSON 从标准输入来）发过去，软件放行了才回、钩子才结束、它才写。
- * 口令写在只有自己能读的临时文件里（不放在命令行上）；curl 连不上、超时都当放行（钩子出错不挡它写）。返回 --settings 的那段 JSON
+ * 口令写在只有自己能读的临时文件里（不放在命令行上）；curl 连不上、超时都当放行（钩子出错不挡它写）。返回 --settings 的那段 JSON。
+ * 给了 tool（EngineRun.beforeTool）：跑命令那几步也先问，不放行的回一段 PreToolUse 的 JSON（permissionDecision deny + 原因），
+ * 钩子把它原样打到标准输出，Claude Code 就不做这一步、把原因交给 AI（bypassPermissions 下钩子照样管用）
  */
 export const GATE_TOOLS = 'Write|Edit|MultiEdit|NotebookEdit'
-export async function writeGate(before: (path: string) => Promise<void>): Promise<{ settings: string; close(): void }> {
+/** 给了 beforeTool 时钩子管的那几步：写文件的几样 + 跑命令 */
+export const GATE_ALL_TOOLS = 'Bash|Write|Edit|MultiEdit|NotebookEdit'
+export async function writeGate(before?: (path: string) => Promise<void>, tool?: EngineRun['beforeTool']): Promise<{ settings: string; close(): void }> {
   const secret = randomBytes(18).toString('hex')
   const server = createServer((req, res) => {
     if (req.method !== 'POST' || req.headers.authorization !== `Bearer ${secret}`) {
@@ -239,18 +249,30 @@ export async function writeGate(before: (path: string) => Promise<void>): Promis
     })
     req.on('end', () => {
       let path = ''
+      let hook: { tool_name?: unknown; tool_input?: Record<string, unknown>; tool_use_id?: unknown } = {}
       try {
-        const input = (JSON.parse(body) as { tool_input?: { file_path?: unknown; notebook_path?: unknown } }).tool_input
-        const p = input?.file_path ?? input?.notebook_path
+        hook = JSON.parse(body) as typeof hook
+        const p = hook.tool_input?.file_path ?? hook.tool_input?.notebook_path
         if (typeof p === 'string') path = p
       } catch {
         // 不是钩子的 JSON：照放行
       }
-      if (!path) return void res.end()
-      // 等不到（这一轮停下了）也回：停下时命令行进程已经被结束，回不回都一样
-      before(path).then(
-        () => res.end(),
-        () => res.end(),
+      const name = typeof hook.tool_name === 'string' ? hook.tool_name : ''
+      // 先问能不能做（手机点头），能做再等别的对话写完同一个文件
+      const asked = tool && name ? tool(name, hook.tool_input ?? {}, typeof hook.tool_use_id === 'string' ? hook.tool_use_id : undefined) : Promise.resolve(null)
+      asked.then(
+        async (deny) => {
+          if (deny) {
+            const out = JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: deny } })
+            res.setHeader('content-type', 'application/json')
+            return void res.end(out)
+          }
+          // 等不到（这一轮停下了）也回：停下时命令行进程已经被结束，回不回都一样
+          if (path && before) await before(path).catch(() => undefined)
+          res.end()
+        },
+        // 问出了错：不做（宁可不做，也不在没点头时动手）；不翻：交给 AI 的原因
+        () => res.end(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: 'Mac 那边没问成，这一步没做' } })),
       )
     })
   })
@@ -259,8 +281,9 @@ export async function writeGate(before: (path: string) => Promise<void>): Promis
   const dir = mkdtempSync(join(tmpdir(), 'cn-gate-'))
   const auth = join(dir, 'auth')
   writeFileSync(auth, `Authorization: Bearer ${secret}`, { mode: 0o600 })
-  const command = `curl -s -m 3600 -X POST -H @'${auth}' --data-binary @- http://127.0.0.1:${port}/ >/dev/null; exit 0`
-  const settings = JSON.stringify({ hooks: { PreToolUse: [{ matcher: GATE_TOOLS, hooks: [{ type: 'command', command, timeout: 3600 }] }] } })
+  // 只写文件那几步：回的话扔掉；带 tool 时回的话（不放行的 JSON）就是钩子的输出
+  const command = tool ? `curl -s -m 3600 -X POST -H @'${auth}' --data-binary @- http://127.0.0.1:${port}/; exit 0` : `curl -s -m 3600 -X POST -H @'${auth}' --data-binary @- http://127.0.0.1:${port}/ >/dev/null; exit 0`
+  const settings = JSON.stringify({ hooks: { PreToolUse: [{ matcher: tool ? GATE_ALL_TOOLS : GATE_TOOLS, hooks: [{ type: 'command', command, timeout: 3600 }] }] } })
   return {
     settings,
     close: () => {
@@ -401,7 +424,7 @@ export function claudeEngine(command?: string, prefix: string[] = []): Engine {
       const once = async (resume: string | undefined): Promise<EngineOutcome> => {
         const config = r.mcp ? mcpConfigFile(r.mcp) : null
         // 全能模式的 AI 对话：自己写文件前等软件点头（同一个文件同一时间只让一段对话写）
-        const gate = r.omni && r.beforeWrite && !r.appendSystem && (!r.mcp || config) ? await writeGate(r.beforeWrite) : null
+        const gate = r.omni && (r.beforeWrite || r.beforeTool) && !r.appendSystem && (!r.mcp || config) ? await writeGate(r.beforeWrite, r.beforeTool) : null
         try {
           const text = withHistory(r, !resume)
           return await runClaude(exe, [...prefix, ...claudeArgs(r, resume, config?.path, gate?.settings)], r.images?.length ? claudeImageMessage(text, r.images) : text, r)

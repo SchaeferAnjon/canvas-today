@@ -552,7 +552,7 @@ export const SETTINGS: Table = {
   '缩到0.8，白板不被右栏挡住': 'Shrinks to 0.8 so the right sidebar doesn’t cover the board',
   '本机小模型在后台建索引，搜「冰岛的冬天」也找得到「雷克雅未克一月」；不联网': 'A small on-device model indexes in the background, so “winter in Iceland” also finds “Reykjavík in January”; stays offline',
   '新笔记放哪': 'New notes go to',
-  '{k:new-note}、速记、剪藏没选地方时': 'For {k:new-note}, quick notes and clippings without a chosen place',
+  '{k:new-note}和新建白板用；剪藏去哪在网页地址栏里选，速记进收件箱': 'Used by {k:new-note} and new boards; where clips go is picked in the web address bar, quick notes go to the Inbox',
   '图片和附件放在': 'Images and attachments go to',
   '附件/<笔记路径>/ · 改名、挪动笔记时跟着走，梦游也认这个规矩，所以不能改': 'Kept in the attachments folder under the note’s path; follows notes when renamed or moved, and Dreaming relies on it, so it can’t change',
   '文件树里显示待办': 'Show to-dos in the file tree',

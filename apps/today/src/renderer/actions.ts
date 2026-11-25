@@ -33,6 +33,8 @@ export interface Actions {
   openNote(path: string, line?: number): void
   /** MeetCaption 写的那一条：在画布笔记里打开那一篇、到那一秒（canvas-notes://open?file=&t=） */
   mcJump(t: TaskView): void
+  /** 画布订阅写进来的稍后读：打开画布订阅的那一篇 */
+  openFeeds(t: TaskView): void
   /** 今日页那节课旁边「开字幕」：走 meetcaption://start；name 是课名（提示条用） */
   mcStart(key: string, name: string): void
   menu(t: TaskView): void

@@ -5,6 +5,7 @@
  * 收下才写进库（main/edits.ts 的 applyPlan：一次改动、一次提交、能撤销）。纯函数，单元测试 test/ai-chat.test.ts。
  */
 import type { EngineId } from '../../../notes/src/shared/agent'
+import type { Material } from '@cn/ai-chat/materials'
 import { addDays, isISODate, type ISODate, minutesOf, normTime, type Prio, weekday } from '@cn/tasks'
 
 /** 交给 AI 看的一条待办：id 是这一问里的短编号（t1、t2…），AI 照抄；key、line、raw 是收下时认那一行用的 */
@@ -89,6 +90,8 @@ export interface TodayMsg {
   role: 'user' | 'ai'
   time: number
   text: string
+  /** 用户这句带的图（输入框里贴的、拖进来的、「+」选的；画布笔记 StoredMsg.mats 同一个写法）：text 里的 ①② 是它们的位置 */
+  mats?: Material[]
   engine?: EngineId
   /** 「Claude Code · Opus 5.5 · High」 */
   by?: string
@@ -119,6 +122,7 @@ export const CHAT_SYSTEM = `你是「画布今日」里帮人安排待办的助�
 - 有钟点的一件事按 60 分钟算：不能和日程重叠，彼此也不重叠，也不和已经有钟点的待办重叠；一般在 08:00 到 21:00 之间；今天的不早于现在。
 - 优先级：3 高（⏫）、2 中（🔼）、1 低（🔽）、0 不设。
 - 拆小步：3 到 6 步，动词开头，每步不超过 20 个字，已经有的子任务不再写。
+- 用户附了图（课表、通知、聊天截图）：从图里读出日子和钟点，图里的课和安排当作已经占着的时间，和日程一样不能撞；图里有要新加的事，在 say 里说现在还加不了。
 - 用户只是问问题、不用改的，changes 给空数组。
 - say 和 keep 用用户说话的语言。`
 
@@ -130,7 +134,10 @@ const hm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${Stri
 export function historyText(msgs: readonly TodayMsg[], keep = 8): string {
   const out: string[] = []
   for (const m of msgs.slice(-keep)) {
-    if (m.role === 'user') out.push(`用户：${m.text}`)
+    if (m.role === 'user') {
+      const n = m.mats?.filter((x) => x.kind === 'image').length ?? 0
+      out.push(`用户：${m.text}${n ? `（附了${n}张图）` : ''}`)
+    }
     else if (m.error) out.push('你：（这一问没答上）')
     else {
       const p = m.plan
@@ -303,9 +310,10 @@ export function readChat(answer: string, ctx: ChatCtx): ChatReply | null {
   return { say: say || (changes.length ? '' : '这次没有要改的。'), changes, dropped, ...(keep ? { keep } : {}) }
 }
 
-/** 对话的名字：第一句话（去掉「帮我」「请」这类开头），最多 16 个字 */
+/** 对话的名字：第一句话（去掉「帮我」「请」这类开头、图的编号 ①②），最多 16 个字 */
 export function chatTitle(first: string): string {
   const s = first
+    .replace(/[①-⑳]/g, '')
     .replace(/\s+/g, ' ')
     .replace(/^(请|麻烦|帮我|帮忙|能不能|可以)+/, '')
     .trim()
@@ -328,10 +336,11 @@ const FAKE_STEPS: Record<string, string[]> = {
   交论文初稿: ['通读一遍，改错字', '补参考文献格式', '导出 PDF', '发给导师'],
 }
 
-export function fakeChatAnswer(ask: string, ctx: ChatCtx): string {
+/** images：这一问带了几张图（假 AI 在 say 前面说一句「看到了 2 张图。」，e2e 看得出图交到了） */
+export function fakeChatAnswer(ask: string, ctx: ChatCtx, images = 0): string {
   const { now } = ctx
   const tom = addDays(now.date, 1)
-  const ans = (say: string, changes: Record<string, unknown>[], keep?: string) => JSON.stringify({ say, changes, ...(keep ? { keep } : {}) })
+  const ans = (say: string, changes: Record<string, unknown>[], keep?: string) => JSON.stringify({ say: `${images ? `看到了${images}张图。` : ''}${say}`, changes, ...(keep ? { keep } : {}) })
   if (ask.includes('撞日程')) {
     // 故意排到「和爸妈视频」那一小时：软件该把它挡下来
     const t = ctx.tasks.find((x) => x.date === now.date && !x.time)

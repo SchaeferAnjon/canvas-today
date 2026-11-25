@@ -488,4 +488,16 @@ export const SHELL: Table = {
   '「{name}」和它的笔记、{n}个可视化挪到了「{folder}」': (p) => `Moved “${p.name}” with its notes and ${count(p.n, 'visualization')} to “${p.folder}”`,
   '「{name}」和它的笔记挪到了「{folder}」': 'Moved “{name}” with its notes to “{folder}”',
   '「{name}」挪到了「{folder}」': 'Moved “{name}” to “{folder}”',
+
+  // ---------- 标题栏「+」（renderer/shell/NewEntry.tsx） ----------
+  新建文档: 'New doc',
+  '新建文档 · 放进「{name}」': 'New doc · into “{name}”',
+  '新建白板、数据库…': 'New board, database…',
+  新建数据库: 'New database',
+  '从模板…': 'From template…',
+  要先做模板: 'Templates come later',
+  放进: 'Into',
+  '放进「{name}」，点它换地方': 'Into “{name}”, click to change',
+  点它换地方: 'Click to change',
+  '放进哪个文件夹…': 'Put it in which folder…',
 }

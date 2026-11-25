@@ -1,7 +1,8 @@
 /**
  * 画布今日的主进程：打开和画布笔记同一个库、建索引、改库里那一行、提交、到点提醒、菜单栏、canvas-today:// 链接、检查更新。
  */
-import { app, BrowserWindow, dialog, ipcMain, autoUpdater as nativeUpdater, nativeTheme, shell } from 'electron'
+import { isFeedsUrl } from '../shared/feeds-link'
+import { app, BrowserWindow, dialog, ipcMain, autoUpdater as nativeUpdater, nativeImage, nativeTheme, session, shell, systemPreferences } from 'electron'
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, statSync } from 'node:fs'
 import { hostname, homedir, userInfo } from 'node:os'
@@ -32,6 +33,8 @@ import { calPrefsPath } from './cal-hidden'
 import { CalendarLink } from './calendar'
 import { addSubtasks, addTask, applyEdit, applyPlan, ensureTaskId, newList, setTimes } from './edits'
 import { TodayChats } from './ai-chat'
+import { checkMaterials, imageNames, withMaterials } from '@cn/ai-chat/materials'
+import { PASTED_PICK_EXTS } from '@cn/ai-engines'
 import { ENGINE_LABEL, pickLabel } from '@cn/ai-engines/shared'
 import { FocusTimer } from './focus'
 import { habitEdit } from './habits'
@@ -52,10 +55,15 @@ import { pathTitle } from '../shared/quick'
 import { cntToday } from '../shared/views'
 import { TaskVault } from './vault'
 import { RECYCLE_DIR, sweepTemps } from '@cn/atomic'
+import { capQuitWait, disableSlowFeatures, flushSessions, skipWindowRestore } from '@cn/quit-fast'
 
 app.setPath('userData', process.env.CT_USER_DATA || join(app.getPath('appData'), BRAND.userDataDir))
 app.setName(BRAND.name)
 guardScreen()
+// 退出时会在后台优先级的线程上写盘的 Chromium 功能不开：盘忙时它们写不完，退出就一直等（packages/quit-fast，和画布笔记一样）
+disableSlowFeatures(app.commandLine)
+// 不读、不存 AppKit 的窗口状态（窗口是自己建的，用不上）：上次退出被结束过，这次开起来就去问系统要「崩溃数据」，盘忙时一分钟不回话，退出跟着等
+skipWindowRestore(systemPreferences)
 
 const preload = () => join(__dirname, '../preload/index.js')
 const notesDir = notesDataDir(homedir())
@@ -545,6 +553,17 @@ function registerIpc() {
     return mc!.startKey(key)
   })
   ipcMain.handle('ct:mcOpenLive', () => mc!.openLive())
+  // 画布订阅写进来的稍后读：打开画布订阅那一篇（只放过 canvas-feeds://item/）
+  ipcMain.handle('ct:openFeeds', async (_e, url: unknown) => {
+    if (!isFeedsUrl(url)) throw new Error('不是画布订阅的链接')
+    try {
+      await shell.openExternal(url)
+      return { ok: true }
+    } catch (e) {
+      console.error('打不开画布订阅', e)
+      return { ok: false }
+    }
+  })
   ipcMain.handle('ct:mcJump', async (_e, key: unknown) => {
     if (typeof key !== 'string') throw new Error('哪一条不对')
     const t = needVault()
@@ -784,21 +803,39 @@ function registerIpc() {
     chats.setPick(v.root, chatId(id), pick)
     return chats.pickFor(v.root, chatId(id))
   })
-  ipcMain.handle('ct:chatAsk', async (_e, id: unknown, text: unknown, jobId: unknown) => {
+  // 输入框里贴的图（@cn/ai-chat 的输入框，和画布笔记同一个）：存进 pasted/、底行「+」选图、界面上显示用的 data: 网址
+  ipcMain.handle('ct:chatPaste', (_e, bytes: unknown, mime: unknown) => chats.pasted.save(bytes, mime))
+  ipcMain.handle('ct:chatPickImages', async (_e, room: unknown) => {
+    const n = typeof room === 'number' && room > 0 ? Math.floor(room) : 0
+    if (!n) return []
+    const zh = lang() === 'zh'
+    const r = await dialog.showOpenDialog(win!, { title: zh ? '加图' : 'Add images', properties: ['openFile', 'multiSelections'], filters: [{ name: zh ? '图片' : 'Images', extensions: PASTED_PICK_EXTS }] })
+    if (r.canceled) return []
+    return chats.pasted.addFiles(r.filePaths, n, (raw, file) => {
+      const img = nativeImage.createFromBuffer(Buffer.from(raw))
+      if (img.isEmpty()) throw new Error(zh ? `「${file}」读不出来，换一张 PNG 或 JPEG` : `Can’t read “${file}”, try a PNG or JPEG`)
+      return img.toPNG()
+    })
+  })
+  ipcMain.handle('ct:chatPasted', (_e, name: unknown) => chats.pasted.dataUrl(name))
+  ipcMain.handle('ct:chatAsk', async (_e, id: unknown, text: unknown, jobId: unknown, mats: unknown) => {
     const cid = chatId(id)
     if (typeof text !== 'string' || !text.trim() || text.length > 4000) throw new Error('对话的参数不对')
+    // 画布今日的输入框只收图（没有引用一段）：只认图那几块
+    const pics = checkMaterials(mats)?.filter((x) => x.kind === 'image')
+    const images = await chats.pasted.images(imageNames(pics))
     const v = needVault()
     const { msgs } = chats.load(v.root, cid)
     const before = msgs.slice()
     const nextId = () => (msgs.length ? Math.max(...msgs.map((m) => m.id)) + 1 : 1)
-    msgs.push({ id: nextId(), role: 'user', time: now(), text: text.trim() })
+    msgs.push({ id: nextId(), role: 'user', time: now(), text: text.trim(), ...(pics?.length ? { mats: pics } : {}) })
     const title = before.length ? undefined : chatTitle(text)
     chats.save(v.root, cid, msgs, title)
     const { pick, label } = chats.pickFor(v.root, cid)
     const j = job(jobId)
     try {
       const c = await chatCtx()
-      const r = await chats.ask(pick, c, before, text.trim(), join(app.getPath('userData'), 'ai-chat'), j.ac.signal)
+      const r = await chats.ask(pick, c, before, withMaterials(text.trim(), pics), join(app.getPath('userData'), 'ai-chat'), j.ac.signal, images)
       const plan: ChatPlan | undefined = r.changes.length || r.dropped.length ? { changes: r.changes, dropped: r.dropped, ...(r.keep ? { keep: r.keep } : {}), state: r.changes.length ? 'open' : 'dropped' } : undefined
       msgs.push({ id: nextId(), role: 'ai', time: now(), text: r.say, engine: pick.engine, by: label, seen: seenOf(c), ...(plan ? { plan } : {}), ...(r.keep && !plan ? { text: `${r.say}\n${r.keep}` } : {}) })
       chats.save(v.root, cid, msgs)
@@ -1214,6 +1251,8 @@ app.whenReady().then(async () => {
 
 // 关掉主窗口不退出：常驻菜单栏（关了菜单栏的照 macOS 习惯也留在程序坞里）
 app.on('will-quit', () => quick.dispose())
+// Chromium 收尾时最多等网络进程 10 秒，机器忙时常常等满：过 0.8 秒它还在就杀掉；主进程的 JS 走完 2 秒还没退（后台线程上的活卡住）就结束它（packages/quit-fast）
+app.on('will-quit', () => void capQuitWait(app, E2E ? join(app.getPath('userData'), 'quit-sh.log') : ''))
 
 app.on('window-all-closed', () => {
   if (quitting || E2E) app.quit()
@@ -1227,7 +1266,10 @@ app.on('before-quit', (e) => {
   mirror?.stop()
   mc?.stop()
   vault?.close()
-  // 退出前把排着的提交掉，最多等 5 秒
-  void Promise.race([committer.flush(), new Promise((r) => setTimeout(r, 5000))]).finally(() => app.quit())
+  // 退出前把排着的提交掉，最多等 5 秒；再把网页存储和 cookie 写盘：收尾时网络进程、主进程可能被直接结束（packages/quit-fast）
+  void Promise.race([committer.flush(), new Promise((r) => setTimeout(r, 5000))])
+    .catch((e) => console.error('退出前提交失败', e))
+    .then(() => flushSessions([session.defaultSession]))
+    .finally(() => app.quit())
 })
 

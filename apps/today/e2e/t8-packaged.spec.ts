@@ -72,13 +72,13 @@ test('打好的 Canvas Today.app：测试模式起得来，快速加、勾掉改
     await page.keyboard.press('Meta+,')
     await expect(page.getByTestId('update-line')).toContainText(`版本${VERSION}`)
     expect(await app.evaluate(() => Array.isArray((globalThis as unknown as { ctNotifs: unknown[] }).ctNotifs))).toBe(true)
-    // 包里的提醒事项小助手开得起来：连接提醒事项，带 🔔 的两条（交论文初稿、订冰岛租车）镜像进假提醒事项的「画布今日」
+    // 包里的提醒事项小助手开得起来：连接提醒事项，带 🔔 的两条（交论文初稿、订冰岛租车）和带钟点的那条（「提醒所有带钟点的待办」默认开）镜像进假提醒事项的「画布今日」
     await page.getByRole('dialog', { name: '设置' }).getByRole('navigation').getByRole('button', { name: '日历和提醒事项' }).click()
     const rem = page.locator('[data-row="rem"]')
     await rem.getByRole('button', { name: '连接提醒事项' }).click()
     await expect(rem).toContainText('已连接iCloud', { timeout: 15_000 })
     const mem = () => JSON.parse(readFileSync(join(root, 'rem.json'), 'utf8')) as { lists: { title: string }[]; items: { title: string }[] }
-    await expect.poll(() => mem().items.map((i) => i.title).sort(), { timeout: 15_000 }).toEqual(['交论文初稿', '订冰岛租车'])
+    await expect.poll(() => mem().items.map((i) => i.title).sort(), { timeout: 15_000 }).toEqual(['交论文初稿', '复习 Lecture05 的神经元结构图', '订冰岛租车'])
     expect(mem().lists.map((l) => l.title)).toEqual(['画布今日'])
   } finally {
     await app.close()
