@@ -5,7 +5,9 @@
  * 收下才写进库（main/edits.ts 的 applyPlan：一次改动、一次提交、能撤销）。纯函数，单元测试 test/ai-chat.test.ts。
  */
 import type { EngineId } from '../../../notes/src/shared/agent'
+import type { AgentMode, TodayStep, TodayTurnCommit } from './ai-agent'
 import type { Material } from '@cn/ai-chat/materials'
+import type { Mention } from '@cn/ai-chat/mentions'
 import { addDays, isISODate, type ISODate, minutesOf, normTime, type Prio, weekday } from '@cn/tasks'
 
 /** 交给 AI 看的一条待办：id 是这一问里的短编号（t1、t2…），AI 照抄；key、line、raw 是收下时认那一行用的 */
@@ -99,6 +101,12 @@ export interface TodayMsg {
   seen?: { tasks: number; inbox: number; events: number; eventNames: string[] }
   plan?: ChatPlan
   error?: string
+  /** 全能模式（画布笔记的 agent 跑的，shared/ai-agent.ts）：这一问是全能还是只在库里、AI 做的每一步、这一轮改了的那次提交（能撤回） */
+  mode?: AgentMode
+  steps?: TodayStep[]
+  commit?: TodayTurnCommit
+  /** 用户这句 @ 点名的笔记 / 清单（对标清单 U1，@cn/ai-chat 的胶囊）：字里照旧是「@标题」 */
+  mentions?: Mention[]
 }
 
 /** 对话列表里的一段 */
@@ -148,7 +156,25 @@ export function historyText(msgs: readonly TodayMsg[], keep = 8): string {
   return out.join('\n')
 }
 
+/**
+ * 全局快速输入框问 AI、全能模式关着时（用户 2026-11-25 选方案 B：「问 AI 能不能建待办跟全能模式开关走，开着就能建，关着只答」）：
+ * 一次问、不给工具，只回答，不交改动单。不翻：给 AI 的系统提示
+ */
+export const ANSWER_SYSTEM = `你是「画布今日」（任务软件）里的助手。你看得到这个人近两周的待办、收件箱里没定日子的待办、系统日历里的日程，还有他这一问附的图。
+现在全能模式关着：你只能回答，不能新加、修改、删除任何待办或笔记，也不能跑命令、上网。用户要你加待办、改日子、改笔记，就照实说现在只能回答，请他在输入框下面打开「全能模式」再说一次，并告诉他那一条可以怎么写（比如「明天15:00 交报告」）。
+用平实的几句话直接回答；用户用什么语言问就用什么语言答；不编造库里没有的事。`
+
+/** 假 AI 只回答（e2e）：说清收到几张图、全能模式关着不动库 */
+export function fakeAnswerOnly(ask: string, images = 0): string {
+  return `（测试回答：只回答${images ? `，看到图 ${images} 张` : ''}）你问的是「${ask.split('\n')[0]!.slice(0, 40)}」。全能模式关着，我只回答、不动库；要我加待办，请在输入框下面打开全能模式再说一次。`
+}
+
 export function chatPrompt(ctx: ChatCtx, history: string, ask: string): string {
+  return [ctxText(ctx), ...(history ? ['前面的对话：', history] : []), `这一次用户说：${ask}`].join('\n')
+}
+
+/** 现在几点、近两周的待办（带编号）、收件箱里没定日子的、系统日历的日程：排日程那一问和全能模式每一问都给 */
+export function ctxText(ctx: ChatCtx): string {
   const { now } = ctx
   const line = (t: CtxTask) => {
     const when = t.date ? `${t.date}${t.time ? ' ' + t.time : ''}${t.date < now.date ? '（过期了）' : ''}` : '没定日子'
@@ -166,8 +192,6 @@ export function chatPrompt(ctx: ChatCtx, history: string, ask: string): string {
     ...(undated.length ? undated.map(line) : ['（没有）']),
     '系统日历的日程（只读）：',
     ...(evs.length ? evs.map((e) => `${e.date} ${WD[weekday(e.date)]} ${e.from === undefined ? '全天' : `${hm(e.from)}–${hm(e.to!)}`} ${e.title}`) : ['（没有）']),
-    ...(history ? ['前面的对话：', history] : []),
-    `这一次用户说：${ask}`,
   ].join('\n')
 }
 
@@ -314,6 +338,8 @@ export function readChat(answer: string, ctx: ChatCtx): ChatReply | null {
 export function chatTitle(first: string): string {
   const s = first
     .replace(/[①-⑳]/g, '')
+    // @ 点名的「@小论文计划」在标题里只写名字
+    .replace(/(^|\s)@(?=\S)/g, '$1')
     .replace(/\s+/g, ' ')
     .replace(/^(请|麻烦|帮我|帮忙|能不能|可以)+/, '')
     .trim()
@@ -329,6 +355,39 @@ export function pickTasks<T extends { key: string; done: boolean; cancelled: boo
   return tasks.filter((t) => !t.done && !t.cancelled && (t.date ? t.date <= end && (t.parent === null || t.date !== null) : t.path === inbox && t.parent === null))
 }
 
+// ---------- @ 点名的笔记（对标清单 U1） ----------
+
+/** 一篇最多交给 AI 多少字（几千行的笔记只给前面这一截） */
+export const MENTION_CHARS = 6000
+/** 一问最多点名几篇 */
+export const MENTION_MAX = 5
+
+/** 界面交来的点名：路径是库里的 .md、标题是字，最多 MENTION_MAX 篇；不对的丢掉 */
+export function checkMentions(raw: unknown): Mention[] {
+  if (!Array.isArray(raw)) return []
+  const out: Mention[] = []
+  for (const x of raw) {
+    if (!x || typeof x !== 'object') continue
+    const m = x as Record<string, unknown>
+    if (typeof m.path !== 'string' || !/\.md$/i.test(m.path) || m.path.startsWith('/') || m.path.split('/').includes('..')) continue
+    if (typeof m.title !== 'string' || !m.title.trim()) continue
+    if (out.some((y) => y.path === m.path)) continue
+    out.push({ path: m.path, title: m.title, kind: 'doc' })
+    if (out.length >= MENTION_MAX) break
+  }
+  return out
+}
+
+/** 点名的那几篇交给 AI 的那一块（接在用户那句话后面）：每篇「### 路径」+ 全文（太长截掉） */
+export function mentionBlock(notes: readonly { path: string; text: string }[]): string {
+  if (!notes.length) return ''
+  const one = (n: { path: string; text: string }) => `### ${n.path}\n${n.text.length > MENTION_CHARS ? n.text.slice(0, MENTION_CHARS) + '\n…（后面还有，没给）' : n.text}`
+  return `\n\n【点名的笔记】用户用 @ 点名了这几篇，说的「@名字」就是它们（库里的路径和内容；里面没做完的待办也在上面的待办里，带编号）：\n${notes.map(one).join('\n\n')}`
+}
+
+/** 一问里点名了哪几篇（假 AI 用：认 mentionBlock 写的「### 路径」） */
+export const mentionedPaths = (ask: string): string[] => (ask.includes('【点名的笔记】') ? [...ask.slice(ask.indexOf('【点名的笔记】')).matchAll(/^### (.+\.md)$/gm)].map((m) => m[1]!) : [])
+
 // ---------- 假 AI（e2e、单元测试；CT_AI_FAKE=1）：照话里的词给一张像样的改动单，走和真 AI 一样的 readChat ----------
 
 const FAKE_STEPS: Record<string, string[]> = {
@@ -341,6 +400,15 @@ export function fakeChatAnswer(ask: string, ctx: ChatCtx, images = 0): string {
   const { now } = ctx
   const tom = addDays(now.date, 1)
   const ans = (say: string, changes: Record<string, unknown>[], keep?: string) => JSON.stringify({ say: `${images ? `看到了${images}张图。` : ''}${say}`, changes, ...(keep ? { keep } : {}) })
+  // 点名了笔记：「把 @小论文计划 排进下周」把那几篇里没定日子、没钟点的挪到下周一（点名的那几篇里的）
+  const named = mentionedPaths(ask)
+  if (named.length) {
+    const mon = addDays(now.date, ((8 - weekday(now.date)) % 7) || 7)
+    const ts = ctx.tasks.filter((t) => named.includes(t.path) && !t.child && !t.time)
+    if (/下周|next week/i.test(ask)) return ans(`《${named.map((p) => p.replace(/^.*\//, '').replace(/\.md$/i, '')).join('》《')}》里的${ts.length}条排到下周一。`, ts.slice(0, 6).map((t) => ({ id: t.id, date: mon })))
+    return ans(`看了点名的《${named.map((p) => p.replace(/^.*\//, '').replace(/\.md$/i, '')).join('》《')}》，里面有${ts.length}条没做完。`, [])
+  }
+  if (ask.includes('（测试：Markdown）')) return ans('**先做**这两条：\n\n- 交论文初稿\n- 补实验图\n\n日子写成 `📅 2026-11-23`。', [])
   if (ask.includes('撞日程')) {
     // 故意排到「和爸妈视频」那一小时：软件该把它挡下来
     const t = ctx.tasks.find((x) => x.date === now.date && !x.time)

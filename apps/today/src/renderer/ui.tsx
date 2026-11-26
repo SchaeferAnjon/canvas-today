@@ -1,4 +1,5 @@
 /** 小零件：图标、勾选框、一句话的提示条 */
+import { type CSSProperties, useEffect, useLayoutEffect, useState } from 'react'
 import { Codicon, codiconEl, type CodiconName } from '@cn/design'
 import { UndoButton } from '@cn/ai-chat/answer-bar'
 import { setAiChatHost, uiNow } from '@cn/ai-chat/context'
@@ -72,11 +73,43 @@ export interface ToastData {
   k: number
 }
 
-export function Toast({ toast, onUndo }: { toast: ToastData | null; onUndo: (id: string) => void }) {
+export function Toast({ toast, onUndo, onHover }: { toast: ToastData | null; onUndo: (id: string) => void; onHover: (on: boolean) => void }) {
+  return toast ? <ToastBox toast={toast} onUndo={onUndo} onHover={onHover} /> : null
+}
+
+/**
+ * 提示条放哪（2026-11-25 用户「可以」，设计复审：以前在窗口正中，正好压在排一天的时间线、日历的块上）：
+ * 贴着中间那一栏的左下角（离边 16），宽不超过那一栏；排一天里只在左边这一步那一栏（不压右边「今天的时间」）。
+ * 还是 fixed、挂在最外层（弹窗上面也看得到），位置照那一栏量；窗口、栏宽变了跟着挪
+ */
+function useToastSpot(k: number): CSSProperties | undefined {
+  const [at, setAt] = useState<CSSProperties>()
+  useLayoutEffect(() => {
+    const put = () => {
+      const el = document.querySelector<HTMLElement>('.plan > .pmain') ?? document.querySelector<HTMLElement>('.body > .center')
+      if (!el) return setAt(undefined)
+      const r = el.getBoundingClientRect()
+      setAt({ left: r.left + 16, bottom: Math.max(8, innerHeight - r.bottom + 16), transform: 'none', maxWidth: Math.max(240, r.width - 32) })
+    }
+    put()
+    const ro = new ResizeObserver(put)
+    for (const el of document.querySelectorAll('.body, .plan > .pmain')) ro.observe(el)
+    addEventListener('resize', put)
+    return () => {
+      ro.disconnect()
+      removeEventListener('resize', put)
+    }
+  }, [k])
+  return at
+}
+
+/** 鼠标停在上面时告诉外面别计时（App.tsx 的 toaster）；收起时（换下一条不算，打开设置时藏起来算）当成移开 */
+function ToastBox({ toast, onUndo, onHover }: { toast: ToastData; onUndo: (id: string) => void; onHover: (on: boolean) => void }) {
   const lang = useLang()
-  if (!toast) return null
+  useEffect(() => () => onHover(false), [onHover])
+  const at = useToastSpot(toast.k)
   return (
-    <div className="toast" role="status">
+    <div className="toast" role="status" style={at} onMouseEnter={() => onHover(true)} onMouseLeave={() => onHover(false)}>
       <Ic n="check" />
       <div className="msg">
         {toast.msg}

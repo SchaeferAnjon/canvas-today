@@ -112,10 +112,13 @@ export function createEngines(deps: EnginesDeps): Engines {
     })
   }
 
+  /**
+   * 能不能拿来问：和设置、菜单里写的一样照 found 认（r172 A7）：--version 跑不起来的（「找到了，运行不了」）不算，
+   * 不然 AI 对话、梦游照样选它，问一句只回「中途退出了」；还没跑过 --version 的先当能用
+   */
   function ready(id: EngineId): boolean {
     if (!isCli(id)) return deps.sourceReady(id)
-    const fake = deps.fakeCli?.(id)
-    return fake ? !!fake.path : !!findCli(id)
+    return !!found(id).path
   }
 
   return {

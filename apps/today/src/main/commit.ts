@@ -28,6 +28,10 @@ export class Committer {
     if (!this.held) this.timer = setTimeout(() => void this.flush(), this.delay)
   }
 
+  /** 跟着下一次一起提交的文件（不另写说明）：快速输入框贴的图跟着那一条待办 */
+  addFiles(paths: string[]) {
+    paths.forEach((p) => this.paths.add(p))
+  }
   /** 先攒着，run 做完再照常等一会儿提交 */
   async batch<T>(run: () => Promise<T>): Promise<T> {
     this.held++

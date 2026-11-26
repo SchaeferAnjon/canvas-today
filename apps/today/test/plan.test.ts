@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { TaskView } from '../src/shared/api'
-import { busyOn, capacity, closeSection, freeSlot, journalCandidates, journalPath, journalPlace, nowAndNext, obsidianPattern, planLists, pushLater, putClose, trayLine } from '../src/shared/plan'
+import { busyOn, capacity, closeSection, freeSlot, journalCandidates, journalPath, journalPlace, looseByNote, nowAndNext, obsidianPattern, planLists, pushLater, putClose, trayLine } from '../src/shared/plan'
 
 const T = '2026-11-23'
 let n = 0
@@ -150,5 +150,30 @@ describe('收工写进日记', () => {
     expect(putClose(a, s2)).toBe('# 2026-11-23\n\n今天去了图书馆。\n\n## 收工 21:00\n\n做完2条。\n')
     expect(putClose('# x\n\n## 收工 18:00\n\n旧的\n\n## 补记\n\n晚上写的\n', s2)).toBe('# x\n\n## 收工 21:00\n\n做完2条。\n\n## 补记\n\n晚上写的\n')
     expect(putClose('# x\r\n\r\n正文\r\n', s1)).toBe('# x\r\n\r\n正文\r\n\r\n## 收工 18:30\r\n\r\n做完1条。\r\n')
+  })
+})
+
+describe('从全库挑：别的笔记里没定日子的', () => {
+  it('按笔记分组、最近改过的在前；收件箱、有日子的、做完的、子任务、隐藏的不算；一篇里按行', () => {
+    const ts = [
+      task({ path: '收件箱/待办.md', title: '收件箱的', line: 2 }),
+      task({ path: '阅读/书.md', title: '读第四章', line: 5 }),
+      task({ path: '阅读/书.md', title: '读第三章', line: 3 }),
+      task({ path: '阅读/书.md', title: '有日子的', line: 7, date: T }),
+      task({ path: '阅读/书.md', title: '做完的', line: 8, done: true }),
+      task({ path: '阅读/书.md', title: '子任务', line: 9, parent: '阅读/书.md#5', depth: 1 }),
+      task({ path: '项目/新.md', title: '最近改的', line: 1 }),
+      task({ path: '.隐藏/秘密.md', title: '隐藏文件夹', line: 1 }),
+      task({ path: '课程/.草稿.md', title: '隐藏文件', line: 1 }),
+      task({ path: '旧/很旧.md', title: '没记修改时间的', line: 1 }),
+    ]
+    const mt = new Map([
+      ['阅读/书.md', 100],
+      ['项目/新.md', 300],
+      ['收件箱/待办.md', 500],
+    ])
+    const g = looseByNote(ts, mt)
+    expect(g.map((x) => x.path)).toEqual(['项目/新.md', '阅读/书.md', '旧/很旧.md'])
+    expect(g[1]!.tasks.map((x) => x.title)).toEqual(['读第三章', '读第四章'])
   })
 })

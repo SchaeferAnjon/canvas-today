@@ -11,7 +11,6 @@ export const INK: Table = {
   笔迹颜色: 'Ink color',
   墨水: 'Ink',
   荧光笔: 'Highlighter',
-  '挪了{n}笔': (p) => `Moved ${strokes(p.n)}`,
   '{n}笔改了颜色': (p) => `Changed the color of ${strokes(p.n)}`,
   '删了{n}笔': (p) => `Deleted ${strokes(p.n)}`,
   笔迹没写进去: 'Ink not saved',

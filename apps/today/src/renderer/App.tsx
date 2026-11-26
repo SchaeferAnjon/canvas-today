@@ -4,34 +4,81 @@
  * 改库里那一行都交给主进程（window.ct.edit），提示条带撤销；拖动、右键（系统菜单）、⌘K、设置都在这里接。
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { type CalMode, openWhenHost, parseDrop, useDragDrop, whenHostOpen } from '@cn/calendar'
-import { type Prio, type When, type WhenFields, weekday } from '@cn/tasks'
+import { type CalMode, eventsOn, HOUR, openWhenHost, parseDrop, slotAt, useDragDrop, whenHostOpen } from '@cn/calendar'
+import { JUST_MS, minutesOf, parseQuick, type Prio, type When, type WhenFields, weekday } from '@cn/tasks'
 import type { AddCtx, EditOp, EditResult, Notice, TaskView } from '../shared/api'
 import { INBOX_NOTE } from '../shared/brand'
 import { repeatLabel, tr, wdName } from '../shared/i18n'
 import { cntAll, cntInbox, cntNote, cntToday, cntTomorrow, cntWeek, findAgain, type Nav, notesWithTodo } from '../shared/views'
 import { barKind } from '../shared/update'
+import { cmdOf, type KeyId, keysOf } from '../shared/keymap'
+import { comboOf } from '../shared/quick'
 import { dayLabel, isoPlus, mdLabel, whenLabel } from '../shared/when'
-import { type Actions, ActionsCtx } from './actions'
+import { type Actions, ActionsCtx, type Just, JustCtx } from './actions'
 import { AiChat } from './AiChat'
+import { setOpenMention } from './ai-host'
+import { type ActSay, AiActLayer } from './ai-act'
 import { UNDONE_EVENT } from './ai-preview'
 import { CalGuide, onlyCanvasToday } from './cal-guide'
 import { DeleteAsk, ImportDialog } from './ImportDialog'
 import { Palette } from './Palette'
 import { SettingsDialog, type SettingsPage } from './Settings'
-import { getData, nowMs, refreshAi, reloadState, saveSettings, useData, useLang, useToday } from './store'
+import { getData, nowLocal, nowMs, refreshAi, reloadState, saveSettings, useData, useLang, useToday } from './store'
+import { dropLines, dropPlace } from '../shared/drop'
+import { Peek } from './peek'
+import { FindBar, type FindPane, paneNow } from './find'
 import { EngineLogo, Ic, type ToastData, Toast, useT } from './ui'
 import { FocusView, mmss, useFocusLeft } from './focus'
 import { HabitsView } from './habits'
 import { CalendarView, CalPanel, Detail, LeftMonth, ListView, noteLabel, QuadView } from './views'
 import { planAiText, PlanSide, PlanView } from './plan'
+import { fitSides, LEFT_DEFAULT, LeftSash, RIGHT_DEFAULT, RightSash, useWidth, useWinW } from './panes'
 import { est, type PlanStep, planLists, pushLater } from '../shared/plan'
 
 type Act = 'plan' | 'lists' | 'calendar' | 'quad' | 'focus' | 'habit'
+const ACTS: readonly Act[] = ['plan', 'lists', 'calendar', 'quad', 'focus', 'habit']
+const NAVS: readonly string[] = ['inbox', 'today', 'tomorrow', 'week', 'all', 'done']
+
+/**
+ * 重开回到上次那一格（对标清单 U7，同画布笔记 cn.leftView、cn.calMode 记在这台设备上）：左图标栏哪一格、清单里哪一页、日历周 / 月。
+ * 「打开时先排一天」开着时先排一天（那一格不动），关着才回到这里记的
+ */
+const VIEW_KEY = 'ct.view'
+type View = { act: Act; nav: Nav; cal: CalMode }
+function lastView(): View | null {
+  try {
+    const v = JSON.parse(localStorage.getItem(VIEW_KEY) ?? 'null') as Partial<View> | null
+    if (!v || !ACTS.includes(v.act as Act)) return null
+    const nav = typeof v.nav === 'string' && (NAVS.includes(v.nav) || /^list:.+\.md$/i.test(v.nav)) ? (v.nav as Nav) : 'today'
+    return { act: v.act as Act, nav, cal: v.cal === 'month' ? 'month' : 'week' }
+  } catch {
+    return null
+  }
+}
+function keepView(v: View) {
+  try {
+    localStorage.setItem(VIEW_KEY, JSON.stringify(v))
+  } catch {
+    // 存不下（无痕、存储关了）：下次从「今天」开始
+  }
+}
 type SelRef = Pick<TaskView, 'key' | 'id' | 'path' | 'line' | 'raw' | 'title'>
 /** 提示条里叫它什么：MeetCaption 写的那几条不带 ▶ 时间那串链接（shared/mc.ts） */
 const shown = (x: TaskView) => x.mc?.title ?? x.title
 const pickSel = (t: TaskView): SelRef => ({ key: t.key, id: t.id, path: t.path, line: t.line, raw: t.raw, title: t.title })
+
+/** 提示条停几毫秒（鼠标停在上面时不计） */
+const TOAST_MS = 5200
+
+/** 那一天 time 起 minutes 分钟和系统日历里哪些定时的日程重叠（藏起的日历本来就不给）：日程名；日历没连上是空的 */
+async function clashes(date: string, time: string, minutes: number): Promise<string[]> {
+  if (!getData().cal?.active) return []
+  const from = minutesOf(time)
+  const evs = await window.ct.calEvents(date, date)
+  return eventsOn(evs, date)
+    .timed.filter((s) => s.from < from + minutes && s.to > from)
+    .map((s) => s.ev.title)
+}
 
 export function App() {
   const { state } = useData()
@@ -62,14 +109,19 @@ function Desk() {
   const today = useToday()
   const s = state!.settings
   const fa = state!.look.frame === 'a'
-  const [act, setAct] = useState<Act>('lists')
+  /** 上次那一格（只在打开时读一次）；开着「打开时先排一天」时先排一天 */
+  const [opened] = useState(() => (s.plan.onOpen ? null : lastView()))
+  const [act, setAct] = useState<Act>(() => opened?.act ?? 'lists')
+  const leftW = useWidth('left')
+  const rightW = useWidth('right')
+  const winW = useWinW()
   /** 排一天停在哪一步 */
   const [step, setStep] = useState<PlanStep>('left')
   /** 今天早上点过「开工」了（这台设备，main/plan.ts） */
   const [started, setStarted] = useState(false)
   /** 今天收工写进了哪一篇日记（这台设备，main/plan.ts）；还没收工是 null */
   const [closed, setClosed] = useState<string | null>(null)
-  const [nav, setNav] = useState<Nav>('today')
+  const [nav, setNav] = useState<Nav>(() => opened?.nav ?? 'today')
   const [hist, setHist] = useState<{ back: [Act, Nav][]; fwd: [Act, Nav][] }>({ back: [], fwd: [] })
   const [selRef, setSelRef] = useState<SelRef | null>(null)
   const [toast, setToast] = useState<ToastData | null>(null)
@@ -83,7 +135,7 @@ function Desk() {
     setSetOpenRaw(p)
     setSetFront(p !== null)
   }, [])
-  const [calMode, setCalMode] = useState<CalMode>('week')
+  const [calMode, setCalMode] = useState<CalMode>(() => opened?.cal ?? 'week')
   const [anchor, setAnchor] = useState(today)
   const [mini, setMini] = useState(today.slice(0, 7))
   const [say, setSay] = useState<{ text: string; x: number; y: number } | null>(null)
@@ -110,14 +162,45 @@ function Desk() {
   const [aiOpened, setAiOpened] = useState(false)
   /** ⌘K「问 AI：…」交给右栏对话的那一句 */
   const [aiAsk, setAiAsk] = useState<{ text: string; seq: number } | null>(null)
+  /** 全局快速输入框 ⌘J 交过来的那一段（右栏打开它；job 是还在答的那一问） */
+  const [aiOpen, setAiOpen] = useState<{ id: string; job: string | null; seq: number } | null>(null)
   const lastUndo = useRef<string | null>(null)
+  /** AI 动手改到了库里的待办（对标清单 U10）：中间那一页亮边 */
+  const [aiAct, setAiAct] = useState<ActSay>({ kind: 'idle' })
+  /** 在这一格里找（⇧⌘F，对标清单 U11）：开在哪一格；seq 变了把焦点放回框里。lastPane 是最后点过的一格 */
+  const [find, setFind] = useState<{ pane: FindPane; seq: number } | null>(null)
+  const lastPane = useRef<FindPane>('center')
+  useEffect(() => {
+    const down = (e: PointerEvent) => {
+      const el = e.target as HTMLElement
+      if (el.closest?.('aside.right')) lastPane.current = 'right'
+      else if (el.closest?.('main.center')) lastPane.current = 'center'
+    }
+    window.addEventListener('pointerdown', down, true)
+    return () => window.removeEventListener('pointerdown', down, true)
+  }, [])
+  /** 刚勾掉的几条（@cn/tasks JUST_MS）：原处留一行「已完成 · 撤回」；justUndo 是每条的撤回编号和到点收掉的计时 */
+  const [justKeys, setJustKeys] = useState<ReadonlySet<string>>(() => new Set())
+  const justUndo = useRef(new Map<string, { undo: string; timer: ReturnType<typeof setTimeout> }>())
+  const dropJust = useCallback((key: string) => {
+    const j = justUndo.current.get(key)
+    if (j) clearTimeout(j.timer)
+    justUndo.current.delete(key)
+    setJustKeys((s) => {
+      if (!s.has(key)) return s
+      const n = new Set(s)
+      n.delete(key)
+      return n
+    })
+  }, [])
 
   // 打开时先排一天（设置能关）：今天早上那几步还没走完停在第 1 步（没有剩下的就第 2 步），走完了停在「开工」
   useEffect(() => {
     void window.ct.planState().then((p) => {
       setStarted(!!p.morning)
       setClosed(p.closed)
-      if (!s.plan.onOpen) return
+      // 关着「先排一天」、上次停在排一天：回到那一格，停在哪一步照样算
+      if (!s.plan.onOpen && opened?.act !== 'plan') return
       setAct('plan')
       if (p.morning) return setStep('now')
       setStep(planLists(getData().snap.tasks, today).left.length ? 'left' : 'pick')
@@ -125,6 +208,15 @@ function Desk() {
     // 只在打开时看一次
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // 换了一格就记下（下次打开回到这里）；上次那一篇清单库里没有了（删了、换了库）回到「今天」
+  useEffect(() => keepView({ act, nav, cal: calMode }), [act, nav, calMode])
+  const navChecked = useRef(false)
+  useEffect(() => {
+    if (navChecked.current || !snap.version) return
+    navChecked.current = true
+    if (nav.startsWith('list:') && !snap.notes.some((n) => n.path === nav.slice(5))) setNav('today')
+  }, [snap, nav])
 
   // 选中的那一条：索引换了（外面改了、自己改了）照 🆔、原文、标题找回来
   const sel = useMemo(() => (selRef ? findAgain(selRef, snap.tasks) : null), [selRef, snap])
@@ -139,20 +231,47 @@ function Desk() {
   const notices = useRef<Notice[]>([])
   const toastUntil = useRef(0)
   const showing = useRef<Notice | null>(null)
-  const show = useCallback((msg: string, sub?: string, undo?: string, bg = false) => {
-    const k = Date.now()
-    if (undo) lastUndo.current = undo
-    toastUntil.current = k + 5200
-    showing.current = { msg, sub, undo, bg }
-    setToast({ msg, sub, undo, k })
-    setTimeout(() => {
-      setToast((x) => (x && x.k === k ? null : x))
-      if (Date.now() < toastUntil.current) return
-      showing.current = null
-      const next = notices.current.shift()
-      if (next) show(next.msg, next.sub, next.undo, next.bg)
-    }, 5200)
+  /**
+   * 一条提示条 5.2 秒收起；鼠标停在上面不计时，移开再从头计 5.2 秒（同画布笔记设置里的提示条，bug 一批 1125b：以前停着照样收，「撤回」点不着）。
+   * 停着的时候 toastUntil 是无穷大：同步那边来的话照样排队，不盖掉正看着的这条
+   */
+  const toaster = useMemo(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let hovering = false
+    let cur = 0
+    const arm = () => {
+      clearTimeout(timer)
+      toastUntil.current = Date.now() + TOAST_MS
+      const k = cur
+      timer = setTimeout(() => {
+        if (k !== cur) return
+        setToast((x) => (x && x.k === k ? null : x))
+        showing.current = null
+        toastUntil.current = 0
+        const next = notices.current.shift()
+        if (next) show(next.msg, next.sub, next.undo, next.bg)
+      }, TOAST_MS)
+    }
+    const show = (msg: string, sub?: string, undo?: string, bg = false) => {
+      cur = Math.max(Date.now(), cur + 1)
+      if (undo) lastUndo.current = undo
+      showing.current = { msg, sub, undo, bg }
+      setToast({ msg, sub, undo, k: cur })
+      if (!hovering) return arm()
+      clearTimeout(timer)
+      toastUntil.current = Infinity
+    }
+    const hover = (on: boolean) => {
+      if (on === hovering) return
+      hovering = on
+      if (!showing.current) return
+      if (!on) return arm()
+      clearTimeout(timer)
+      toastUntil.current = Infinity
+    }
+    return { show, hover }
   }, [])
+  const show = toaster.show
   const notice = useCallback(
     (n: Notice) => {
       const cur = Date.now() < toastUntil.current ? showing.current : null
@@ -212,22 +331,38 @@ function Desk() {
         setRtab('detail')
       },
       goNav: (n) => go('lists', n),
-      // 取消了的 [-] 点一下改回没做完
-      tick: (x) =>
-        void edit(x, { op: 'done', done: !x.done && !x.cancelled }, (r) => {
+      // 取消了的 [-] 点一下改回没做完；勾掉的在原处留 2 秒「已完成 · 撤回」，然后只在「已完成」里（同画布笔记待办）
+      tick: (x) => {
+        const done = !x.done && !x.cancelled
+        void edit(x, { op: 'done', done }, (r) => {
           if (x.done || x.cancelled) return [t('unticked', shown(x)), r.copies ? t('untickedCopies', r.copies + 1) : t('untickedSub', note(x.path), x.line + 1)]
           if (r.next) return [t('ticked', shown(x)), t('tickedNext', mdLabel(lang, r.next.date), note(x.path))]
           return [t('ticked', shown(x)), r.copies ? t('tickedCopies', r.copies + 1) : t('tickedSub', note(x.path), x.line + 1)]
-        }),
+        }).then((r) => {
+          if (!r || !r.ok) return
+          const key = `${r.path}#${r.line}`
+          dropJust(key)
+          if (!done || !r.undo) return
+          justUndo.current.set(key, { undo: r.undo, timer: setTimeout(() => dropJust(key), JUST_MS) })
+          setJustKeys((s) => new Set(s).add(key))
+        })
+      },
       setDate: (x, date, time, how) =>
-        void edit(x, { op: 'date', date, ...(time !== undefined ? { time } : {}) }, () => {
-          if (!date) return [t('dateRemoved', shown(x)), t('dateRemovedSub')]
-          if (how === 'allday') return [t('allday', shown(x), dayLabel(lang, date, today)), t('alldaySub', date)]
-          const w = whenLabel(lang, { date, time: time !== undefined ? time : x.time }, today)
-          return [t('moved', shown(x), w), t('movedSub', note(x.path), date)]
-        }),
-      setPrio: (x, p: Prio, sayIt = false) =>
-        void edit(x, { op: 'prio', prio: p }, () => (sayIt ? [t('prioSet', shown(x), p ? t(p === 3 ? 'hi' : p === 2 ? 'mid' : 'lo') : t('prioNone')), t('prioSub', ['', '🔽', '🔼', '⏫'][p]!)] : null)),
+        void (async () => {
+          // 拖到时间线的某个钟点：和系统日历里定时的日程重叠时提示条说一句（不拦着，排不排是人定的）
+          const clash = how === 'slot' && date && time ? await clashes(date, time, est(x)) : []
+          await edit(x, { op: 'date', date, ...(time !== undefined ? { time } : {}) }, () => {
+            if (!date) return [t('dateRemoved', shown(x)), t('dateRemovedSub')]
+            if (how === 'allday') return [t('allday', shown(x), dayLabel(lang, date, today)), t('alldaySub', date)]
+            const w = whenLabel(lang, { date, time: time !== undefined ? time : x.time }, today)
+            const tm = time !== undefined ? time : x.time
+            return [t('moved', shown(x), w), clash.length ? t('movedClash', clash.join('、')) : t('movedSub', note(x.path), tm ? `${date} ${tm}` : date)]
+          })
+        })(),
+      setPrio: (x, p: Prio, sayIt = false, lowest = false) =>
+        void edit(x, { op: 'prio', prio: p, ...(lowest ? { lowest } : {}) }, () =>
+          sayIt ? [t('prioSet', shown(x), p ? t(lowest ? 'lowest' : p === 3 ? 'hi' : p === 2 ? 'mid' : 'lo') : t('prioNone')), t('prioSub', lowest ? '⏬' : ['', '🔽', '🔼', '⏫'][p]!)] : null,
+        ),
       field: (x, op) => void edit(x, op),
       del: (x) => {
         void edit(x, { op: 'delete' }, () => [t('deleted', shown(x)), t('deletedSub', note(x.path))]).then((r) => {
@@ -349,9 +484,10 @@ function Desk() {
         show(t('planClosed', r.path.replace(/^.*\//, '').replace(/\.md$/i, '')), t(r.created ? 'planClosedNew' : 'planClosedSub', r.path), r.undo || undefined)
         return r.path
       },
-      pickWhen: (x, el, keys = false, after) => {
+      pickWhen: (x, el, keys = false, after, place = false) => {
         let cur = x
-        let last: WhenFields = { date: x.date, time: x.time, remind: x.remind, repeat: x.repeat }
+        // 排一天里「排进时间」：日子先填今天，选个钟点就排进今天（选之前什么都不写）
+        let last: WhenFields = { date: place ? today : x.date, time: x.time, remind: x.remind, repeat: x.repeat }
         const undos: string[] = []
         let queue: Promise<unknown> = Promise.resolve()
         openWhenHost({
@@ -383,7 +519,31 @@ function Desk() {
         })
       },
     }),
-    [edit, flashKey, go, lang, s.right, sel, show, t, today],
+    [edit, flashKey, go, lang, s.right, sel, show, t, today, dropJust],
+  )
+  const just: Just = useMemo(
+    () => ({
+      keys: justKeys,
+      undo: (key) => {
+        const j = justUndo.current.get(key)
+        if (!j) return
+        dropJust(key)
+        actions.undo(j.undo)
+      },
+    }),
+    [justKeys, dropJust, actions],
+  )
+
+  // 全局快速输入框 ⌘J：右栏开 AI，打开那一段对话
+  useEffect(
+    () =>
+      window.ct.onOpenChat((o) => {
+        setRtab('ai')
+        setAiOpened(true)
+        if (!getData().state?.settings.right) void saveSettings({ right: true })
+        setAiOpen({ ...o, seq: Date.now() })
+      }),
+    [],
   )
 
   // canvas-today://task/<🆔>、通知、菜单栏小窗点过来的那一条
@@ -413,33 +573,23 @@ function Desk() {
       }),
     [actions, show, t],
   )
+  const stopAi = useCallback((job: string) => void window.ct.aiCancel(job), [])
   useEffect(() => void window.ct.ready(), [])
+  // 点 AI 对话里的 @ 胶囊（对标清单 U1）：中间换到那一篇清单
+  useEffect(() => setOpenMention((path) => actions.goNav(`list:${path}`)), [actions])
   useEffect(() => window.ct.onMenu((w) => (w === 'settings' ? setSetOpen('general') : setPal(true))), [])
 
   // ---------- 键盘 ----------
+  /** 一条命令按下去做什么（键照设置 › 快捷键，shared/keymap.ts）；交回 false 是这会儿不做（键照旧交给别处） */
+  const cmdRun = useRef<(id: KeyId, inField: boolean, e: KeyboardEvent) => boolean>(() => false)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const inField = (e.target as HTMLElement)?.closest?.('input, textarea, select')
-      // ⌥⌘T（task-pd289）：选着一条时弹定日子和时间的选择器（加一条的输入框里自己接，这里不再管）
-      if (e.metaKey && e.altKey && !e.ctrlKey && !e.shiftKey && e.code === 'KeyT') {
-        if (e.defaultPrevented || inField || whenHostOpen()) return
-        e.preventDefault()
-        if (!sel) return show(t('pickOne'))
-        const row = document.querySelector<HTMLElement>(`.row[data-drag="${CSS.escape(sel.key)}"]`)
-        const at = row?.querySelector<HTMLElement>('.acc.when') ?? row ?? document.querySelector<HTMLElement>('[data-part="详情"]')
-        if (at) actions.pickWhen(sel, at, true)
-        return
-      }
-      if (e.metaKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k') {
-        e.preventDefault()
-        setPal(true)
-      } else if (e.metaKey && e.key === ',') {
-        e.preventDefault()
-        setSetOpen('general')
-      } else if (e.metaKey && e.key === '\\') {
-        e.preventDefault()
-        void saveSettings(e.altKey ? { right: !getData().state!.settings.right } : { left: !getData().state!.settings.left })
-      } else if (e.metaKey && !e.shiftKey && e.key.toLowerCase() === 'z' && !inField && lastUndo.current) {
+      const combo = comboOf(e)
+      const st = getData().state!.settings
+      const id = combo ? cmdOf(combo, st) : null
+      if (id && cmdRun.current(id, !!inField, e)) return void e.preventDefault()
+      if (combo === '⌘Z' && !inField && lastUndo.current) {
         e.preventDefault()
         actions.undo(lastUndo.current)
       } else if (e.key === 'Escape' && fa && setOpen && setFront && !delAsk && !imp && !pal && !whenHostOpen() && !(e.target as HTMLElement)?.closest?.('input, textarea')) {
@@ -455,7 +605,7 @@ function Desk() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [actions, pal, setOpen, imp, delAsk, sel, show, t, fa, setFront])
+  }, [actions, pal, setOpen, imp, delAsk, fa, setFront])
 
   // ---------- 拖动（@cn/calendar 的 useDragDrop：按住挪过 5 才算拖，指到 data-drop 上亮一下，日历的格子里出钟点预览） ----------
   useDragDrop({
@@ -471,8 +621,13 @@ function Desk() {
       if (k === 'date' || k === 'mday') x.date !== v && actions.setDate(x, v)
       else if (k === 'nodate') x.date && actions.setDate(x, null)
       else if (k === 'allday') (x.date !== v || x.time) && actions.setDate(x, v, null, 'allday')
-      else if (k === 'day') (x.date !== v || x.time !== time) && actions.setDate(x, v, time)
-      else if (k === 'prio') x.prio !== Number(v) && actions.setPrio(x, Number(v) as Prio, true)
+      else if (k === 'day') (x.date !== v || x.time !== time) && actions.setDate(x, v, time, 'slot')
+      else if (k === 'prio') {
+        // 四象限：prio:3 / 2 / 1 / lowest（第 4 格 ⏬）/ 0（「没分」）
+        const lowest = v === 'lowest'
+        const p = (lowest ? 1 : Number(v)) as Prio
+        if (x.prio !== p || !!x.lowest !== lowest) actions.setPrio(x, p, true, lowest)
+      }
       else if (k === 'list') x.path !== v && actions.move(x, v)
     },
     menu: (key) => {
@@ -489,6 +644,114 @@ function Desk() {
       return x ? est(x) : null
     },
   })
+
+  // ---------- 从别的软件拖进来（对标清单 U9）：字、网址一行加成一条；放在指到的那一格（清单、收件箱、哪一天、哪个钟点、四象限），没指到照中间这一页 ----------
+  const [dropTag, setDropTag] = useState<{ x: number; y: number; text: string } | null>(null)
+  const dropCtx = useRef<() => AddCtx>(() => 'inbox')
+  dropCtx.current = () => (act !== 'lists' ? 'inbox' : nav.startsWith('list:') ? { note: nav.slice(5) } : nav === 'all' || nav === 'done' ? 'inbox' : (nav as AddCtx))
+  const addDropped = useRef<(lines: string[], target: HTMLElement | null, y: number) => Promise<void>>(async () => undefined)
+  addDropped.current = async (lines, target, y) => {
+    const place = dropPlace(target?.dataset.drop ?? null, dropCtx.current(), today)
+    const time = place.date && target?.dataset.drop?.startsWith('day:') ? slotAt(y, target.getBoundingClientRect().top, Number(target.dataset.hour) || HOUR) : undefined
+    const undos: string[] = []
+    let last: { title: string; path: string; raw: string; line: number; date: string | null; time: string | null } | null = null
+    const keys: string[] = []
+    for (const line of lines) {
+      const text = place.prio ? `${line} ${place.prio}` : line
+      const p = place.date ? parseQuick(text, nowLocal()) : null
+      const when: When | null = p ? { title: p.title || text, date: place.date!, time: time ?? p.time, remind: null, repeat: p.repeat, hits: [] } : null
+      const r = await window.ct.add(text, place.ctx, when)
+      if (!r.ok) {
+        if (r.reason !== 'empty') show(t('failed', r.message ?? ''))
+        continue
+      }
+      if (r.undo) undos.push(r.undo)
+      keys.push(`${r.path}#${r.line}`)
+      last = r
+    }
+    if (!last) return void show(t('dropNone'))
+    // 这次加进来的几条一起闪
+    flashKey(keys.join('\n'))
+    if (undos.length === 1) show(t('added', last.title, last.date ? whenLabel(lang, { date: last.date, time: last.time }, today) : t('undated')), t('addedSub', last.path, last.raw), undos[0])
+    else show(t('dropAdded', undos.length), last.path, undos.join(','))
+  }
+  /** 拖着时小牌上的字（effect 只挂一次：t 每次画都是新的，挂在 deps 上会把收起小牌的计时一起清掉） */
+  const dropName = useRef<(tg: HTMLElement | null) => string>(() => '')
+  dropName.current = (tg) => {
+    const v = tg?.dataset.drop
+    const d = v ? /^(?:date|mday|allday|day):(\d{4}-\d{2}-\d{2})$/.exec(v)?.[1] : undefined
+    const n = !v
+      ? null
+      : v.startsWith('list:')
+        ? noteLabel(v.slice(5))
+        : v === 'nodate'
+          ? t('inbox')
+          : d
+            ? dayLabel(lang, d, today)
+            : v.startsWith('prio:')
+              ? t(v === 'prio:3' ? 'q1' : v === 'prio:2' ? 'q2' : v === 'prio:1' ? 'q3' : v === 'prio:lowest' ? 'q4' : 'qNone')
+              : null
+    return n ? t('dropAddTo', n) : t('dropAdd')
+  }
+  const dropSay = useRef(show)
+  dropSay.current = show
+  useEffect(() => {
+    let over: HTMLElement | null = null
+    let inside = false
+    let hide: ReturnType<typeof setTimeout> | undefined
+    const clear = () => {
+      over?.classList.remove('cal-over')
+      over = null
+      setDropTag(null)
+    }
+    const editable = (e: DragEvent) => !!(e.target as HTMLElement)?.closest?.('input, textarea, [contenteditable="true"]')
+    const hasText = (e: DragEvent) => [...(e.dataTransfer?.types ?? [])].some((x) => x === 'text/plain' || x === 'text/uri-list')
+    // 软件里自己拖起来的（选中的字拖到别处）不算
+    const start = () => (inside = true)
+    const end = () => ((inside = false), clear())
+    const dragover = (e: DragEvent) => {
+      // 里面自己接的（AI 输入框拖图进来）先接了：不出小牌、不加待办
+      if (!e.dataTransfer || editable(e) || e.defaultPrevented) return
+      // 什么都先接住：拖一个文件进来时不让窗口翻到那个文件去
+      e.preventDefault()
+      if (inside || !hasText(e)) {
+        e.dataTransfer.dropEffect = 'none'
+        return
+      }
+      e.dataTransfer.dropEffect = 'copy'
+      const tg = document.elementFromPoint(e.clientX, e.clientY)?.closest<HTMLElement>('[data-drop]') ?? null
+      if (tg !== over) {
+        over?.classList.remove('cal-over')
+        tg?.classList.add('cal-over')
+        over = tg
+      }
+      setDropTag({ x: e.clientX + 14, y: e.clientY + 14, text: dropName.current(tg) })
+      // 拖出窗口不一定有 dragleave：200 ms 没再指到就收起
+      clearTimeout(hide)
+      hide = setTimeout(clear, 200)
+    }
+    const drop = (e: DragEvent) => {
+      if (!e.dataTransfer || editable(e) || e.defaultPrevented) return
+      e.preventDefault()
+      const tg = over
+      clear()
+      if (inside) return
+      const lines = dropLines({ uriList: e.dataTransfer.getData('text/uri-list'), text: e.dataTransfer.getData('text/plain'), html: e.dataTransfer.getData('text/html') })
+      if (!lines.length) return void dropSay.current(tr(getData().state!.settings.lang, 'dropNone'))
+      void addDropped.current(lines, tg, e.clientY)
+    }
+    window.addEventListener('dragstart', start)
+    window.addEventListener('dragend', end)
+    window.addEventListener('dragover', dragover)
+    window.addEventListener('drop', drop)
+    return () => {
+      clearTimeout(hide)
+      window.removeEventListener('dragstart', start)
+      window.removeEventListener('dragend', end)
+      window.removeEventListener('dragover', dragover)
+      window.removeEventListener('drop', drop)
+    }
+  }, [])
 
   // ---------- 左图标栏、左栏 ----------
   const nToday = cntToday(snap.tasks, today)
@@ -668,6 +931,16 @@ function Desk() {
   }
   /** 右栏「详情」只在清单、日历、四象限（原型：专注、习惯是整页） */
   const withDetail = act === 'lists' || act === 'calendar' || act === 'quad'
+  // 栏宽（panes.tsx）：拖过的照拖过的，窗口窄时先收右栏再收左栏，中间至少留 420
+  const showLeft = !!left && s.left
+  const showRight = s.right && (withDetail || rtab === 'ai')
+  const fitted = fitSides(
+    winW,
+    // 两条图标栏，B 还有岛和岛之间的缝（6，左栏岛压进图标栏 6）
+    fa ? 96 : 88 + 6 * (2 + (showLeft ? 1 : 0) + (showRight ? 1 : 0)) - (showLeft ? 6 : 0),
+    showLeft ? (leftW.w ?? LEFT_DEFAULT[fa ? 'a' : 'b']) : 0,
+    showRight ? (rightW.w ?? RIGHT_DEFAULT) : 0,
+  )
 
   const back = () =>
     setHist((h) => {
@@ -685,9 +958,37 @@ function Desk() {
       setNav(nx[1])
       return { back: [...h.back, [act, nav]], fwd: h.fwd.slice(1) }
     })
+  cmdRun.current = (id, inField, e) => {
+    // 定日子和时间（task-pd289）：选着一条时弹选择器；加一条的输入框里它自己接（先 preventDefault 了），这里不管
+    if (id === 'pick-when') {
+      if (e.defaultPrevented || inField || whenHostOpen()) return false
+      if (!sel) return (show(t('pickOne')), true)
+      const row = document.querySelector<HTMLElement>(`:is(.row, .prow)[data-drag="${CSS.escape(sel.key)}"]`)
+      const at = row?.querySelector<HTMLElement>('.acc.when') ?? row ?? document.querySelector<HTMLElement>('[data-part="详情"]')
+      // 排一天里选着的一条（Tab 到它）：「排进时间」，日子先填今天
+      if (at) actions.pickWhen(sel, at, true, undefined, act === 'plan' && !!row?.classList.contains('prow'))
+      return true
+    }
+    if (id === 'find-in-page') setFind({ pane: paneNow(lastPane.current), seq: Date.now() })
+    else if (id === 'search') setPal(true)
+    else if (id === 'settings') setSetOpen('general')
+    else if (id === 'toggle-left') void saveSettings({ left: !getData().state!.settings.left })
+    else if (id === 'toggle-right') void saveSettings({ right: !getData().state!.settings.right })
+    else if (id === 'home') go('lists', 'today')
+    else if (id === 'back') back()
+    else if (id === 'forward') fwd()
+    else if (id === 'ai') tapRight('ai')
+    else if (id.startsWith('go-')) {
+      const a = id.slice(3) as Act
+      if (!s.left && (a === 'lists' || a === 'calendar' || a === 'plan')) void saveSettings({ left: true })
+      if (a !== act) go(a)
+    } else return false
+    return true
+  }
 
   return (
     <ActionsCtx.Provider value={actions}>
+      <JustCtx.Provider value={just}>
       <div className={`win ${fa ? 'fa' : 'fb'}${say ? ' saying' : ''}`} data-part="画布今日窗口">
         <div className="tb">
           <span className="lights" />
@@ -706,7 +1007,7 @@ function Desk() {
           <button className="srch" aria-label={t('search')} onClick={() => setPal(true)}>
             <Ic n="search" s={14} />
             <span className="srch-t">{t('search')}</span>
-            <span className="k">⌘K</span>
+            {keysOf('search', s)[0] && <span className="k">{keysOf('search', s)[0]}</span>}
           </button>
           <span className="sp" />
           <button className="ib" style={{ marginRight: 8 }} aria-label={s.right ? t('hideRight') : t('showRight')} title={s.right ? t('hideRight') : t('showRight')} onClick={() => void saveSettings({ right: !s.right })}>
@@ -725,8 +1026,8 @@ function Desk() {
             {ab({ k: 'db', icon: 'database', label: t('dbLater'), dis: true, onClick: (e) => later(e, t('dbSay')) })}
             {ab({ k: 'settings', icon: 'settings-gear', label: t('settings'), onClick: () => setSetOpen('general') })}
           </nav>
-          {left && s.left && (
-            <aside className="left" data-part={`左栏 ${left.title}`}>
+          {left && showLeft && (
+            <aside className="left" data-part={`左栏 ${left.title}`} style={{ width: fitted.side }}>
               <div className="ph">
                 <b>{left.title}</b>
                 <span className="sp" />
@@ -735,6 +1036,7 @@ function Desk() {
               <div className="pscroll">{left.body}</div>
             </aside>
           )}
+          {showLeft && <LeftSash w={leftW} />}
           <main className="center">
             <div className="tabs">
               <button className={`tab${setTab ? '' : ' on'}`} aria-selected={!setTab} onClick={() => setSetFront(false)}>
@@ -778,9 +1080,12 @@ function Desk() {
                 {center}
               </div>
             )}
+            {find?.pane === 'center' && <FindBar key="center" pane="center" seq={find.seq} onClose={() => setFind(null)} />}
+            <AiActLayer say={aiAct} onStop={stopAi} />
           </main>
-          {s.right && (withDetail || rtab === 'ai') && (
-            <aside className="right" data-part="右栏">
+          {showRight && <RightSash w={rightW} />}
+          {showRight && (
+            <aside className="right" data-part="右栏" style={{ width: fitted.right }}>
               <div className="tabs">
                 {rtab === 'ai' ? (
                   <button className="tab on" aria-selected data-k="ai">
@@ -807,9 +1112,10 @@ function Desk() {
               )}
               {(aiOpened || rtab === 'ai') && (
                 <div className="rai" hidden={rtab !== 'ai'}>
-                  <AiChat shown={rtab === 'ai'} today={today} ask={aiAsk} onToast={(m, sub, undo) => show(m, sub, undo)} onUndo={(id) => actions.undo(id)} />
+                  <AiChat shown={rtab === 'ai'} today={today} ask={aiAsk} open={aiOpen} onToast={(m, sub, undo) => show(m, sub, undo)} onUndo={(id) => actions.undo(id)} onAct={setAiAct} />
                 </div>
               )}
+              {find?.pane === 'right' && <FindBar key={`right-${rtab}`} pane="right" seq={find.seq} onClose={() => setFind(null)} />}
             </aside>
           )}
           <nav className="abar r" aria-label={t('detail')}>
@@ -886,8 +1192,15 @@ function Desk() {
           }}
         />
       )}
+      <Peek />
+      {dropTag && (
+        <div className="drop-tag" style={{ left: Math.min(dropTag.x, window.innerWidth - 260), top: Math.min(dropTag.y, window.innerHeight - 40) }} data-part="拖进来的小牌">
+          <Ic n="add" s={12} />
+          {dropTag.text}
+        </div>
+      )}
       {/* 提示条在弹窗上面（设置里连提醒事项、导入以后的话也看得到） */}
-      <Toast toast={setOpen && (!fa || setFront) ? null : toast} onUndo={(id) => actions.undo(id)} />
+      <Toast toast={setOpen && (!fa || setFront) ? null : toast} onUndo={(id) => actions.undo(id)} onHover={toaster.hover} />
       {delAsk && (
         <DeleteAsk
           n={delAsk.length}
@@ -899,6 +1212,7 @@ function Desk() {
           }}
         />
       )}
+      </JustCtx.Provider>
     </ActionsCtx.Provider>
   )
 }

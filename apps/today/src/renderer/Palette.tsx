@@ -1,11 +1,12 @@
 /**
  * ⌘K（标题栏正中的搜索框）：搜待办、加一条、去哪一页。样子照画布笔记 DESIGN.v3 第 3 节（680 宽、离窗口顶 84、输入 17、行 36、底部一行键）。
  */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { parseQuick } from '@cn/tasks'
 import type { TaskView } from '../shared/api'
 import type { Nav } from '../shared/views'
 import { open } from '../shared/views'
+import { INBOX_NOTE } from '../shared/brand'
 import { whenLabel } from '../shared/when'
 import { useActions } from './actions'
 import { getData, saveSettings, useData, useLang } from './store'
@@ -13,7 +14,7 @@ import { EngineLogo, Ic, useT } from './ui'
 import { looksLikePlan } from '../shared/ai-chat'
 import { noteLabel } from './views'
 
-type Row = { key: string; icon: Parameters<typeof Ic>[0]['n'] | 'ai'; name: string; desc?: string; group: 'add' | 'tasks' | 'ask' | 'go'; run: () => void; alias?: string[] }
+type Row = { key: string; icon: Parameters<typeof Ic>[0]['n'] | 'ai'; name: string; desc?: string; group: 'add' | 'lists' | 'tasks' | 'ask' | 'go'; run: () => void; alias?: string[] }
 
 /**
  * 打了字：「加一条」和「问 AI：…」（task-ykkoz，开右栏 AI 对话问这一句）；像要排日程的话（「把…排好」「明天太满了」）「问 AI」在第一行，回车直接问；
@@ -60,6 +61,13 @@ export function Palette({ today, onClose, onGo, onSettings, onImport, onAskAi, o
           group: 'tasks',
           run: () => (onClose(), a.goTask(x)),
         })
+      // 清单（左栏「有待办的笔记」那几篇，连只剩做完了的）：按名字找，排在搜到的待办后面（↓ 照旧先到待办），点了打开那一篇
+      const withTasks = new Set(snap.tasks.filter((x) => !x.dupOf && x.path !== INBOX_NOTE).map((x) => x.path))
+      const lists = snap.notes
+        .filter((n) => withTasks.has(n.path) && n.title.toLowerCase().includes(low))
+        .sort((x, y) => Number(!x.title.toLowerCase().startsWith(low)) - Number(!y.title.toLowerCase().startsWith(low)) || y.mtimeMs - x.mtimeMs)
+        .slice(0, 6)
+      for (const n of lists) out.push({ key: `l:${n.path}`, icon: 'file', name: n.title, desc: n.folder || undefined, group: 'lists', run: () => onGo('lists', `list:${n.path}`) })
       // 不像排日程的话：「问 AI」排在搜到的待办后面（回车照旧是加一条、↓ 先到搜到的那几条）
       if (!looksLikePlan(text)) out.push({ ...askRow, group: 'ask' })
     }
@@ -95,7 +103,7 @@ export function Palette({ today, onClose, onGo, onSettings, onImport, onAskAi, o
     list.current?.querySelector('.pr.on')?.scrollIntoView({ block: 'nearest' })
   }, [i])
 
-  const head = (g: Row['group']) => (g === 'add' || g === 'ask' ? null : g === 'tasks' ? t('palTasks') : t('palGo'))
+  const head = (g: Row['group']) => (g === 'add' || g === 'ask' ? null : g === 'lists' ? t('palLists') : g === 'tasks' ? t('palTasks') : t('palGo'))
   return (
     <>
       <div className="scrim" onClick={onClose} />
@@ -120,14 +128,15 @@ export function Palette({ today, onClose, onGo, onSettings, onImport, onAskAi, o
         </div>
         <div className="plist" ref={list}>
           {rows.map((r, k) => (
-            <div key={r.key}>
+            // 组名和行是兄弟（不再每行包一层 div）：.pal .pg:not(:first-child) 那道组间横线才画得出来
+            <Fragment key={r.key}>
               {(k === 0 || rows[k - 1]!.group !== r.group) && head(r.group) && <div className="pg">{head(r.group)}</div>}
               <button className={`pr${k === i ? ' on' : ''}`} onMouseMove={() => setI(k)} onClick={r.run}>
                 {r.icon === 'ai' ? <EngineLogo id={ai?.engine} s={16} /> : <Ic n={r.icon} />}
                 <span className="nm">{r.name}</span>
                 {r.desc && <span className="ds">{r.desc}</span>}
               </button>
-            </div>
+            </Fragment>
           ))}
           {!rows.length && <div className="pnone">{t('palNone')}</div>}
         </div>

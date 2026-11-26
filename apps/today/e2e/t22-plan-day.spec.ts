@@ -35,7 +35,8 @@ const MON = '2026-11-23T08:30:00'
 const trayTitle = (run: Awaited<ReturnType<typeof launch>>) => run.app.evaluate(() => (globalThis as unknown as { ctTrayTitle: () => string }).ctTrayTitle())
 
 test('排一天：早上定剩下的、估时、拖进空档、改时长、开工、收工写进日记、重开还在', async () => {
-  test.setTimeout(180_000)
+  // 一条走完一整天（两次起软件），机器忙时 3 分钟不够
+  test.setTimeout(300_000)
   let run = await launch({ ...CAL, files: { ...VAULT, ...DIARY }, now: MON })
   const { root } = run
   let page = run.page
@@ -100,9 +101,9 @@ test('排一天：早上定剩下的、估时、拖进空档、改时长、开�
     await expect(page.locator('.pday .cal-blk.ev', { hasText: '组会' })).toBeVisible()
     const chip = page.locator('.pchip[data-drag]', { hasText: '读第三章' })
     await expect(chip).toContainText('30分')
-    // 拖到 11:00：格子从 0 点起，一小时 40 高
+    // 拖到 11:00：格子从 0 点起，排一天的时间线一小时 56 高（PLAN_HOUR）
     await col.scrollIntoViewIfNeeded()
-    await dragTo(page, chip, col, 11 * 40 + 4)
+    await dragTo(page, chip, col, 11 * 56 + 4)
     await expect.poll(() => run.read('阅读/杀死一只知更鸟.md')).toContain('- [ ] 读第三章 [估时:: 30分钟] 📅 2026-11-23 11:00')
     const blk = page.locator('.pday .cal-blk[data-drag]', { hasText: '读第三章' })
     await expect(blk).toBeVisible()
@@ -114,13 +115,13 @@ test('排一天：早上定剩下的、估时、拖进空档、改时长、开�
     const b = (await rs.boundingBox())!
     await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2)
     await page.mouse.down()
-    await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2 + 20, { steps: 3 })
-    await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2 + 40, { steps: 3 })
+    await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2 + 28, { steps: 3 })
+    await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2 + 56, { steps: 3 })
     await page.mouse.up()
     await expect.poll(() => run.read('阅读/杀死一只知更鸟.md')).toContain('- [ ] 读第三章 [估时:: 1小时30分钟] 📅 2026-11-23 11:00')
     await expect(blk).toContainText('11:00–12:30')
     // 再拖一条：取快递放到 13:00（没估，按一小时）
-    await dragTo(page, page.locator('.pchip[data-drag]', { hasText: '取快递' }), col, 13 * 40 + 4)
+    await dragTo(page, page.locator('.pchip[data-drag]', { hasText: '取快递' }), col, 13 * 56 + 4)
     await expect.poll(() => run.read('收件箱/待办.md')).toContain('- [ ] 取快递 📅 2026-11-23 13:00')
     await expect(page.getByTestId('plan-day-sum')).toContainText('排了4条')
     await shot(page, '04-place')
@@ -129,7 +130,7 @@ test('排一天：早上定剩下的、估时、拖进空档、改时长、开�
     await page.locator('.tabs [data-ai="plan"]').click()
     await expect(page.locator('aside.right [data-k="ai"]')).toBeVisible()
     await expect(page.locator('aside.right')).toContainText('把今天要做的这几条排进今天空着的时间')
-    // 右栏 AI 开着时中间窄了：时间线收到 240，按钮换到下一行（截一张）
+    // 右栏 AI 开着时中间窄了：时间线还是中间的一半，按钮换到下一行（截一张）
     await shot(page, '04b-ai-open')
     await page.locator('.pstep[data-step="pick"]').click()
     await shot(page, '03b-pick-ai-open')

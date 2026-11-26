@@ -25,6 +25,14 @@
     0 0 0 1px var(--acc-ring, var(--accent-ring)),
     0 0 0 3px var(--acc-soft, var(--accent-soft));
 }
+/* AI 现在用不了（扩展点 disabled，MeetCaption 场次用完）：底子退成 --fill、描边淡一档，字打不进去；为什么写在输入框下面那一行（below） */
+.aiin.off {
+  background: var(--fill, var(--fill-2));
+  box-shadow: 0 0 0 1px var(--line, var(--stroke));
+}
+.aiin.off textarea {
+  cursor: not-allowed;
+}
 /* 拖图经过时（访达里的图、右栏网页里的图）：--acc-ring 外圈 + --acc-soft 光晕（同文件树里拖笔记经过文件夹），框里只露「松手附上这张图」 */
 .aiin.hot {
   box-shadow:

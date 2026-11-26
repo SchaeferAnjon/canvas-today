@@ -2,6 +2,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { CtApi } from '../shared/api'
 import { familyApi } from '../../../notes/src/preload/family'
+import { crashApi } from '../../../notes/src/preload/crash'
 
 const on =
   <A extends unknown[]>(channel: string) =>
@@ -27,6 +28,7 @@ const api: CtApi = {
   git: () => ipcRenderer.invoke('ct:git'),
   onGit: on('ct:git'),
   openNote: (path, line) => ipcRenderer.invoke('ct:openNote', path, line),
+  noteText: (path) => ipcRenderer.invoke('ct:noteText', path),
   previewNotif: (key) => ipcRenderer.invoke('ct:previewNotif', key),
   setSettings: (p) => ipcRenderer.invoke('ct:setSettings', p),
   onSettings: on('ct:settings'),
@@ -47,15 +49,23 @@ const api: CtApi = {
   aiKeyDrop: (id) => ipcRenderer.invoke('ct:aiKeyDrop', id),
   chatInfo: (id) => ipcRenderer.invoke('ct:chatInfo', id),
   chatDefault: () => ipcRenderer.invoke('ct:chatDefault'),
+  aiSettings: () => ipcRenderer.invoke('ct:aiSettings'),
+  aiSetOwn: (f, pick) => ipcRenderer.invoke('ct:aiSetOwn', f, pick),
   chatList: () => ipcRenderer.invoke('ct:chatList'),
   chatLoad: (id) => ipcRenderer.invoke('ct:chatLoad', id),
-  chatAsk: (id, text, job, mats) => ipcRenderer.invoke('ct:chatAsk', id, text, job, mats),
+  chatAsk: (id, text, job, mats, opts) => ipcRenderer.invoke('ct:chatAsk', id, text, job, mats, opts),
+  chatHandoff: (id, job) => ipcRenderer.invoke('ct:chatHandoff', id, job),
+  onOpenChat: on('ct:openChat'),
+  onChatSaved: on('ct:chatSaved'),
   chatPaste: (bytes, mime) => ipcRenderer.invoke('ct:chatPaste', bytes, mime),
   chatPickImages: (room) => ipcRenderer.invoke('ct:chatPickImages', room),
   chatPasted: (name) => ipcRenderer.invoke('ct:chatPasted', name),
   chatAccept: (id, msgId, on) => ipcRenderer.invoke('ct:chatAccept', id, msgId, on),
   chatPlanState: (id, msgId, state) => ipcRenderer.invoke('ct:chatPlanState', id, msgId, state),
   chatPick: (id, pick) => ipcRenderer.invoke('ct:chatPick', id, pick),
+  chatOmni: (on) => ipcRenderer.invoke('ct:chatOmni', on),
+  chatRevert: (id, msgId) => ipcRenderer.invoke('ct:chatRevert', id, msgId),
+  onChatEvent: on('ct:chatEvent'),
   focus: (op) => ipcRenderer.invoke('ct:focus', op),
   focusInfo: () => ipcRenderer.invoke('ct:focusInfo'),
   onFocus: on('ct:focus'),
@@ -113,3 +123,5 @@ const api: CtApi = {
 contextBridge.exposeInMainWorld('ct', api)
 /** 设置 › 软件家族：和画布笔记同一套（main/family.ts、preload/family.ts 都是画布笔记那份） */
 contextBridge.exposeInMainWorld('cnFamily', familyApi)
+// 出错报给主进程记进 main.log（同画布笔记 preload/crash.ts）
+contextBridge.exposeInMainWorld('cnCrash', crashApi)

@@ -7,6 +7,7 @@
  */
 // 只引日历的算法（主进程也用这一份：菜单栏那一行），不把 React 组件带进主进程
 import { type CalEvent, eventsOn } from '@cn/calendar/model'
+import { isHiddenPath } from '@cn/format'
 import { type ISODate, diffDays, hhmm, minutesOf } from '@cn/tasks'
 import type { TaskView } from './api'
 import { INBOX_NOTE } from './brand'
@@ -41,6 +42,31 @@ export function planLists(ts: readonly TaskView[], today: ISODate) {
     inbox: live.filter((t) => t.path === INBOX_NOTE && t.parent === null && !t.date).sort((a, b) => a.line - b.line),
     week: live.filter((t) => t.date !== null && t.date > today && diffDays(t.date, today) < 7).sort((a, b) => a.date!.localeCompare(b.date!) || byWhen(a, b)),
   }
+}
+
+/** 一篇笔记里没定日子的那几条（从全库挑「别的笔记里没定日子的」一组） */
+export interface LooseNote {
+  path: string
+  tasks: TaskView[]
+}
+
+/**
+ * 别的笔记里没定日子的（2026-11-25 用户「可以 加进来」）：没做完、最上层（子任务跟着上一层走）、没日子，按笔记分组；
+ * 收件箱自己有一组，不在这里；隐藏的和软件自己的（路径里有一段以 . 开头，@cn/format isHiddenPath，和 @cn/git isInternalPath 同一个判断）不算，主进程扫库时也已经跳过。
+ * 笔记按最近改过的在前（mtimes：snap.notes 的 mtimeMs），一篇里按行
+ */
+export function looseByNote(ts: readonly TaskView[], mtimes: ReadonlyMap<string, number>): LooseNote[] {
+  const by = new Map<string, TaskView[]>()
+  for (const t of ts) {
+    if (!open(t) || !listed(t) || t.date || t.parent !== null || t.path === INBOX_NOTE) continue
+    if (isHiddenPath(t.path)) continue
+    const list = by.get(t.path)
+    if (list) list.push(t)
+    else by.set(t.path, [t])
+  }
+  return [...by]
+    .map(([path, tasks]) => ({ path, tasks: tasks.sort((a, b) => a.line - b.line) }))
+    .sort((a, b) => (mtimes.get(b.path) ?? 0) - (mtimes.get(a.path) ?? 0) || a.path.localeCompare(b.path))
 }
 
 /** 一段时间（分钟，0–1440） */

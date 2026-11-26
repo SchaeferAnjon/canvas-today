@@ -4,6 +4,7 @@
  * 再按 🆔 找；都找不到就不改，告诉界面「这一行刚被别处改了」。
  * 抄了好几遍的同一条（索引里 dupOf / dups）：勾掉、改日子钟点、改名、删掉写到每一份上（一次改动、一个撤销），别的只改点的那一份。
  */
+import { insertBelow } from './quick-attach'
 import { addSubtask, appendTask, completeTask, type CopyEdit, copiesOf, editCopy, editLine, type ISODate, isISODate, lineAt, makeId, minutesText, moveBlock, newTaskLine, normTime, parseQuick, parseRemind, parseRepeat, parseTaskLine, removeBlock, setCancelled, setDate, setDone, setDuration, setId, setPrio, setRemind, setRepeat, setTime, setTitle, setWhen, splitLines, type When } from '@cn/tasks'
 import type { AddCtx, AddResult, EditReq, EditResult, Snapshot } from '../shared/api'
 import type { PlanChange } from '../shared/ai-chat'
@@ -146,7 +147,7 @@ export async function applyEdit(v: TaskVault, req: EditReq, today: ISODate): Pro
           after = editLine(text, n, (l) => setWhen(l, e.when, newId))
           break
         case 'prio':
-          after = editLine(text, n, (l) => setPrio(l, e.prio))
+          after = editLine(text, n, (l) => setPrio(l, e.prio, e.lowest))
           break
         case 'title':
           if (!e.title.trim()) return null
@@ -321,7 +322,10 @@ function aiWhen(x: unknown, today: ISODate): When | null {
  * 快速加一条：认出日子钟点重复提醒优先级；#清单 对上哪篇就写进哪篇（shared/quick.ts notesFor：笔记名、文件夹名、模糊找），不然进 收件箱/待办.md（这一篇没有就建）；
  * when：AI 认出来的（task-pd289）；dest：全局小框里 ⌘↵ 自己换的那篇（索引里有待办的笔记，或收件箱；别的不认）
  */
-export async function addTask(v: TaskVault, text: string, ctx: AddCtx, today: ISODate, snap: Snapshot, when?: unknown, now?: string, dest?: unknown): Promise<AddResult> {
+/**
+ * attach：写进哪篇定下来以后叫一次，交回要挂在这一条下面的几行（全局快速输入框贴的图，main/quick-attach.ts 先把图存进那篇的附件文件夹）
+ */
+export async function addTask(v: TaskVault, text: string, ctx: AddCtx, today: ISODate, snap: Snapshot, when?: unknown, now?: string, dest?: unknown, attach?: (path: string) => Promise<string[]>): Promise<AddResult> {
   const q = parseQuick(text, now ?? today)
   const w = aiWhen(when, today)
   if (w) Object.assign(q, { title: w.title, date: w.date, time: w.time, remind: w.date ? w.remind : null, repeat: w.repeat })
@@ -339,6 +343,7 @@ export async function addTask(v: TaskVault, text: string, ctx: AddCtx, today: IS
   const date = q.date ?? (ctx === 'today' ? today : ctx === 'tomorrow' ? isoPlus(today, 1) : null)
   const line = newTaskLine({ title, date, time: q.time, remind: date ? q.remind : null, repeat: q.repeat, prio: q.prio })
   try {
+    const below = attach ? await attach(path) : []
     let created = false
     const r = await v.change([path], `画布今日：加了「${title}」`, (now) => {
       let cur = now.get(path) ?? null
@@ -347,7 +352,7 @@ export async function addTask(v: TaskVault, text: string, ctx: AddCtx, today: IS
         cur = `# ${noteTitle(path)}\n\n`
       }
       const a = appendTask(cur, line)
-      return { out: new Map([[path, a.text]]), result: a.line }
+      return { out: new Map([[path, insertBelow(a.text, a.line, below)]]), result: a.line }
     })
     if (!r) return { ok: false, reason: 'failed' }
     return { ok: true, undo: r.undo ?? '', path, line: r.result, raw: line, title, date, time: q.time, created }

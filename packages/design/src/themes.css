@@ -38,6 +38,16 @@
   --status-err-t: var(--red-t);
   --seam: var(--line);
   --bgart: none;
+  /* 日历块（周看法、月看法、排一天的时间线，@cn/calendar）：每套主题自己给 --cal-task（待办块实底）、--cal-ev-base 和 --cal-ev-k（日程块 = 日历的颜色 k 混进 base）；
+     导入的 VS Code 主题用这里的：强调色 16% 混进 --card、日程 15% 混进 --card。块里的小字（钟点、在哪篇）往正文色靠 70%，对块底 ≥ 4.5 */
+  --cal-task: color-mix(in srgb, var(--acc) 16%, var(--card));
+  --cal-ev-base: var(--card);
+  --cal-ev-k: 15%;
+  --cal-blk-t2: color-mix(in srgb, var(--t2) 30%, var(--t1));
+  /* 在半透明的岛上（照片、主题渐变）格子和 --win 不一样：每套可以另给一组，宿主在岛里换上（画布今日 today.css、画布笔记 shell.css）；不给就和实底一样 */
+  --cal-task-isle: var(--cal-task);
+  --cal-ev-base-isle: var(--cal-ev-base);
+  --cal-ev-k-isle: var(--cal-ev-k);
   --blur: none;
   --paper: transparent;
   --paper-sh: none;
@@ -93,6 +103,15 @@
 /* ---------- 薄荷 · 浅（白天默认，GitHub Light 的结构 + Everforest 的绿） ---------- */
 [data-skin='mint'] {
   color-scheme: light;
+  /* 日历块：待办块实底、日程块 = 它日历的颜色 --cal-ev-k 混进 --cal-ev-base（对比度见 apps/today/test/cal-colors.test.ts） */
+  --cal-task: #d7e9e3;
+  /* 在半透明的岛上（格子比 --win 暗）待办块用浅一档的：强调色 10% 混进白 */
+  --cal-task-isle: #e7f2ee;
+  /* 岛上格子比 --win 暗：日程块白底、日历色 14%（设计复审：实测课程表紫色块对格子只有 1.01） */
+  --cal-ev-base-isle: #ffffff;
+  --cal-ev-k-isle: 14%;
+  --cal-ev-base: #eaebeb;
+  --cal-ev-k: 18%;
   --title: #e4f1ea;
   --bar: #e4f1ea;
   --side: #eef7f2;
@@ -156,6 +175,15 @@
 /* ---------- 天青 · 浅（Light Owl / VS Code Light+）：底栏一条青色，卡片只描边，当前标签下沿 ---------- */
 [data-skin='sky'] {
   color-scheme: light;
+  /* 日历块：待办块实底、日程块 = 它日历的颜色 --cal-ev-k 混进 --cal-ev-base（对比度见 apps/today/test/cal-colors.test.ts） */
+  --cal-task: #d5e9f0;
+  /* 在半透明的岛上（格子比 --win 暗）待办块用浅一档的：强调色 10% 混进白 */
+  --cal-task-isle: #e6f2f6;
+  /* 岛上格子比 --win 暗：日程块白底、日历色 14%（设计复审：实测课程表紫色块对格子只有 1.01） */
+  --cal-ev-base-isle: #ffffff;
+  --cal-ev-k-isle: 14%;
+  --cal-ev-base: #e9ebec;
+  --cal-ev-k: 18%;
   --title: #e2eff5;
   --bar: #e2eff5;
   --side: #edf5f9;
@@ -223,6 +251,15 @@
 /* ---------- 樱花 · 浅（Horizon Bright）：当前标签整块染色，卡片软投影，圆角大一号 ---------- */
 [data-skin='sakura'] {
   color-scheme: light;
+  /* 日历块：待办块实底、日程块 = 它日历的颜色 --cal-ev-k 混进 --cal-ev-base（对比度见 apps/today/test/cal-colors.test.ts） */
+  --cal-task: #f8dee7;
+  /* 在半透明的岛上（格子比 --win 暗）待办块用浅一档的：强调色 10% 混进白 */
+  --cal-task-isle: #faebf0;
+  /* 岛上格子比 --win 暗：日程块白底、日历色 14%（设计复审：实测课程表紫色块对格子只有 1.01） */
+  --cal-ev-base-isle: #ffffff;
+  --cal-ev-k-isle: 14%;
+  --cal-ev-base: #eceaeb;
+  --cal-ev-k: 18%;
   --title: #fae6ea;
   --bar: #fae6ea;
   --side: #fdf0f2;
@@ -286,6 +323,15 @@
 /* ---------- 丁香 · 浅（Noctis Lilac，强调换成李子紫） ---------- */
 [data-skin='lilac'] {
   color-scheme: light;
+  /* 日历块：待办块实底、日程块 = 它日历的颜色 --cal-ev-k 混进 --cal-ev-base（对比度见 apps/today/test/cal-colors.test.ts） */
+  --cal-task: #eee0f1;
+  /* 在半透明的岛上（格子比 --win 暗）待办块用浅一档的：强调色 10% 混进白 */
+  --cal-task-isle: #f5edf7;
+  /* 岛上格子比 --win 暗：日程块白底、日历色 14%（设计复审：实测课程表紫色块对格子只有 1.01） */
+  --cal-ev-base-isle: #ffffff;
+  --cal-ev-k-isle: 14%;
+  --cal-ev-base: #ebeaec;
+  --cal-ev-k: 18%;
   --title: #ece5f4;
   --bar: #ece5f4;
   --side: #f4f0f9;
@@ -349,6 +395,15 @@
 /* ---------- 石白 · 浅（照 Dispatch Light）：没有分隔线、只靠两层底色；黑按钮，当前标签只靠白底 ---------- */
 [data-skin='stone'] {
   color-scheme: light;
+  /* 日历块：待办块实底、日程块 = 它日历的颜色 --cal-ev-k 混进 --cal-ev-base（对比度见 apps/today/test/cal-colors.test.ts） */
+  --cal-task: #e4e3e3;
+  /* 在半透明的岛上（格子比 --win 暗）待办块用浅一档的：强调色 10% 混进白 */
+  --cal-task-isle: #e8e8e8;
+  /* 岛上格子比 --win 暗：日程块白底、日历色 14%（设计复审：实测课程表紫色块对格子只有 1.01） */
+  --cal-ev-base-isle: #ffffff;
+  --cal-ev-k-isle: 14%;
+  --cal-ev-base: #e9e9e9;
+  --cal-ev-k: 18%;
   --title: #fafaf9;
   --bar: #fafaf9;
   --side: #fafaf9;
@@ -415,6 +470,15 @@
 /* ---------- 松林 · 深（夜里默认，Everforest Dark） ---------- */
 [data-skin='pine'] {
   color-scheme: dark;
+  /* 日历块：待办块实底、日程块 = 它日历的颜色 --cal-ev-k 混进 --cal-ev-base（对比度见 apps/today/test/cal-colors.test.ts） */
+  --cal-task: #4a584f;
+  --cal-ev-base: #464c4e;
+  --cal-ev-k: 10%;
+  /* 正文色不够亮（松林）、黄色日程上小字不到 4.5：块里小字再往正文色靠 */
+  --cal-blk-t2: color-mix(in srgb, var(--t2) 15%, var(--t1));
+  /* 岛上的日程块按颜色差分开（2026-11-25 用户「可以」）：只靠变亮到不了 1.30、小字又不到 4.5，改成比格子暗一档、日历色 16%（和格子色差 ≥ 8） */
+  --cal-ev-base-isle: #1e2224;
+  --cal-ev-k-isle: 16%;
   --title: #232a2e;
   --bar: #232a2e;
   --side: #272e33;
@@ -484,6 +548,12 @@
 /* ---------- 深湖 · 深（Solarized Dark）：底栏一条深青，卡片只描边，当前标签下沿 ---------- */
 [data-skin='petrol'] {
   color-scheme: dark;
+  /* 日历块：待办块实底、日程块 = 它日历的颜色 --cal-ev-k 混进 --cal-ev-base（对比度见 apps/today/test/cal-colors.test.ts） */
+  --cal-task: #105158;
+  --cal-ev-base: #33484c;
+  --cal-ev-k: 16%;
+  /* 正文色不够亮（松林）、黄色日程上小字不到 4.5：块里小字再往正文色靠 */
+  --cal-blk-t2: color-mix(in srgb, var(--t2) 15%, var(--t1));
   --title: #001e27;
   --bar: #001e27;
   --side: #00252f;
@@ -556,6 +626,10 @@
 /* ---------- 可可 · 深（Monokai Pro Ristretto）：当前标签整块染色，卡片投影 ---------- */
 [data-skin='cocoa'] {
   color-scheme: dark;
+  /* 日历块：待办块实底、日程块 = 它日历的颜色 --cal-ev-k 混进 --cal-ev-base（对比度见 apps/today/test/cal-colors.test.ts） */
+  --cal-task: #60433d;
+  --cal-ev-base: #4a4142;
+  --cal-ev-k: 16%;
   --title: #211c1c;
   --bar: #211c1c;
   --side: #262020;
@@ -623,6 +697,10 @@
 /* ---------- 墨夜 · 深（Ayu Dark）：近黑底、橙色强调，卡片只描边，当前标签下沿 ---------- */
 [data-skin='ink'] {
   color-scheme: dark;
+  /* 日历块：待办块实底、日程块 = 它日历的颜色 --cal-ev-k 混进 --cal-ev-base（对比度见 apps/today/test/cal-colors.test.ts） */
+  --cal-task: #4c3528;
+  --cal-ev-base: #34363c;
+  --cal-ev-k: 16%;
   --title: #08090d;
   --bar: #08090d;
   --side: #0b0e14;
@@ -689,6 +767,10 @@
 /* ---------- 石墨 · 深（照 Dispatch Dark）：没有分隔线、只靠两层底色；白按钮黑字，当前标签只靠黑底 ---------- */
 [data-skin='graphite'] {
   color-scheme: dark;
+  /* 日历块：待办块实底、日程块 = 它日历的颜色 --cal-ev-k 混进 --cal-ev-base（对比度见 apps/today/test/cal-colors.test.ts） */
+  --cal-task: #3a3836;
+  --cal-ev-base: #363431;
+  --cal-ev-k: 16%;
   --title: #1c1917;
   --bar: #1c1917;
   --side: #1c1917;

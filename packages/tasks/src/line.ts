@@ -112,6 +112,10 @@ export const EMOJI = {
 } as const
 
 export const PRIO_EMOJI: Record<Exclude<Prio, 0>, string> = { 3: '⏫', 2: '🔼', 1: '🔽' }
+/** 最低（Obsidian Tasks 的 ⏬）：读成低（1），画布今日四象限拿它当第 4 格「不重要不紧急」 */
+export const LOWEST = '⏬'
+/** 这一行的优先级记号是 ⏬（最低） */
+export const isLowest = (t: TaskLine): boolean => t.fields.some((f) => f.kind === 'prio' && f.emoji === LOWEST)
 const PRIO_OF: Record<string, Prio> = { '⏫': 3, '🔺': 3, '🔼': 2, '🔽': 1, '⏬': 1 }
 
 /**

@@ -12,19 +12,24 @@ import { MC_LEADS, type McLead } from '../shared/mc'
 import { AppearancePage, Group, type LookSkin, PageHead, Row, Sel, SettingsShell, Toggle, useSaid } from '@cn/design/settings'
 import { FamilySettings } from './family'
 import '@cn/design/settings.css'
-import { type ReactNode, useEffect, useMemo, useState } from 'react'
+import { Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
+import { KeysPage } from './settings-keys'
+import { searchSettings, type SettingsItem, type SettingsPageId, PAGE_NAME } from '../shared/settings-index'
+import { TABLES } from '../shared/i18n'
+import { clashOf, keyDef } from '../shared/keymap'
 import { activeSkin, allSkins, panelsGlass, SKINS, skinOf } from '../../../notes/src/shared/appearance'
 import { themeInfo } from '../../../notes/src/shared/vscode-theme'
-import type { JournalInfo, QuickKeyState, RemList } from '../shared/api'
+import type { AiSettingsView, JournalInfo, QuickKeyState, RemList } from '../shared/api'
 import { comboOf, DEFAULT_QUICK_KEY, QUICK_KEY_SUGGEST, quickKeyOften, quickKeyProblem } from '../shared/quick'
 import type { TodayAppearance, TodaySettings } from '../shared/settings'
 import { INBOX_NOTE } from '../shared/brand'
 import { updateError, updateLine } from '../shared/update'
 import { nowMs, refreshAi, reloadState, saveSettings, setLook, useData, useLang } from './store'
-import { type ApiId, SOURCE_LABEL } from '@cn/ai-engines/shared'
+import { type AiPick, type ApiId, isApi, pickLabel, SOURCE_LABEL } from '@cn/ai-engines/shared'
+import { AiPicker } from '@cn/ai-chat/ai-picker'
 import { EngineLogo, useT } from './ui'
 
-export type SettingsPage = 'general' | 'plan' | 'look' | 'calrem' | 'ai' | 'vault' | 'family'
+export type SettingsPage = SettingsPageId
 
 const SKIN_EN: Record<string, string> = { mint: 'Mint', sky: 'Sky', sakura: 'Sakura', lilac: 'Lilac', stone: 'Stone', pine: 'Pine', petrol: 'Deep lake', cocoa: 'Cocoa', ink: 'Ink', graphite: 'Graphite' }
 /** 主题卡悬停那句的英文（中文在 SKINS 里；和画布笔记的英文表一样） */
@@ -41,7 +46,7 @@ const SKIN_NOTE_EN: Record<string, string> = {
   graphite: 'Dispatch black: no dividers, white buttons on black',
 }
 
-const PAGES: { id: SettingsPage; icon: CodiconName; name: 'sGeneral' | 'sPlan' | 'sLook' | 'sCalRem' | 'sAi' | 'sVault' | 'sFamily'; desc: 'sGeneralDesc' | 'sPlanDesc' | 'sLookDesc' | 'sCalRemDesc' | 'sAiDesc' | 'sVaultDesc' | 'sFamilyDesc' }[] = [
+const PAGES: { id: SettingsPage; icon: CodiconName; name: 'sGeneral' | 'sPlan' | 'sLook' | 'sCalRem' | 'sAi' | 'sVault' | 'sFamily' | 'sKeys'; desc: 'sGeneralDesc' | 'sPlanDesc' | 'sLookDesc' | 'sCalRemDesc' | 'sAiDesc' | 'sVaultDesc' | 'sFamilyDesc' | 'sKeysDesc' }[] = [
   { id: 'general', icon: 'settings-gear', name: 'sGeneral', desc: 'sGeneralDesc' },
   { id: 'look', icon: 'symbol-color', name: 'sLook', desc: 'sLookDesc' },
   { id: 'calrem', icon: 'calendar', name: 'sCalRem', desc: 'sCalRemDesc' },
@@ -49,6 +54,8 @@ const PAGES: { id: SettingsPage; icon: CodiconName; name: 'sGeneral' | 'sPlan' |
   { id: 'vault', icon: 'library', name: 'sVault', desc: 'sVaultDesc' },
   { id: 'plan', icon: 'rocket', name: 'sPlan', desc: 'sPlanDesc' },
   { id: 'family', icon: 'multiple-windows', name: 'sFamily', desc: 'sFamilyDesc' },
+  // 快捷键（对标清单 U5）：放在最后，同画布笔记「其他」段里快捷键在家族后面
+  { id: 'keys', icon: 'record-keys', name: 'sKeys', desc: 'sKeysDesc' },
 ]
 
 /**
@@ -92,8 +99,15 @@ export function SettingsDialog({
   const iconOf = (p: (typeof PAGES)[number], s: number) => (p.id === 'ai' ? <EngineLogo id={aiNow?.engine} s={s} /> : <Codicon name={p.icon} size={s} />)
   const text = useMemo(() => ({ title: t('settings'), nav: t('sNav'), close: t('sCloseSet'), closeTip: t('sCloseTip'), saved: (hint: string) => t('sSaved', hint), undo: t('sUndo') }), [t])
   const sections = [{ pages: PAGES.map((p) => ({ id: p.id, name: t(p.name), icon: iconOf(p, 16) })) }]
+  const followNotes = useData().state!.settings.followNotes
+  const search = useSettingsSearch((it) => {
+    // 外观跟着画布笔记时下面那几行不在：翻到「和画布笔记一样」那一行
+    const row = it.pg === 'look' && followNotes && it.id !== 'followNotes' ? 'followNotes' : it.id
+    setPage(it.pg)
+    setFocus({ row, seq: Date.now() })
+  })
   return (
-    <SettingsShell asTab={asTab} text={text} sections={sections} page={page} onPage={(id) => setPage(id as SettingsPage)} onClose={onClose} appNotice={appNotice} focus={focus}>
+    <SettingsShell asTab={asTab} text={text} sections={sections} page={page} onPage={(id) => setPage(id as SettingsPage)} onClose={onClose} appNotice={appNotice} focus={focus} navTop={search.box} navBody={search.results}>
       <PageHead icon={iconOf(cur, 18)} title={t(cur.name)} desc={t(cur.desc)} />
       {page === 'general' && <GeneralPage />}
       {page === 'plan' && <PlanPage />}
@@ -102,6 +116,7 @@ export function SettingsDialog({
       {page === 'ai' && <AiPage />}
       {page === 'vault' && <VaultPage />}
       {page === 'family' && <FamilySettings onGoRow={goRow} />}
+      {page === 'keys' && <KeysPage />}
     </SettingsShell>
   )
 }
@@ -212,7 +227,9 @@ function QuickKeyRow() {
   }, [])
   const put = (combo: string) => {
     setRec(false)
-    const bad = quickKeyProblem(combo, lang)
+    // 软件自己的键照现在谁用着说（设置 › 快捷键里改过的不再算）；撞了就说撞了谁，到快捷键页能对调
+    const other = clashOf('quick-add', combo, s)
+    const bad = quickKeyProblem(combo, lang, true) ?? (other ? t('kTakenPick', combo, t(keyDef(other).name as 'kSearch')) : null)
     if (bad) return setWarn(bad)
     const who = quickKeyOften(combo, lang)
     setWarn(who ? t('sQuickOften', combo, who) : null)
@@ -473,14 +490,67 @@ function CalRemPage({ onImport, onGuide }: { onImport: () => void; onGuide: () =
 function AiPage() {
   const t = useT()
   const said = useSaid()
-  const ai = useData().ai
   const [keys, setKeys] = useState<{ id: ApiId; tail: string | null; notes: boolean }[] | null>(null)
   const load = () => void window.ct.aiKeys().then(setKeys)
   useEffect(load, [])
   const shown = (keys ?? []).filter((k) => k.notes || k.tail)
+  // 两样各用哪一家（对标清单 U4）：画布今日自己选，或者跟画布笔记 设置 › AI 的同一行（没装画布笔记是默认那家）
+  const [v, setV] = useState<AiSettingsView | null>(null)
+  useEffect(() => void window.ct.aiSettings().then(setV), [])
+  const setOwn = (f: 'chat' | 'quick', name: string, pick: AiPick | null) => {
+    const before = v?.[f].own ?? null
+    void window.ct.aiSetOwn(f, pick).then((x) => {
+      setV(x)
+      void refreshAi()
+      const now = pick ?? x[f].follow
+      const label = pickLabel(now, x.engines.find((e) => e.id === now.engine)?.models ?? [])
+      said.saved(t('sSetTo', name, pick ? label : t(x.notes ? 'sAiFollowNotesNow' : 'sAiDefaultNow', label)), () =>
+        void window.ct.aiSetOwn(f, before).then((y) => (setV(y), void refreshAi())),
+      )
+    })
+  }
+  const picker = (f: 'chat' | 'quick', name: string) => {
+    if (!v) return null
+    const row = v[f]
+    const cur = row.own
+    const next = (p: { family?: string; model?: string; effort?: string | null }): AiPick => {
+      const base = cur ?? row.follow
+      if (p.family !== undefined) return { engine: p.family as AiPick['engine'] }
+      if (p.model !== undefined) return { engine: base.engine, ...(p.model ? { model: p.model } : {}), ...(base.effort ? { effort: base.effort } : {}) }
+      return { engine: base.engine, ...(base.model ? { model: base.model } : {}), ...(p.effort ? { effort: p.effort } : {}) }
+    }
+    return (
+      <AiPicker
+        look="box"
+        ids={{ family: `ai-pick-${f}`, model: `ai-pick-${f}-model`, effort: `ai-pick-${f}-effort` }}
+        familyMenu={t('sAiWhoMenu', name)}
+        familyHead={t('sAiWhoMenu', name)}
+        label={name}
+        families={v.engines.map((e) => ({ id: e.id, label: e.label, logo: e.id, note: e.ok ? e.where || 'API Key' : isApi(e.id) ? t('sAiNoKey') : t('chatNotInstalled'), off: !e.ok, models: e.models, route: isApi(e.id) ? 'api' : 'cli' }))}
+        lead={{ label: t(v.notes ? 'sAiFollowNotes' : 'sAiDefault'), sub: row.followLabel, logo: row.follow.engine }}
+        value={cur ? { family: cur.engine, model: cur.model ?? '', ...(cur.effort ? { effort: cur.effort } : {}) } : { family: null }}
+        unsetEffort={{ label: t('sAiEffortUnset'), note: t('sAiEffortUnsetNote') }}
+        onFamily={(id) => setOwn(f, name, id === null ? null : next({ family: id }))}
+        onModel={(m) => setOwn(f, name, next({ model: m }))}
+        onEffort={(e) => setOwn(f, name, next({ effort: e }))}
+      />
+    )
+  }
+  const descOf = (f: 'chat' | 'quick') => (!v ? '' : v[f].own ? t(f === 'chat' ? 'sAiOwnChat' : 'sAiOwnQuick') : v.notes ? t(f === 'chat' ? 'sAiFollowChatShort' : 'sAiFollowQuickShort') : t(f === 'chat' ? 'sAiNoNotesChat' : 'sAiNoNotes'))
   return (
-    <Group title={null}>
-      <Row id="aiFollow" label={t('sAiFollow')} desc={ai ? t('sAiFollowDesc', ai.full) : t('sAiNoNotes')} />
+    <>
+    {/* 右边一列放三段（家 · 模型 · 想多久），和画布笔记「各功能用哪个」一样 300 宽 */}
+    <div className="aipk-wide">
+    <Group title={t('sAiWho')}>
+      <Row id="aiChat" label={t('sAiChatRow')} desc={descOf('chat')}>
+        {picker('chat', t('sAiChatRow'))}
+      </Row>
+      <Row id="aiFollow" label={t('sAiQuickRow')} desc={descOf('quick')}>
+        {picker('quick', t('sAiQuickRow'))}
+      </Row>
+    </Group>
+    </div>
+    <Group title={t('sAiKeysGroup')}>
       {shown.length === 0 && keys && <Row id="aiKey" label={t('sAiKey', 'API Key')} desc={t('sAiKeyNone')} />}
       {shown.map((k) => (
         <Row key={k.id} id={`aiKey-${k.id}`} label={t('sAiKey', SOURCE_LABEL[k.id])} desc={k.tail ? t('sAiKeyHave', k.tail) : t('sAiKeyDesc')}>
@@ -516,6 +586,7 @@ function AiPage() {
         </Row>
       ))}
     </Group>
+    </>
   )
 }
 
@@ -723,5 +794,93 @@ function CalRow() {
     <Row id="cal" label={t('calRow')} desc={sub}>
       <Toggle on={c.active} label={t('calRow')} onChange={() => c.available && void flip()} />
     </Row>
+  )
+}
+
+/**
+ * 设置侧栏顶上的搜索（对标清单 U6，照画布笔记 Settings.tsx）：打字时侧栏换成搜到的几项（名字、「页 › 组」），回车去第一项；
+ * esc 先清空，再按一次才关设置。名字、说明中英文两种都认（shared/settings-index.ts）
+ */
+function useSettingsSearch(go: (it: SettingsItem) => void) {
+  const t = useT()
+  const lang = useLang()
+  const [q, setQ] = useState('')
+  const input = useRef<HTMLInputElement>(null)
+  const hits = useMemo(() => searchSettings(q), [q])
+  const box = (
+    <label className="sa-srch">
+      <Codicon name="search" size={14} />
+      <input
+        ref={input}
+        value={q}
+        placeholder={t('sSearchPh')}
+        aria-label={t('sSearchAria')}
+        onChange={(e) => setQ(e.currentTarget.value)}
+        onKeyDown={(e) => {
+          // 输入法组字时的回车是选字，不算
+          if (e.key === 'Enter' && !e.nativeEvent.isComposing && hits[0]) {
+            e.preventDefault()
+            go(hits[0])
+          }
+          if (e.key === 'Escape' && q) {
+            e.preventDefault()
+            e.stopPropagation()
+            e.nativeEvent.stopImmediatePropagation()
+            setQ('')
+          }
+        }}
+      />
+      {q && (
+        <button type="button" className="clr" aria-label={t('sSearchClear')} onClick={() => (setQ(''), input.current?.focus())}>
+          <Codicon name="close" size={14} />
+        </button>
+      )}
+    </label>
+  )
+  const results = q.trim() ? (
+    <div className="sa-res" role="list" aria-label={t('sHitsAria')}>
+      {hits.length ? (
+        <>
+          <div className="sa-rhead">{t('sHits', hits.length)}</div>
+          {hits.slice(0, 30).map((it, i) => (
+            <button key={it.id} type="button" role="listitem" className={'sa-rrow' + (i === 0 ? ' sel' : '')} data-go={it.id} onClick={() => go(it)}>
+              <b>
+                <Mark text={t(it.label as 'sKeys')} q={q} />
+              </b>
+              <small>{t('sHitPath', t(PAGE_NAME[it.pg] as 'sKeys'), it.grp ? t(it.grp as 'sKeys') : '')}</small>
+            </button>
+          ))}
+        </>
+      ) : (
+        <div className="sa-rempty">
+          {t('sNoHit', q.trim())}
+          <br />
+          {t('sTry')}{' '}
+          {TABLES[lang].sTryWords.map((w, i) => (
+            <Fragment key={w}>
+              {i > 0 && (lang === 'zh' ? '、' : ', ')}
+              <button type="button" className="sa-lnk" onClick={() => setQ(w)}>
+                {w}
+              </button>
+            </Fragment>
+          ))}
+        </div>
+      )}
+    </div>
+  ) : undefined
+  return { box, results }
+}
+
+/** 搜到的字染色（同画布笔记设置的 Mark） */
+function Mark({ text, q }: { text: string; q: string }) {
+  const k = q.trim().toLowerCase()
+  const i = k ? text.toLowerCase().indexOf(k) : -1
+  if (i < 0) return <>{text}</>
+  return (
+    <>
+      {text.slice(0, i)}
+      <mark className="sa-mark">{text.slice(i, i + k.length)}</mark>
+      {text.slice(i + k.length)}
+    </>
   )
 }

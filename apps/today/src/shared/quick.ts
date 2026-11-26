@@ -105,11 +105,14 @@ const OFTEN: Record<string, Who> = {
   '⌃⌥⇧Space': { zh: 'Things', en: 'Things' },
 }
 
-/** 这组键能不能给快速加一条；不能的说为什么 */
-export function quickKeyProblem(combo: string, lang: Lang): string | null {
+/** 画布今日自己默认用着的那几个（设置 › 快捷键里能改；在那里撞了说撞了谁、能对调，不当成系统占着的） */
+const OWN = new Set(['⌘K', '⌘,', '⌘\\', '⌥⌘\\', '⌥⌘T'])
+
+/** 这组键能不能给快速加一条；不能的说为什么。ownFree：软件自己的键另看（设置 › 快捷键照现在谁用着说撞了谁） */
+export function quickKeyProblem(combo: string, lang: Lang, ownFree = false): string | null {
   const zh = lang === 'zh'
   const name = combo.replace(/^[⌃⌥⇧⌘]+/, '')
-  const t = TAKEN[combo]
+  const t = ownFree && OWN.has(combo) ? undefined : TAKEN[combo]
   if (t) return zh ? `${combo} 是${t.zh}，换一组` : `${combo} is ${t.en}; pick another`
   // 不带 ⌘ ⌃ 时要 ⌥⇧ 一起按（只按 ⌥ 是打特殊字符，只按 ⇧ 是打大写）；F 键随意，⌥Space 是常见的叫出键（Raycast、ChatGPT 都用它）
   const ok = /^F\d+$/.test(name) || /[⌘⌃]/.test(combo) || (combo.includes('⌥') && combo.includes('⇧')) || combo === '⌥Space'
@@ -129,7 +132,8 @@ export const QUICK_KEY_SUGGEST = ['⌥⇧T', '⌃⌥N', '⌃⌥⌘T']
 
 // ---------- 写进哪一篇 ----------
 
-const low = (s: string) => s.toLowerCase()
+/** 比名字用的：小写、去掉空白（「#小论文计划」对得上叫「小论文 计划」的那篇；# 后面的字到空白为止，带空格的名字只能这样写） */
+const low = (s: string) => s.toLowerCase().replace(/\s+/g, '')
 
 /**
  * #清单 对上哪几篇（最像的在前，最多 6 篇）：笔记名一样 → 文件夹名一样（那个文件夹里和它同名的、叫「待办」的、最近改的）→
@@ -153,6 +157,72 @@ export function notesFor(notes: readonly NoteView[], list: string): NoteView[] {
     put(pool.filter((x) => low(x.folder).includes(n)).sort(recent))
   }
   return out.slice(0, 6)
+}
+
+// ---------- 打 # 和 ! 时的候选 ----------
+
+/** 光标所在的那一截：「#几个字」（清单）或「!几个字」（优先级），从空白或行首起、到光标为止；不在这样一截里是 null */
+export interface SugToken {
+  kind: 'list' | 'prio'
+  /** 「#」「!」在第几个字 */
+  from: number
+  /** 光标后面这一截还连着的字一直到哪（选上时连它一起换掉） */
+  to: number
+  /** 「#」「!」后面、光标前面的字 */
+  q: string
+}
+
+export function tokenAt(text: string, caret: number): SugToken | null {
+  let i = caret
+  while (i > 0 && !/[\s#!！]/.test(text[i - 1]!)) i--
+  if (i === 0) return null
+  const mark = text[i - 1]!
+  if (!/[#!！]/.test(mark)) return null
+  const from = i - 1
+  if (from > 0 && !/\s/.test(text[from - 1]!)) return null
+  let to = caret
+  while (to < text.length && !/[\s#!！]/.test(text[to]!)) to++
+  return { kind: mark === '#' ? 'list' : 'prio', from, to, q: text.slice(i, caret) }
+}
+
+/**
+ * 打「#」时列哪几篇（最多 6 篇，不列收件箱那篇）：什么都没打时按最近改过的；打了字照 notesFor 找，一个字也模糊找
+ * （列着给人挑，不像加上时那样怕对上一大片）。
+ */
+export function listSuggest(notes: readonly NoteView[], q: string): NoteView[] {
+  const pool = notes.filter((x) => x.path !== INBOX_NOTE)
+  const recent = (a: NoteView, b: NoteView) => b.mtimeMs - a.mtimeMs || a.path.localeCompare(b.path)
+  const n = low(q)
+  if (!n) return [...pool].sort(recent).slice(0, 6)
+  const out = notesFor(notes, q)
+  const more = [...pool.filter((x) => low(x.title).includes(n)).sort(recent), ...pool.filter((x) => low(x.folder).includes(n)).sort(recent)]
+  for (const x of more) if (out.length < 6 && !out.includes(x)) out.push(x)
+  return out
+}
+
+/**
+ * 选上一篇时 # 后面写什么：笔记名（去掉空白）；叫「待办」这种和别篇重名的写它的文件夹名（课程/线性代数/待办.md 写「#线性代数」）。
+ * 写的字对上的第一篇不是它也照写（⌘↵ 那一圈里有它，选上时直接换到它）
+ */
+export function listToken(notes: readonly NoteView[], note: NoteView): string {
+  const name = note.title.replace(/\s+/g, '')
+  const folder = (note.folder.split(' › ').pop() ?? '').replace(/\s+/g, '')
+  // 和别的篇重名（收件箱那篇「待办」也算）、写文件夹名又正好对上它
+  const dup = notes.some((x) => x !== note && low(x.title) === low(name))
+  if (folder && dup && notesFor(notes, folder)[0] === note) return folder
+  return name
+}
+
+/** 打「!」时的三档：高、中、低；打了字的只留对得上的（「!h」）；已经打全了的（「!高」「!high」「!med」，parseQuick 认的）不列 */
+export function prioSuggest(q: string, lang: Lang): { prio: 1 | 2 | 3; token: string }[] {
+  const all = [
+    { prio: 3 as const, zh: '高', en: 'high' },
+    { prio: 2 as const, zh: '中', en: 'medium' },
+    { prio: 1 as const, zh: '低', en: 'low' },
+  ]
+  const n = q.toLowerCase()
+  if (['高', '中', '低', 'high', 'medium', 'med', 'low'].includes(n)) return []
+  return all.filter((x) => !n || x.zh.startsWith(n) || x.en.startsWith(n)).map((x) => ({ prio: x.prio, token: lang === 'zh' ? x.zh : x.en }))
 }
 
 /** ⌘↵ 换的那一圈：对上的几篇，最后是收件箱 */

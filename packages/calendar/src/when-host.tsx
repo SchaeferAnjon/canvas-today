@@ -7,6 +7,7 @@
  * 点外面、窗口变大小、触发点那边滚动都关上；onClose 告诉开的那一处。
  */
 import type { ISODate, WhenFields } from '@cn/tasks'
+import { dismissable } from '@cn/design/dismiss'
 import { flushSync } from 'react-dom'
 import { createRoot, type Root } from 'react-dom/client'
 import type { WeekStart } from './model'
@@ -134,18 +135,17 @@ export function openWhenHost(o: WhenHostOpen) {
   cur = c
   render(c)
   place(c)
-  const down = (e: MouseEvent) => {
-    if (!el.contains(e.target as Node)) closeWhenHost()
-  }
+  // 点外面（网页里也算）关：公共的 dismissable。Esc 归选择器自己（编辑器里 @ 开的由 when-assist 转过来，还要收拾打的字）；
+  // 里面有原生下拉框，窗口失焦不算
+  const offDismiss = dismissable({ inside: () => [el], onClose: () => closeWhenHost(), esc: false, blur: false })
   const scroll = (e: Event) => {
     if (!el.contains(e.target as Node)) closeWhenHost()
   }
   const resize = () => closeWhenHost()
-  document.addEventListener('mousedown', down, true)
   document.addEventListener('scroll', scroll, true)
   window.addEventListener('resize', resize)
   c.off = () => {
-    document.removeEventListener('mousedown', down, true)
+    offDismiss()
     document.removeEventListener('scroll', scroll, true)
     window.removeEventListener('resize', resize)
   }

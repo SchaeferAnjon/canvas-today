@@ -10,6 +10,7 @@ import {
   inkGroups,
   inkId,
   inkPathOf,
+  pdfInkPathOf,
   inkStrokes,
   mergeInk,
   mergeVaultText,
@@ -24,7 +25,7 @@ import {
   unplaceUnit,
   placeUnit,
 } from '../src'
-import { eraseCase, INK_CARD_DOC, INK_DOC, INK_EMPTY, INK_HAND, INK_MERGE_CASES, rng, synthStroke } from './ink-cases'
+import { eraseCase, INK_CARD_DOC, INK_DOC, INK_EMPTY, INK_HAND, INK_MERGE_CASES, INK_PDF_DOC, INK_PDF_MERGE_CASES, rng, synthStroke } from './ink-cases'
 import { lineDiff } from './line-diff'
 
 // 白板笔迹层（方案 B，2026-11-25 用户定）：一笔一行字，挂在白板的附件文件夹里。规矩见 packages/format/src/ink.ts 开头
@@ -41,6 +42,65 @@ describe('笔迹文件在哪', () => {
   it('在这篇白板自己的附件文件夹里，叫 笔迹.ink', () => {
     expect(inkPathOf('项目/study project 2/组会与沟通/11.24 组会准备.md')).toBe('附件/项目/study project 2/组会与沟通/11.24 组会准备/笔迹.ink')
     expect(inkPathOf('白板.md')).toBe('附件/白板/笔迹.ink')
+  })
+})
+
+describe('读 PDF 上写的：组行带 pg（设计页 159）', () => {
+  it('文件在 附件/<PDF 名>/笔迹.ink（和读 PDF 截图同一个文件夹，不带 PDF 所在的文件夹）', () => {
+    expect(pdfInkPathOf('项目/study project 2/论文/YitingWei/YitingWei_2026_C72_BST-GATNet_driver_stress_EMBC.pdf')).toBe('附件/YitingWei_2026_C72_BST-GATNet_driver_stress_EMBC/笔迹.ink')
+    expect(pdfInkPathOf('课程/ecp/Lecture05.pdf')).toBe('附件/Lecture05/笔迹.ink')
+  })
+
+  it('读出 pg，打开再保存一字不差；pg 写成 0、字、小数的组行认不出、原样留着', () => {
+    const d = parseInk(INK_PDF_DOC)
+    expect(printInk(d)).toBe(INK_PDF_DOC)
+    const g = inkGroups(d)
+    expect(g.get('79wxybrw')).toEqual({ id: '79wxybrw', on: null, pg: 1, x: 302, y: 154, t: null })
+    expect(g.get('n0000001')!.pg).toBe(3)
+    expect(['bad00001', 'bad00002', 'bad00003'].some((k) => g.has(k))).toBe(false)
+    expect(d.lines.filter((l) => l.kind === 'other')).toHaveLength(4)
+    // moved 行是认不出的行
+    expect(d.lines[1]).toEqual({ kind: 'other', raw: '{"moved":"附件/手写/C72/第 1 页.drawing","sha":"a7fe7b8f8c48","pg":1}' })
+  })
+
+  it('改过的组行照固定写法写：g、on、pg、x、y、t；白板的组行没有 pg 照旧', () => {
+    const d = moveInk(parseInk(INK_PDF_DOC), ['s0000004'], 10, -4.5, { now: 1764093000000 })
+    expect(printInk(d).split('\n')[5]).toBe('{"g":"n0000001","pg":3,"x":81.6,"y":249.8,"t":1764093000000}')
+    expect(printInk(addInk(parseInk(INK_EMPTY), { id: 'aaaabbbb', on: null, x: 1, y: 2, t: null }, []))).toBe('{"ink":1}\n{"g":"aaaabbbb","x":1,"y":2}\n')
+  })
+
+  it('只挪一组里的一笔：拆出来的新组带着原来的 pg，只改这几行', () => {
+    const before = INK_PDF_DOC
+    const after = printInk(moveInk(parseInk(before), ['hbcq54ts'], 5, -3, { now: 1764092000000, newId: () => 'splitg01' }))
+    expect(inkGroups(parseInk(after)).get('splitg01')).toEqual({ id: 'splitg01', on: null, pg: 1, x: 307, y: 151, t: 1764092000000 })
+    expect(lineDiff(before, after).removed).toHaveLength(1)
+  })
+
+  it('两台设备在不同页各写了一组、一边挪一组另一边改色：都留下，pg 不丢', () => {
+    const [a, b, c, e, d] = INK_PDF_MERGE_CASES
+    // 擦断（from）和装饰行（贴纸）和组行 pg 合在一起：三样都留
+    for (const k of ['local', 'remote'] as const) {
+      const t = mergeInk(e!.base, e!.local, e!.remote, k).text
+      const ss = inkStrokes(parseInk(t))
+      expect(ss.some((s) => s.id === 'hbcq54ts')).toBe(false)
+      expect(ss.filter((s) => s.from === 'hbcq54ts').map((s) => s.id).sort()).toEqual(['pdfc0001', 'pdfc0002'])
+      expect(t).toContain('{"sticker":"s9pdf001"')
+      expect(inkGroups(parseInk(t)).get('79wxybrw')!.pg).toBe(1)
+    }
+    const r = parseInk(mergeInk(a!.base, a!.local, a!.remote, 'remote').text)
+    expect(inkGroups(r).get('macg0101')!.pg).toBe(2)
+    expect(inkGroups(r).get('ipdg0101')!.pg).toBe(5)
+    const r2 = parseInk(mergeInk(b!.base, b!.local, b!.remote, 'local').text)
+    expect(inkGroups(r2).get('79wxybrw')).toMatchObject({ pg: 1, x: 320, y: 170 })
+    expect(inkStrokes(r2).find((s) => s.id === 's0000004')!.c).toBe('#d64545')
+    // 两边迁出来一模一样：moved 行、组、笔都只有一份；另一边多写的一笔也在
+    const t3 = mergeInk(c!.base, c!.local, c!.remote, 'local').text
+    expect(t3.match(/"moved":"附件\/手写\/C72\/第 2 页.drawing"/g)).toHaveLength(1)
+    expect(inkStrokes(parseInk(t3)).filter((s) => s.id === 'olds0001')).toHaveLength(1)
+    expect(inkStrokes(parseInk(t3)).some((s) => s.id === 'ipds0102')).toBe(true)
+    const r4 = parseInk(mergeInk(d!.base, d!.local, d!.remote, 'remote').text)
+    expect(inkGroups(r4).get('splitg01')!.pg).toBe(1)
+    expect(inkStrokes(r4).some((s) => s.id === 'ipds0103')).toBe(true)
   })
 })
 

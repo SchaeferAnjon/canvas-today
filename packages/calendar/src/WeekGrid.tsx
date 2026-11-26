@@ -33,6 +33,8 @@ export interface WeekGridProps {
   startHour?: number
   /** 拖块的下沿改多长（分钟，一刻钟一格、至少 15）：不给就不能拉 */
   onResize?: (key: string, minutes: number) => void
+  /** 一小时多高（px），默认 HOUR；画布今日「排一天」的时间线更高，块里的标题放得下两行 */
+  hour?: number
 }
 
 const colStyle = (top: number, height: number, c: { col: number; cols: number } | undefined): CSSProperties =>
@@ -40,15 +42,15 @@ const colStyle = (top: number, height: number, c: { col: number; cols: number } 
 
 const hhmm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
 
-export function WeekGrid({ lang, days, today, nowMin, items, events = [], ghosts = [], sel = null, startHour = 8, onResize }: WeekGridProps) {
+export function WeekGrid({ lang, days, today, nowMin, items, events = [], ghosts = [], sel = null, startHour = 8, onResize, hour = HOUR }: WeekGridProps) {
   const T = CAL_TEXT[lang]
   const root = useRef<HTMLDivElement>(null)
   const grid = useRef<HTMLDivElement>(null)
   // 打开先滚到 8:00（往上往下都还有），8:00 那条线正好压在「全天」的底线上
-  const [top, setTop] = useState(startHour * HOUR)
+  const [top, setTop] = useState(startHour * hour)
   useEffect(() => {
-    if (grid.current) grid.current.scrollTop = startHour * HOUR
-  }, [startHour])
+    if (grid.current) grid.current.scrollTop = startHour * hour
+  }, [startHour, hour])
   // 系统设成一直显示滚动条时，滚动条占掉格子右边一截（11）：量出来放在宿主（外面那一层）的 --cal-sbw 上，
   // 日子头、宿主格子上面那一排（‹ 今天 ›、月 / 周、AI 那条）右边多让出这么多，都和格子右边对齐；滚动条浮在内容上时是 0
   useEffect(() => {
@@ -65,7 +67,7 @@ export function WeekGrid({ lang, days, today, nowMin, items, events = [], ghosts
     }
   }, [])
   return (
-    <div className="cal-wk" ref={root} data-part="周视图" style={{ '--cal-days': days.length } as CSSProperties}>
+    <div className="cal-wk" ref={root} data-part="周视图" style={{ '--cal-days': days.length, '--cal-hour': `${hour}px` } as CSSProperties}>
       <div className="cal-stick">
         <div className="cal-head">
           <div />
@@ -106,7 +108,7 @@ export function WeekGrid({ lang, days, today, nowMin, items, events = [], ghosts
           <div className="cal-hrs">
             {Array.from({ length: 24 }, (_, i) => {
               // 钟点字平时骑在线上（往上 7）；滚到顶上的那一个放到线下面，不被切掉半截
-              const y = i * HOUR - top
+              const y = i * hour - top
               return (
                 <div key={i} className={y > -3 && y < 9 ? 'under' : ''}>
                   {i ? `${i}:00` : ''}
@@ -115,7 +117,7 @@ export function WeekGrid({ lang, days, today, nowMin, items, events = [], ghosts
             })}
           </div>
           {days.map((d) => (
-            <DayColumn key={d} lang={lang} d={d} today={today} nowMin={nowMin} items={items} events={events} ghosts={ghosts} sel={sel} onResize={onResize} />
+            <DayColumn key={d} lang={lang} d={d} today={today} nowMin={nowMin} items={items} events={events} ghosts={ghosts} sel={sel} onResize={onResize} hour={hour} />
           ))}
         </div>
       </div>
@@ -123,7 +125,7 @@ export function WeekGrid({ lang, days, today, nowMin, items, events = [], ghosts
   )
 }
 
-function DayColumn({ lang, d, today, nowMin, items, events, ghosts, sel, onResize }: { lang: CalLang; d: ISODate; today: ISODate; nowMin: number; items: readonly CalItem[]; events: readonly CalEvent[]; ghosts: readonly CalGhost[]; sel: string | null; onResize?: (key: string, minutes: number) => void }) {
+function DayColumn({ lang, d, today, nowMin, items, events, ghosts, sel, onResize, hour }: { lang: CalLang; d: ISODate; today: ISODate; nowMin: number; items: readonly CalItem[]; events: readonly CalEvent[]; ghosts: readonly CalGhost[]; sel: string | null; onResize?: (key: string, minutes: number) => void; hour: number }) {
   const T = CAL_TEXT[lang]
   /** 正在拉的那一块：拉到多少分钟（松手前只改样子） */
   const [rs, setRs] = useState<{ key: string; minutes: number } | null>(null)
@@ -133,7 +135,7 @@ function DayColumn({ lang, d, today, nowMin, items, events, ghosts, sel, onResiz
     e.stopPropagation()
     const y0 = e.clientY
     const m0 = x.minutes ?? DEFAULT_MINUTES
-    const at = (ev: PointerEvent) => Math.max(15, Math.min(1440 - minutesOf(x.time!), m0 + Math.round(((ev.clientY - y0) / HOUR) * 4) * 15))
+    const at = (ev: PointerEvent) => Math.max(15, Math.min(1440 - minutesOf(x.time!), m0 + Math.round(((ev.clientY - y0) / hour) * 4) * 15))
     setRs({ key: x.key, minutes: m0 })
     trackDrag<PointerEvent>(e.nativeEvent, {
       move: (ev) => setRs({ key: x.key, minutes: at(ev) }),
@@ -159,9 +161,9 @@ function DayColumn({ lang, d, today, nowMin, items, events, ghosts, sel, onResiz
     }),
   ]
   const cols = columns(spans)
-  const px = (m: number) => (m / 60) * HOUR
+  const px = (m: number) => (m / 60) * hour
   return (
-    <div className={`cal-col${d === today ? ' today' : ''}`} data-drop={`day:${d}`} data-hour={HOUR} style={{ height: 24 * HOUR }}>
+    <div className={`cal-col${d === today ? ' today' : ''}`} data-drop={`day:${d}`} data-hour={hour} style={{ height: 24 * hour }}>
       {d === today && <div className="cal-now" style={{ top: px(nowMin) }} />}
       {evs.map((s) => (
         <div

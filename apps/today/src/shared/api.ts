@@ -4,6 +4,7 @@ import type { EngineId } from '../../../notes/src/shared/agent'
 import type { ApiId } from '@cn/ai-engines/shared'
 import type { AiPick, ModelOption } from '@cn/ai-engines/shared'
 import type { ChatInfo, TodayMsg } from './ai-chat'
+import type { AgentMode, OmniState, TodayChatEvent } from './ai-agent'
 import type { Material } from '@cn/ai-chat/materials'
 import type { CloseItem } from './plan'
 import type { FocusRecord, Habit, Prio, RingBy, When, WhenFields } from '@cn/tasks'
@@ -40,6 +41,8 @@ export interface TaskView {
   remind: string | null
   repeat: string | null
   prio: Prio
+  /** 优先级记号是 ⏬（最低）：prio 是 1，四象限放第 4 格（不重要不紧急）；🔽 放第 3 格 */
+  lowest?: boolean
   doneDate: string | null
   /** 估时（分钟）：那一行的「[估时:: 30分钟]」（排一天的时间块多长）；没写是 null */
   minutes: number | null
@@ -127,7 +130,7 @@ export type EditOp =
   | { op: 'repeat'; repeat: string | null }
   /** 日子、钟点、提醒、重复一起照这样写（定日子和时间的选择器，task-pd289；null 是拿掉那一项） */
   | { op: 'when'; when: WhenFields }
-  | { op: 'prio'; prio: Prio }
+  | { op: 'prio'; prio: Prio; lowest?: boolean }
   | { op: 'title'; title: string }
   | { op: 'addSub'; title: string }
   | { op: 'delete' }
@@ -243,6 +246,15 @@ export interface ChatEngineInfo {
   models: ModelOption[]
 }
 
+/** 设置 › AI 那一页（对标清单 U4）：能选哪几家；两样（右栏 AI 对话、小活）各是画布今日自己选的（null 是跟着）、跟着的那一行是什么 */
+export interface AiSettingsView {
+  engines: ChatEngineInfo[]
+  /** 有画布笔记的设置：跟着的那一项叫「跟画布笔记」；没有叫「默认」 */
+  notes: boolean
+  chat: { own: AiPick | null; follow: AiPick; followLabel: string }
+  quick: { own: AiPick | null; follow: AiPick; followLabel: string }
+}
+
 export interface ChatInfoState {
   engines: ChatEngineInfo[]
   /** 这一段这一问用的（自己选过的，或跟画布笔记「AI 对话」那一行） */
@@ -253,6 +265,17 @@ export interface ChatInfoState {
   label: string
   /** 看得到：待办几条、收件箱几条、日程几个；cal 系统日历连着没有 */
   seen: { tasks: number; inbox: number; events: number; eventNames: string[]; cal: boolean }
+  /** 全能模式开没开、听谁的（画布今日自己切的 > 画布笔记的 > 默认开） */
+  omni: OmniState
+  /** 这一段这一问怎么跑：全能、只在库里、不能动手（API Key、本机模型：只排日程） */
+  mode: AgentMode
+}
+
+/** quick：全局快速输入框问的（全能模式开着照右栏那样动手，关着只回答、不动库） */
+export interface ChatAskOpts {
+  quick?: boolean
+  /** @ 点名的笔记 / 清单（对标清单 U1）：内容交给 AI，里面没做完的待办也能排 */
+  mentions?: import('@cn/ai-chat/mentions').Mention[]
 }
 
 export type ChatAskResult = { ok: true; msgs: TodayMsg[] } | { ok: false; aborted: boolean; msgs: TodayMsg[] }
@@ -406,6 +429,8 @@ export interface QuickItem {
   text: string
   dest: string | null
   when: When | null
+  /** 贴的图（存在 pasted/ 里的名字，最多 4 张）：存进写进那篇的附件文件夹，挂在这一条下面 */
+  images?: string[]
 }
 
 export type QuickAddResult = { ok: true; n: number } | { ok: false; message: string }
@@ -440,6 +465,8 @@ export interface CtApi {
   onGit(cb: (g: GitInfo) => void): () => void
   /** 在画布笔记里打开这一篇，到第 line 行（从 0 数） */
   openNote(path: string, line?: number): Promise<{ ok: boolean; by?: 'notes' | 'default' }>
+  /** 库里一篇的字（⌘ 悬停预览用，只读）；没有这一篇、不是 .md 是 null */
+  noteText(path: string): Promise<string | null>
   /** 「到点的样子」：马上弹一次这条的提醒 */
   previewNotif(key: string): Promise<void>
   setSettings(p: Partial<TodaySettings>): Promise<LookState>
@@ -470,10 +497,19 @@ export interface CtApi {
   chatInfo(id: string): Promise<ChatInfoState>
   /** 画布笔记设置里「AI 对话」那一家（右图标栏 AI 一格画它的标志） */
   chatDefault(): Promise<AiInfo>
+  /** 设置 › AI（对标清单 U4）：读；改一样（null 回到跟画布笔记） */
+  aiSettings(): Promise<AiSettingsView>
+  aiSetOwn(f: 'chat' | 'quick', pick: AiPick | null): Promise<AiSettingsView>
   chatList(): Promise<ChatInfo[]>
   chatLoad(id: string): Promise<{ msgs: TodayMsg[]; title: string }>
   /** mats：这一问带的图（输入框顶上那一排；text 里的 ①② 是它们的位置） */
-  chatAsk(id: string, text: string, job: string, mats?: Material[]): Promise<ChatAskResult>
+  chatAsk(id: string, text: string, job: string, mats?: Material[], opts?: ChatAskOpts): Promise<ChatAskResult>
+  /** 全局快速输入框 ⌘J：小框收起，主窗口右栏 AI 打开这一段（job：还在答的那一问，右栏接着收字） */
+  chatHandoff(id: string, job: string | null): Promise<void>
+  /** 主窗口：快速输入框交过来一段对话，右栏打开它 */
+  onOpenChat(cb: (o: { id: string; job: string | null }) => void): () => void
+  /** 快速输入框问的那一问答完存好了（主窗口右栏开着这一段时重读） */
+  onChatSaved(cb: (id: string) => void): () => void
   /** 输入框里贴的、拖进来的图存进 pasted/，返回名字 */
   chatPaste(bytes: Uint8Array, mime: string): Promise<string>
   /** 底行「+」：系统选图框，最多 room 张 */
@@ -483,6 +519,10 @@ export interface CtApi {
   chatAccept(id: string, msgId: number, on: number[]): Promise<ChatAcceptResult>
   chatPlanState(id: string, msgId: number, state: 'dropped' | 'undone'): Promise<TodayMsg[]>
   chatPick(id: string, pick: AiPick | null): Promise<{ pick: AiPick; own: boolean; label: string }>
+  /** 全能模式：切开关（记在画布今日自己的设置里）、撤回这一轮的改动、跑着时的字和步骤（job 是 chatAsk 给的那个） */
+  chatOmni(on: boolean): Promise<OmniState>
+  chatRevert(id: string, msgId: number): Promise<{ ok: true; msgs: TodayMsg[] } | { ok: false; message: string }>
+  onChatEvent(cb: (job: string, e: TodayChatEvent) => void): () => void
   /** 专注：开始、暂停、放弃、换一条 */
   focus(op: FocusOp): Promise<FocusInfo>
   focusInfo(): Promise<FocusInfo>

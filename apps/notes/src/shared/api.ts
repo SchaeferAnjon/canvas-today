@@ -341,13 +341,15 @@ export interface CnApi {
   /**
    * 整页剪藏右栏开着的网页（AI 的 /剪藏这一页、网页面板的剪刀按钮都用它）：正文转成 md 进收件箱新的一篇，
    * frontmatter 带 created 和 source，单独一次提交（可撤回）；返回新文件的库内路径和那次提交（AI 的回答下面画「改了1个文件 · 撤回」用）。
-   * webUrl 是右栏开着的网址：当前网页不是它时，找开着这个网址的那个标签剪。folder：这个网站选了剪进一个文件夹时进它（不给进收件箱）。
+   * webUrl 是右栏开着的网址：当前网页不是它时，找开着这个网址的那个标签剪。folder：这个网站选了剪进一个文件夹时进它；into：这个网站配对的那篇，整页写进它末尾（都不给进收件箱，剪藏去处规则）。
    */
-  clipCurrentPage(arg?: { webUrl?: string | null; folder?: string | null }): Promise<{ path: string; commit: CommitInfo | null }>
+  clipCurrentPage(arg?: { webUrl?: string | null; folder?: string | null; into?: string | null }): Promise<{ path: string; commit: CommitInfo | null }>
   /** Chrome 的用户（导入登录用） */
   chromeProfiles(): Promise<{ id: string; name: string; account?: string }[]>
   /** 把 Chrome 某个用户的登录状态导入内置浏览器 */
-  importChrome(profileId: string): Promise<{ imported: number; expired: number; skipped: number }>
+  importChrome(profileId: string): Promise<{ imported: number; expired: number; skipped: number; sites: string[] }>
+  /** 启动时主题套上、画过一帧了：主进程这时才显示窗口（ui-b A10） */
+  lookReady(): void
   /** 问 AI 一次；id 用来中途停；opts：用哪家哪个模型想多久（/ 命令跟着输入框底行）、一起给的库里的图 */
   aiAsk(id: number, system: string, prompt: string, opts?: AiAskOpts): Promise<string>
   /** 「存成命令」的对照：那次提交前面那一版的全文（那时还没有这一篇是 null）、现在的全文、两边的提交号、现在有没有没提交的字 */
@@ -408,10 +410,12 @@ export interface CnApi {
   boardCommit(paths: string[], message: string): Promise<string | null>
   /** 撤回 boardCommit 那一次（反向提交） */
   boardRevert(hash: string): Promise<string>
-  /** 白板笔迹（附件/<白板>/笔迹.ink，@cn/format 的 ink.ts）的全文；没有这个文件是 '' */
+  /** 白板笔迹（附件/<白板>/笔迹.ink，@cn/format 的 ink.ts）的全文；路径是 .pdf 时读那份 PDF 的 附件/<PDF 名>/笔迹.ink；没有这个文件是 '' */
   inkRead(notePath: string): Promise<string>
   /** 写白板笔迹（盘上的和 base 不一样先按编号合并），写完提交这一个文件 */
   inkWrite(notePath: string, text: string, base: string, message: string): Promise<InkWriteResult>
+  /** 自带贴纸第一次用：把这张 SVG 拷进库里的 附件/贴纸/<k>.svg（已经有了不动），拷了提交这一个文件 */
+  decorSticker(k: string, svg: string): Promise<{ path: string; added: boolean }>
   /** 数据库一次改好几篇（关联两边写、补上对不上的、撤回）：before 和盘上不一样就一篇都不写；写好一次提交 */
   baseWrite(writes: { path: string; before: string; after: string }[], message: string): Promise<BaseWriteResult>
   /** 数据库 AI 列（task-i921u）：跑一批（一次 3 格，写好一格存一格，跑完或停下一次提交）、停下、撤回这一批 */
@@ -548,10 +552,14 @@ export interface CnApi {
   /** 上手卡的链接：拿 Key 的页面（api）、本机模型的官网（local） */
   aiOpenPage(id: ApiId | LocalId): Promise<void>
   /** 装 Claude Code（官方安装命令，输出一行行从 onAiCcLine 来） */
-  aiCcInstall(): Promise<{ ok: true } | { ok: false; error: string }>
+  aiCcInstall(mode?: 'install' | 'repair'): Promise<{ ok: true } | { ok: false; error: string }>
   onAiCcLine(cb: (line: string) => void): () => void
   /** 登录 Claude Code：打开浏览器，等它登好 */
   aiCcLogin(): Promise<{ ok: boolean; error?: string }>
+  /** 停下正在等浏览器的登录 */
+  aiCcLoginCancel(): Promise<void>
+  /** `claude auth status` 说登好了没有 */
+  aiCcStatus(): Promise<{ loggedIn: boolean }>
   /**
    * 全能模式（2026-11-19，默认开）：开着时 AI 能读写这台 Mac 上的文件、跑命令、上网、开子 Agent，不停下来问；关着只在库里动手。
    * AI 对话和读 PDF 共用，记在软件设置目录；开着的 AI 面板收到 onAiPrefsChanged
@@ -572,6 +580,9 @@ export interface CnApi {
   aiCliCheck(id: EngineId): Promise<EngineInfo>
   /** 「更新到 x」：跑这家官方的更新（claude update、codex update、opencode upgrade、npm / brew 升 gemini），跑完重读版本、再自查；没更新成写在 update 里 */
   aiCliUpdate(id: EngineId): Promise<EngineInfo>
+  /** 「安装」（没找到）、「修复」（找到了运行不了）：照官方装法装在用户目录，输出一行行从 onAiCliLine 来；没装上给一句人话和输出（「看详情」） */
+  aiCliInstall(id: EngineId, mode: 'install' | 'repair'): Promise<{ ok: true; info: EngineInfo } | { ok: false; error: string; log: string[] }>
+  onAiCliLine(cb: (m: { id: EngineId; line: string }) => void): () => void
   /** AI 浮窗、边读边问头上的引擎菜单：改「AI 对话」用哪家（= 设置 › AI 里那一行），不动默认 */
   aiSetEngine(id: EngineId): Promise<void>
   /** 设置 › AI 改了（设置页、引擎菜单）：开着的 AI 面板重新取用哪家 */
@@ -654,6 +665,8 @@ export interface CnApi {
   dreamUndo(u: { ids: string[]; taken?: string }): Promise<{ report: DreamReport; commit: string | null }>
   /** 跟 AI 说哪里不对：在梦游分支上按这句话重做这几条（归类和改名），changed 是变了几条 */
   dreamRedo(ids: string[], feedback: string): Promise<{ report: DreamReport; changed: number }>
+  /** 自己改一条归类和改名的去处（folder，'' 是库最外层）或新名字（name，不带扩展名）；clash：那里有同名的，加了序号 */
+  dreamRetarget(id: string, want: { folder?: string; name?: string }): Promise<{ report: DreamReport; to: string; clash: boolean }>
   dreamRedoStop(): Promise<void>
   /** 这一条改了什么（那个提交的 diff） */
   /** 对比标签要的两版全文（历史的一次提交、梦游的一条、可能重复的两篇、某次提交时的一个文件） */
@@ -718,6 +731,8 @@ export interface DreamItem {
   redo?: string
   /** 重做时在分支上多出的提交，收下时跟在 commit 后面一起合进来 */
   redoCommits?: string[]
+  /** 你在梦游对照里自己改过去处、新名字：梦游原来建议的去处和为什么（第一次改时记下） */
+  picked?: { to: string; why: string }
   /** 梦游动手时自己记下的「改了什么」，每个文件一句人话（侧栏只列这一句，点了开对比标签） */
   changes?: { path: string; text: string }[]
   /** AI 判的那几组（补双链、拿不准、复查、AI 认出的重复）：判成哪一档、把握、两边原话（软件逐字核对过） */

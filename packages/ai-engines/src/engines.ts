@@ -6,6 +6,7 @@
  * 两种模式（2026-11-19 用户要的，默认全能）：
  * - 全能模式开着（EngineRun.omni）：和用户在终端里用这家命令行一样能干：读写这台 Mac 上的文件、跑命令、上网、开子 Agent，不停下来问
  *   （软件里没法弹命令行自己的权限确认）。我们的 MCP 工具照样给；AI 自己改了库里的文件，这一轮结束由 agent/index.ts 一起提交。
+ *   给了 beforeTool（手机全能模式、画布今日）时四家的每一步先过它（删、推送、改库外东西的先问用户），见 EngineRun.beforeTool、gate-map.ts。
  * - 关着：AI 自己不能写文件、跑命令、上网，改笔记只能走我们的工具（新建、改写、改名、挪、删都有），库里的文件能只读翻。
  *
  * 各家怎么接参照了 Claudian（github.com/yishentu/claudian，MIT，版权 (c) 2025 Yishen Tu）的
@@ -17,13 +18,14 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { homedir, tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import type { EngineId } from './shared'
 import { effortOption, ENGINE_LABEL, type ModelOption } from './shared'
 import type { CliId } from './shared'
 import { cliEnv, findCli, INSTALL_HINT } from './cli'
 import { t } from './shared/i18n'
 import { RpcProcess } from './jsonrpc'
+import { type AcpCall, codexGate, geminiGate, type GateStep, opencodeGate, passGate } from './gate-map'
 
 export interface EngineRun {
   prompt: string
@@ -78,7 +80,9 @@ export interface EngineRun {
   /**
    * 全能模式下命令行自己的一步（跑命令、写文件……）做之前问一声（手机全能模式：删文件、推送、跑改库外东西的命令先在手机上点头）：
    * 返回 null 照做，返回一句话就不做、把这句话交给 AI 当原因。id 是这一步的编号（和 onStep 的 id 一样，命令行给了才有）。
-   * 只有 Claude Code 认（PreToolUse 钩子），别家不认：调的人只在 Claude Code 上给它
+   * 四家都认（2026-11-25）：Claude Code 走 PreToolUse 钩子；Codex、Gemini、OpenCode 给了它就让命令行每一步先来要批准
+   * （Codex approvalPolicy untrusted、Gemini --approval-mode default、OpenCode bash / edit / webfetch / external_directory 设 ask），
+   * 要批准的那一步换成 Claude Code 的叫法（gate-map.ts）交给它。别家不能把原因交给 AI，只能说没批准。不给照旧不问
    */
   beforeTool?(tool: string, input: Record<string, unknown>, id?: string): Promise<string | null>
   signal: AbortSignal
@@ -462,12 +466,20 @@ export const CODEX_LOCKED = [
 ]
 
 /**
+ * 批准方式（AskForApproval，codex 0.163.0 的 generate-ts 核过）：平常 never（不问人）；全能模式又给了 beforeTool（手机全能模式、画布今日）时
+ * untrusted：沙箱照旧 danger-full-access，但每跑一行命令（ls 也问，0.163.0 真跑核过）、每改一次文件都先发
+ * item/commandExecution/requestApproval、item/fileChange/requestApproval 来要批准，我们按 stepDanger 放行或拒（decline：这一步不做，接着往下答）。
+ * on-request 不行：danger-full-access 下它几乎不来问
+ */
+export const codexApproval = (r: Pick<EngineRun, 'omni' | 'beforeTool'>) => (r.omni && r.beforeTool ? 'untrusted' : 'never')
+
+/**
  * app-server 的 thread/start、resume、fork 一起带的：全能模式 danger-full-access + 上网搜 live；关着只读沙箱、上网搜关掉
- * （线程上也写一遍：全能模式里开的线程换到关着时接着用，不带着 live）。都不问人（approval never）
+ * （线程上也写一遍：全能模式里开的线程换到关着时接着用，不带着 live）。批准方式见 codexApproval（turn/start 上每问再带一遍）
  */
 function codexThreadOpts(r: EngineRun) {
   return r.omni
-    ? { cwd: r.cwd, sandbox: 'danger-full-access', approvalPolicy: 'never', config: { web_search: 'live' }, developerInstructions: r.system }
+    ? { cwd: r.cwd, sandbox: 'danger-full-access', approvalPolicy: codexApproval(r), config: { web_search: 'live' }, developerInstructions: r.system }
     : { cwd: r.cwd, sandbox: 'read-only', approvalPolicy: 'never', config: { web_search: 'disabled' }, developerInstructions: r.system }
 }
 
@@ -512,6 +524,8 @@ export function codexEngine(command?: string, prefix: string[] = []): Engine {
   let starting: Promise<RpcProcess> | null = null
   let mcpKey = ''
   const live = new Set<string>()
+  /** 正在答、给了 beforeTool 的那几个线程：审批请求按 threadId 找到这一问 */
+  const gates = new Map<string, { ask: NonNullable<EngineRun['beforeTool']>; root: string }>()
 
   async function ensure(cwd: string, mcp: EngineRun['mcp'], omni: boolean): Promise<RpcProcess> {
     // 全能模式开关换了：进程按新参数重起（关掉的功能是进程级的）；线程在磁盘上，接着 thread/resume
@@ -532,11 +546,25 @@ export function codexEngine(command?: string, prefix: string[] = []): Engine {
       const args = [...prefix, 'app-server', '-c', servers, ...(omni ? [] : CODEX_LOCKED)]
       if (process.env.CN_CODEX_MODEL) args.push('-c', `model="${process.env.CN_CODEX_MODEL}"`)
       const p = new RpcProcess(command ?? need('codex'), args, { cwd, env: cliEnv(mcp ? { CN_MCP_TOKEN: mcp.token } : {}) }, false)
+      // 改文件的审批请求只带 itemId，改哪些文件在它前面那条 item/started 里：先记下来（同一个进程的消息按先后到）
+      const items = new Map<string, Record<string, unknown>>()
+      p.onNotification((m, params) => {
+        const it = params.item as Record<string, unknown> | undefined
+        if (typeof it?.id !== 'string') return
+        if (m === 'item/started' && it.type === 'fileChange') items.set(it.id, it)
+        else if (m === 'item/completed') items.delete(it.id)
+      })
       p.onRequest(async (method, params) => {
-        // 我们的工具不用再问；Codex 自己要写文件、跑命令：全能模式放行，关着一律不许
+        // 我们的工具不用再问；Codex 自己要写文件、跑命令：关着一律不许，全能模式放行（给了 beforeTool 的那一问先按它判）
         if (method === 'mcpServer/elicitation/request') return params.serverName === MCP_NAME || omni ? { action: 'accept', content: {}, _meta: null } : { action: 'decline', content: null, _meta: null }
-        if (method === 'item/commandExecution/requestApproval' || method === 'item/fileChange/requestApproval') return { decision: omni ? 'accept' : 'decline' }
-        if (method === 'execCommandApproval' || method === 'applyPatchApproval') return { decision: omni ? 'approved' : 'denied' }
+        const legacy = method === 'execCommandApproval' || method === 'applyPatchApproval'
+        if (legacy || method === 'item/commandExecution/requestApproval' || method === 'item/fileChange/requestApproval') {
+          const [yes, no] = legacy ? ['approved', 'denied'] : ['accept', 'decline']
+          const gate = omni ? gates.get(String(params.threadId ?? params.conversationId ?? '')) : undefined
+          if (!gate) return { decision: omni ? yes : no }
+          const id = String(params.itemId ?? params.callId ?? '')
+          return { decision: (await passGate(codexGate(method, params, items.get(id), gate.root), gate.ask, id || undefined)) ? yes : no }
+        }
         throw new Error(`不支持 ${method}`) // 不翻：回给 AI 进程的协议错误
       })
       await p.request('initialize', { clientInfo: { name: APP.name, title: APP.name, version: APP.version }, capabilities: null })
@@ -581,6 +609,7 @@ export function codexEngine(command?: string, prefix: string[] = []): Engine {
         fresh = true
       }
       live.add(threadId)
+      if (r.omni && r.beforeTool) gates.set(threadId, { ask: r.beforeTool, root: r.cwd })
       let text = ''
       let turnId: string | null = null
       const done = new Promise<void>((resolve, reject) => {
@@ -615,7 +644,8 @@ export function codexEngine(command?: string, prefix: string[] = []): Engine {
       try {
         const input: unknown[] = [{ type: 'text', text: withHistory(r, fresh), text_elements: [] }, ...(r.images ?? []).map((i) => ({ type: 'localImage', path: i.path }))]
         // 模型、effort 只管这一问（turn/start 的覆盖也管这个线程后面几问，所以每问都带上选的）
-        const t = await p.request<{ turn: { id: string } }>('turn/start', { threadId, input, ...(r.model ? { model: r.model } : {}), ...(r.effort ? { effort: r.effort } : {}) })
+        // 批准方式也每问带上：turn/start 的覆盖管这个线程后面几问（手机上问过一次 untrusted，Mac 上接着问不能还来要批准）
+        const t = await p.request<{ turn: { id: string } }>('turn/start', { threadId, input, approvalPolicy: r.omni ? codexApproval(r) : 'never', ...(r.model ? { model: r.model } : {}), ...(r.effort ? { effort: r.effort } : {}) })
         turnId = t.turn.id
         if (r.signal.aborted) stop()
         await done
@@ -623,6 +653,7 @@ export function codexEngine(command?: string, prefix: string[] = []): Engine {
         throw tagSession(e as Error, threadId)
       } finally {
         r.signal.removeEventListener('abort', stop)
+        if (gates.get(threadId)?.ask === r.beforeTool) gates.delete(threadId)
       }
       if (r.signal.aborted) throw tagSession(aborted(), threadId)
       return { text: text.trim(), session: threadId }
@@ -681,11 +712,11 @@ interface AcpOptions {
   loggedIn?(): boolean
   /** 只在测试里给（假的 ACP 程序） */
   command?: string
-  /** omni：全能模式开着（批准方式、权限设置是进程级的，开关换了进程重起） */
-  args(cwd: string, omni: boolean): string[]
-  env?(omni: boolean): Record<string, string>
-  /** 进程退出以后收拾（删掉给它的策略文件） */
-  cleanup?(): void
+  /** mode：全能关着 / 全能不问 / 全能每步来问（批准方式、权限设置是进程级的，一种模式一个进程，见 AcpMode） */
+  args(cwd: string, mode: AcpMode): string[]
+  env?(mode: AcpMode): Record<string, string>
+  /** 进程退出以后收拾（args 是起它时给的参数：删掉那一份策略文件） */
+  cleanup?(args: string[]): void
   /** 会话开不了时的说法（多半是没登录） */
   loginHint: string
 }
@@ -766,19 +797,55 @@ export function acpModelState(r: { configOptions?: unknown; models?: unknown }):
   return { via: r.models ? 'models' : null, efforts: [], first: at, now: { ...at } }
 }
 
+/**
+ * ACP 进程按哪种模式起（批准方式、权限设置是进程级的）：locked 全能关着；omni 全能、不问（Mac 桌面）；
+ * ask 全能、每一步来要批准，我们按 beforeTool 判（手机全能模式、画布今日：给了 beforeTool）
+ */
+export type AcpMode = 'locked' | 'omni' | 'ask'
+export const acpMode = (r: Pick<EngineRun, 'omni' | 'beforeTool'>): AcpMode => (!r.omni ? 'locked' : r.beforeTool ? 'ask' : 'omni')
+
+/** 一种模式的那个进程和它的会话 */
+interface AcpSlot {
+  proc: RpcProcess | null
+  ready: Promise<RpcProcess> | null
+  live: Set<string>
+  /** 每个会话的模型、effort 现在是什么、怎么换 */
+  modelStates: Map<string, AcpModelState>
+  /** 每个会话现在这一轮把字交给谁 */
+  sinks: Map<string, (delta: string) => void>
+  /** 每个会话现在这一轮的步骤交给谁 */
+  stepSinks: Map<string, (u: Record<string, unknown>) => void>
+  /** ask 模式下每个会话这一轮的 beforeTool（权限请求按 sessionId 找到这一问） */
+  gates: Map<string, { ask: NonNullable<EngineRun['beforeTool']>; root: string }>
+  /** 还没做完的每一步最近一次报的样子（OpenCode 的权限请求里没有 cwd，在它前面那条 tool_call_update 里） */
+  calls: Map<string, AcpCall>
+  /** 正在答的几问（在答的进程换模式时不关） */
+  busy: number
+}
+
+/** 在动手的那几种：标题里碰巧有 canvas、note_ 也不能当成我们 MCP 的工具放行 */
+const ACTING = new Set(['execute', 'edit', 'delete', 'move'])
+
 export function acpEngine(o: AcpOptions): Engine {
   const label = o.label ?? LABELS[o.id]
-  let proc: RpcProcess | null = null
-  let ready: Promise<RpcProcess> | null = null
-  /** 现在这个进程是哪种模式起的 */
-  let procOmni = false
-  const live = new Set<string>()
-  /** 每个会话的模型、effort 现在是什么、怎么换 */
-  const modelStates = new Map<string, AcpModelState>()
+  const gateOf = o.id === 'gemini' ? geminiGate : opencodeGate
+  const slots = new Map<AcpMode, AcpSlot>()
+  const slotOf = (mode: AcpMode): AcpSlot => {
+    let s = slots.get(mode)
+    if (!s) slots.set(mode, (s = { proc: null, ready: null, live: new Set(), modelStates: new Map(), sinks: new Map(), stepSinks: new Map(), gates: new Map(), calls: new Map(), busy: 0 }))
+    return s
+  }
+  const closeSlot = (s: AcpSlot) => {
+    s.proc?.close()
+    s.proc = null
+    s.ready = null
+    s.live.clear()
+    s.modelStates.clear()
+    s.calls.clear()
+  }
 
   /** 这一问要的模型、effort 和会话现在的不一样就换（没选的换回开会话时的）；换不了的说清楚 */
-  async function applyModel(p: RpcProcess, sessionId: string, r: EngineRun) {
-    const st = modelStates.get(sessionId)
+  async function applyModel(p: RpcProcess, st: AcpModelState | undefined, sessionId: string, r: EngineRun) {
     if (!st?.via) return
     const want = r.model || st.first.model
     if (want && want !== st.now.model) {
@@ -807,35 +874,43 @@ export function acpEngine(o: AcpOptions): Engine {
     })
     st.now = { ...st.now, effort }
   }
-  /** 每个会话现在这一轮把字交给谁 */
-  const sinks = new Map<string, (delta: string) => void>()
-  /** 每个会话现在这一轮的步骤交给谁 */
-  const stepSinks = new Map<string, (u: Record<string, unknown>) => void>()
 
-  async function ensure(cwd: string, omni: boolean): Promise<RpcProcess> {
-    if (proc && !proc.closed && procOmni === omni) return proc
-    if (ready && !proc?.closed && procOmni === omni) return ready
-    // 全能模式开关换了：按新参数重起（会话跟着进程没了，下一问开新会话、补上最近几轮）
-    proc?.close()
-    proc = null
-    live.clear()
-    modelStates.clear()
-    procOmni = omni
-    ready = (async () => {
-      const p = new RpcProcess(o.command ?? need(o.id), o.args(cwd, omni), { cwd, env: cliEnv(o.env?.(omni) ?? {}) })
-      void p.exited.then(() => o.cleanup?.())
+  async function ensure(cwd: string, mode: AcpMode): Promise<RpcProcess> {
+    const s = slotOf(mode)
+    // 换了模式：别的模式的进程这会儿没在答就关掉（照旧一家一个进程，会话跟着进程没了，下一问开新会话、补上最近几轮）；
+    // 在答的不打断（Mac 右栏正答着、手机来一问要点头的，两个进程各答各的）
+    for (const [m, other] of slots) if (m !== mode && other.busy === 0 && (other.proc || other.ready)) closeSlot(other)
+    if (s.proc && !s.proc.closed) return s.proc
+    if (s.ready && !s.proc?.closed) return s.ready
+    s.live.clear()
+    s.modelStates.clear()
+    s.calls.clear()
+    const ready: Promise<RpcProcess> = (async () => {
+      const args = o.args(cwd, mode)
+      const p = new RpcProcess(o.command ?? need(o.id), args, { cwd, env: cliEnv(o.env?.(mode) ?? {}) })
+      void p.exited.then(() => o.cleanup?.(args))
       p.onNotification((method, params) => {
         if (method !== 'session/update') return
         const u = params.update as { sessionUpdate?: string; content?: { type?: string; text?: string } }
-        if (u?.sessionUpdate === 'agent_message_chunk' && u.content?.type === 'text' && u.content.text) sinks.get(String(params.sessionId))?.(u.content.text)
-        else if (u?.sessionUpdate === 'tool_call' || u?.sessionUpdate === 'tool_call_update') stepSinks.get(String(params.sessionId))?.(u as Record<string, unknown>)
+        if (u?.sessionUpdate === 'agent_message_chunk' && u.content?.type === 'text' && u.content.text) s.sinks.get(String(params.sessionId))?.(u.content.text)
+        else if (u?.sessionUpdate === 'tool_call' || u?.sessionUpdate === 'tool_call_update') {
+          const c = u as AcpCall & { status?: string }
+          if (c.toolCallId) {
+            const prev = s.calls.get(c.toolCallId)
+            if (c.status === 'completed' || c.status === 'failed') s.calls.delete(c.toolCallId)
+            else s.calls.set(c.toolCallId, { ...prev, ...c, rawInput: { ...(prev?.rawInput as object | undefined), ...(c.rawInput as object | undefined) } })
+          }
+          s.stepSinks.get(String(params.sessionId))?.(u as Record<string, unknown>)
+        }
       })
       p.onRequest(async (method, params) => {
         if (method !== 'session/request_permission') throw new Error(`不支持 ${method}`) // 不翻：回给 AI 进程的协议错误
-        const call = params.toolCall as { title?: string; kind?: string; rawInput?: unknown } | undefined
+        const call = (params.toolCall ?? {}) as AcpCall
         const options = (params.options ?? []) as { optionId: string; kind: string }[]
-        // 我们的工具放行；AI 自己改文件、跑命令：全能模式放行，关着一律拒绝
-        const allow = omni || OURS.test(`${call?.title ?? ''}`)
+        // 我们的工具放行；AI 自己改文件、跑命令：关着一律拒绝，全能模式放行（ask 模式先按这一问的 beforeTool 判）
+        const ours = !ACTING.has(call.kind ?? '') && OURS.test(`${call.title ?? ''}`)
+        const gate = mode === 'ask' ? s.gates.get(String(params.sessionId)) : undefined
+        const allow = ours || (mode !== 'locked' && (!gate || (await passGate([gateOf(call, call.toolCallId ? s.calls.get(call.toolCallId) : undefined, gate.root)], gate.ask, call.toolCallId))))
         const pick = options.find((x) => x.kind === (allow ? 'allow_once' : 'reject_once')) ?? options.find((x) => x.kind.startsWith(allow ? 'allow' : 'reject'))
         return pick ? { outcome: { outcome: 'selected', optionId: pick.optionId } } : { outcome: { outcome: 'cancelled' } }
       })
@@ -844,83 +919,106 @@ export function acpEngine(o: AcpOptions): Engine {
         clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
         clientInfo: { name: APP.name, version: APP.version },
       })
-      proc = p
-      void p.exited.then(() => (ready = null))
+      s.proc = p
+      void p.exited.then(() => {
+        if (s.ready === ready) s.ready = null
+      })
       return p
     })().catch((e) => {
-      ready = null
+      if (s.ready === ready) s.ready = null
       throw e
     })
+    s.ready = ready
     return ready
   }
 
   return {
     id: o.id,
     label,
-    dispose: () => proc?.close(),
+    dispose: () => {
+      for (const s of slots.values()) closeSlot(s)
+    },
     async run(r) {
       if (o.loggedIn && !o.loggedIn()) throw new Error(o.loginHint)
-      const p = await ensure(r.cwd, !!r.omni)
-      // 旁支：ACP 没有分叉，开新会话（history 是那一轮的问答，放在第一问前面）
-      let sessionId = r.session && live.has(r.session) && !r.fork ? r.session : undefined
-      const fresh = !sessionId
-      if (!sessionId) {
-        const mcpServers = r.mcp ? [{ type: 'http', name: MCP_NAME, url: r.mcp.url, headers: [{ name: 'Authorization', value: `Bearer ${r.mcp.token}` }] }] : []
-        try {
-          const res = await p.request<{ sessionId: string; configOptions?: unknown; models?: unknown }>('session/new', { cwd: r.cwd, mcpServers }, 120_000)
-          sessionId = res.sessionId
-          modelStates.set(sessionId, acpModelState(res))
-        } catch (e) {
-          const msg = String((e as Error).message)
-          throw new Error(/auth|key|login|credential|登录/i.test(msg) ? `${o.loginHint}（${msg}）` : msg)
-        }
-        live.add(sessionId)
-      }
-      // 这一问选的模型、effort（task-m55m7）：和会话现在的不一样就先换
-      await applyModel(p, sessionId, r).catch((e) => {
-        throw tagSession(e as Error, sessionId)
-      })
-      let text = ''
-      sinks.set(sessionId, (d) => {
-        text += d
-        r.onText(d)
-      })
-      // 步骤：tool_call 是开始（我们 MCP 的、想的那几步不报），tool_call_update 报做完、出错
-      const steps = new Map<string, Omit<EngineStep, 'status'>>()
-      const onStep = r.onStep
-      if (onStep)
-        stepSinks.set(sessionId, (u) => {
-          const id = String(u.toolCallId ?? '')
-          const status = String(u.status ?? '')
-          if (u.sessionUpdate === 'tool_call') {
-            const step = acpStep(u as Parameters<typeof acpStep>[0])
-            if (!step) return
-            steps.set(id, step)
-            onStep({ ...step, status: 'run' })
-          }
-          const step = steps.get(id)
-          if (!step || (status !== 'completed' && status !== 'failed')) return
-          steps.delete(id)
-          const said = Array.isArray(u.content) ? (u.content as { content?: { text?: unknown } }[]).map((c) => (typeof c.content?.text === 'string' ? c.content.text : '')).join('\n') : ''
-          onStep({ ...step, status: status === 'failed' ? 'err' : 'ok', ...(status === 'failed' ? { detail: firstLine(said) || t('没做成') } : {}) })
-        })
-      const stop = () => p.notify('session/cancel', { sessionId })
-      r.signal.addEventListener('abort', stop)
+      const mode = acpMode(r)
+      const s = slotOf(mode)
+      s.busy++
       try {
-        // ACP 没有单独的系统提示，开新会话时放在第一段话前面
-        const prompt = fresh ? `${r.system}\n\n---\n\n${withHistory(r, true)}` : r.prompt
-        const images = (r.images ?? []).map((i) => ({ type: 'image', mimeType: i.mime, data: i.data }))
-        const res = await p.request<{ stopReason?: string }>('session/prompt', { sessionId, prompt: [{ type: 'text', text: prompt }, ...images] }, 0)
-        if (res.stopReason === 'refusal') throw new Error(t('{name} 拒绝回答', { name: label }))
-      } catch (e) {
-        throw tagSession(e as Error, sessionId)
+        const p = await ensure(r.cwd, mode)
+        // 旁支：ACP 没有分叉，开新会话（history 是那一轮的问答，放在第一问前面）
+        let sessionId = r.session && s.live.has(r.session) && !r.fork ? r.session : undefined
+        const fresh = !sessionId
+        if (!sessionId) {
+          const mcpServers = r.mcp ? [{ type: 'http', name: MCP_NAME, url: r.mcp.url, headers: [{ name: 'Authorization', value: `Bearer ${r.mcp.token}` }] }] : []
+          try {
+            const res = await p.request<{ sessionId: string; configOptions?: unknown; models?: unknown }>('session/new', { cwd: r.cwd, mcpServers }, 120_000)
+            sessionId = res.sessionId
+            s.modelStates.set(sessionId, acpModelState(res))
+          } catch (e) {
+            const msg = String((e as Error).message)
+            throw new Error(/auth|key|login|credential|登录/i.test(msg) ? `${o.loginHint}（${msg}）` : msg)
+          }
+          s.live.add(sessionId)
+        }
+        const sid = sessionId
+        // 这一问选的模型、effort（task-m55m7）：和会话现在的不一样就先换
+        await applyModel(p, s.modelStates.get(sid), sid, r).catch((e) => {
+          throw tagSession(e as Error, sid)
+        })
+        let text = ''
+        s.sinks.set(sid, (d) => {
+          text += d
+          r.onText(d)
+        })
+        if (mode === 'ask') s.gates.set(sid, { ask: r.beforeTool!, root: r.cwd })
+        // 步骤：tool_call 是开始（我们 MCP 的、想的那几步不报），tool_call_update 报做完、出错；
+        // 开始时没写全的（OpenCode 先报一个「bash」，跟着的 update 里才有那行命令）后面写全了再报一次「在做」
+        const steps = new Map<string, { step: Omit<EngineStep, 'status'>; u: Record<string, unknown> }>()
+        const onStep = r.onStep
+        if (onStep)
+          s.stepSinks.set(sid, (u) => {
+            const id = String(u.toolCallId ?? '')
+            const status = String(u.status ?? '')
+            const had = steps.get(id)
+            if (u.sessionUpdate === 'tool_call' || had) {
+              const merged = had ? { ...had.u, ...u, rawInput: { ...(had.u.rawInput as object | undefined), ...(u.rawInput as object | undefined) } } : u
+              const step = had && (status === 'completed' || status === 'failed') ? had.step : acpStep(merged as Parameters<typeof acpStep>[0])
+              if (step && !had) {
+                steps.set(id, { step, u: merged })
+                onStep({ ...step, status: 'run' })
+              } else if (had) {
+                const next = step ?? had.step
+                if (JSON.stringify(next) !== JSON.stringify(had.step)) onStep({ ...next, status: 'run' })
+                steps.set(id, { step: next, u: merged })
+              }
+            }
+            const st = steps.get(id)
+            if (!st || (status !== 'completed' && status !== 'failed')) return
+            steps.delete(id)
+            const said = Array.isArray(u.content) ? (u.content as { content?: { text?: unknown } }[]).map((c) => (typeof c.content?.text === 'string' ? c.content.text : '')).join('\n') : ''
+            onStep({ ...st.step, status: status === 'failed' ? 'err' : 'ok', ...(status === 'failed' ? { detail: firstLine(said) || t('没做成') } : {}) })
+          })
+        const stop = () => p.notify('session/cancel', { sessionId: sid })
+        r.signal.addEventListener('abort', stop)
+        try {
+          // ACP 没有单独的系统提示，开新会话时放在第一段话前面
+          const prompt = fresh ? `${r.system}\n\n---\n\n${withHistory(r, true)}` : r.prompt
+          const images = (r.images ?? []).map((i) => ({ type: 'image', mimeType: i.mime, data: i.data }))
+          const res = await p.request<{ stopReason?: string }>('session/prompt', { sessionId: sid, prompt: [{ type: 'text', text: prompt }, ...images] }, 0)
+          if (res.stopReason === 'refusal') throw new Error(t('{name} 拒绝回答', { name: label }))
+        } catch (e) {
+          throw tagSession(e as Error, sid)
+        } finally {
+          r.signal.removeEventListener('abort', stop)
+          s.sinks.delete(sid)
+          s.stepSinks.delete(sid)
+          if (s.gates.get(sid)?.ask === r.beforeTool) s.gates.delete(sid)
+        }
+        if (r.signal.aborted) throw tagSession(aborted(), sid)
+        return { text: text.trim(), session: sid }
       } finally {
-        r.signal.removeEventListener('abort', stop)
-        sinks.delete(sessionId)
-        stepSinks.delete(sessionId)
+        s.busy--
       }
-      if (r.signal.aborted) throw tagSession(aborted(), sessionId)
-      return { text: text.trim(), session: sessionId }
     },
   }
 }
@@ -938,26 +1036,31 @@ denyMessage = "全能模式关着：只能用 canvas 这组工具在库里动手
 `
 
 /**
- * gemini --acp 的参数（gemini --help，0.64.0 核过）：MCP 只接我们的。全能模式 --approval-mode yolo（所有工具不问就用，同 --yolo）；
- * 关着 default（要批的来问我们、我们拒绝）再加上面的策略文件
+ * gemini --acp 的参数（gemini --help，0.64.0 核过）：MCP 只接我们的。全能模式不问（omni）--approval-mode yolo（所有工具不问就用，同 --yolo）；
+ * 全能每步来问（ask）default：跑命令、写文件、改文件、上网读网页都先发 session/request_permission，我们按 beforeTool 判；
+ * 关着（locked）default 再加上面的策略文件（要批的来问我们、我们拒绝）
  */
-export function geminiArgs(omni: boolean, policy: string): string[] {
-  return ['--acp', '--approval-mode', omni ? 'yolo' : 'default', '--allowed-mcp-server-names', MCP_NAME, ...(omni ? [] : ['--policy', policy])]
+export function geminiArgs(mode: AcpMode, policy: string): string[] {
+  return ['--acp', '--approval-mode', mode === 'omni' ? 'yolo' : 'default', '--allowed-mcp-server-names', MCP_NAME, ...(mode === 'locked' ? ['--policy', policy] : [])]
 }
 
 /**
- * OpenCode 的权限（OPENCODE_CONFIG_CONTENT，opencode 1.19.3 的 `opencode debug agent build` 核过）：全能模式「*」都放行；
- * 关着改文件、跑命令、上网、碰库外、开子 Agent 都拒（用户自己配的 webfetch、external_directory 放行排在前面，后写的赢）
+ * OpenCode 的权限（OPENCODE_CONFIG_CONTENT，opencode 1.19.3 的 `opencode debug agent build` 核过；规则是后写的赢）：
+ * - 全能不问（omni）：「*」都放行（排在用户自己配的那些后面，盖过它们）；
+ * - 全能每步来问（ask）：跑命令、改文件、读网页、碰库外的目录设 ask，来问我们、按 beforeTool 判；其余照 OpenCode 自己的默认（放行）。
+ *   这里不能再加「*」: allow：用户自己配过的 webfetch、external_directory 在合并后的规则里排在前面，「*」排在它们后面会把这两样的 ask 盖掉
+ *   （1.19.3 真跑核过：加了「*」读网页就不来问了）。用户自己设成 ask 的别的几样也会来问，按 beforeTool 判（不危险就放行）；
+ * - 关着（locked）：改文件、跑命令、上网、碰库外、开子 Agent 都拒（用户自己配的 webfetch、external_directory 放行排在前面，后写的赢）
  */
-export function opencodeConfig(omni: boolean): string {
-  return JSON.stringify(omni ? { permission: { '*': 'allow' } } : { permission: { edit: 'deny', bash: 'deny', webfetch: 'deny', websearch: 'deny', external_directory: 'deny', task: 'deny' } })
+export const OPENCODE_ASK = { bash: 'ask', edit: 'ask', webfetch: 'ask', external_directory: 'ask' } as const
+export function opencodeConfig(mode: AcpMode): string {
+  const permission = mode === 'omni' ? { '*': 'allow' } : mode === 'ask' ? OPENCODE_ASK : { edit: 'deny', bash: 'deny', webfetch: 'deny', websearch: 'deny', external_directory: 'deny', task: 'deny' }
+  return JSON.stringify({ permission })
 }
 
-/** 关着时给 Gemini 的策略文件：起进程时写进临时文件夹，进程退出就删 */
-let geminiPolicyDir: string | null = null
+/** 关着时给 Gemini 的策略文件：起进程时写进一个新的临时文件夹，这个进程退出就删它那一份（换模式重起时新旧两份不互相删） */
 function geminiPolicyFile(): string {
-  geminiPolicyDir ??= mkdtempSync(join(tmpdir(), 'cn-gemini-'))
-  const path = join(geminiPolicyDir, 'policy.toml')
+  const path = join(mkdtempSync(join(tmpdir(), 'cn-gemini-')), 'policy.toml')
   writeFileSync(path, GEMINI_POLICY)
   return path
 }
@@ -965,11 +1068,11 @@ function geminiPolicyFile(): string {
 export const geminiEngine = () =>
   acpEngine({
     id: 'gemini',
-    // 只接我们的 MCP；全能模式不问就用；关着 AI 想改文件、跑命令会来问，我们拒绝（策略文件先把它们拿掉）
-    args: (_cwd, omni) => geminiArgs(omni, omni ? '' : geminiPolicyFile()),
-    cleanup: () => {
-      if (geminiPolicyDir) rmSync(geminiPolicyDir, { recursive: true, force: true })
-      geminiPolicyDir = null
+    // 只接我们的 MCP；全能模式不问就用（给了 beforeTool 时每步来问）；关着 AI 想改文件、跑命令会来问，我们拒绝（策略文件先把它们拿掉）
+    args: (_cwd, mode) => geminiArgs(mode, mode === 'locked' ? geminiPolicyFile() : ''),
+    cleanup: (args) => {
+      const policy = args[args.indexOf('--policy') + 1]
+      if (args.includes('--policy') && policy) rmSync(dirname(policy), { recursive: true, force: true })
     },
     // 用到时才取（跟界面语言）
     get loginHint() {
@@ -996,8 +1099,8 @@ export const opencodeEngine = () =>
   acpEngine({
     id: 'opencode',
     args: (cwd) => ['acp', '--cwd', cwd],
-    // 全能模式都放行；关着 OpenCode 自己改文件、跑命令、上网一律不许，改笔记走我们的工具
-    env: (omni) => ({ OPENCODE_CONFIG_CONTENT: opencodeConfig(omni) }),
+    // 全能模式都放行（给了 beforeTool 时跑命令、改文件那几样来问）；关着 OpenCode 自己改文件、跑命令、上网一律不许，改笔记走我们的工具
+    env: (mode) => ({ OPENCODE_CONFIG_CONTENT: opencodeConfig(mode) }),
     get loginHint() {
       return t('OpenCode 还没登录：在终端里运行 opencode auth login')
     },

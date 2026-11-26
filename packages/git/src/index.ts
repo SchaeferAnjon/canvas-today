@@ -59,13 +59,24 @@ export function git(cwd: string, args: string[], opts: GitOptions = {}, tries = 
   })
 }
 
+/**
+ * 这个文件夹自己是不是一个 Git 仓库（它就是仓库的最上层）。
+ * 只是放在别的仓库下面的不算（2026-11-26 收件箱「新 Mac、空文件夹当库，CPU 被 git 占满」）：以前问的是「在不在某个仓库里」，
+ * 空文件夹放在一个本身是仓库的目录下面（主目录被做成了放配置文件的仓库、某个项目仓库里）时答「在」，软件就不建自己的仓库，
+ * 拿上层那个当库的仓库用：每次刷新底栏都对整个上层跑 git status（主目录几十万个文件，一次几十秒），
+ * 自动提交、退出前的提交把上层的东西整个 add 进去（实测上层 3000 个文件、一半改过：提交了 1500 个不属于这个库的文件）。
+ * 比的是「仓库最上层」和这个文件夹是不是同一个目录（按设备号和节点号比，不管路径写法、大小写、/tmp 和 /private/tmp）
+ */
 export async function isRepo(dir: string): Promise<boolean> {
+  let top: string
   try {
-    return (await git(dir, ['rev-parse', '--is-inside-work-tree'])).trim() === 'true'
+    top = (await git(dir, ['rev-parse', '--show-toplevel'])).trim()
   } catch (e) {
     if (e instanceof GitError) return false
     throw e
   }
+  const [a, b] = await Promise.all([stat(top), stat(dir)])
+  return a.dev === b.dev && a.ino === b.ino
 }
 
 export async function init(dir: string): Promise<void> {

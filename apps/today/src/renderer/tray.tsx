@@ -10,7 +10,7 @@ import './tray.css'
 import { useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import type { QuickKeyState, TaskView } from '../shared/api'
-import { groupsOf, nextUp } from '../shared/views'
+import { doneTodayOf, groupsOf, nextUp } from '../shared/views'
 import { mdLabel, whenLabel } from '../shared/when'
 import { tr } from '../shared/i18n'
 import { boot, nowLocal, useCalEvents, useData, useLang, useToday } from './store'
@@ -55,7 +55,7 @@ function TrayApp() {
   if (!state.vault) return <div className="tray-empty">{t('chooseSub')}</div>
   const gs = groupsOf('today', snap.tasks, today)
   const items = [...(gs.find((g) => g.kind === 'overdue')?.items ?? []), ...(gs.find((g) => g.kind === 'today')?.items ?? [])]
-  const done = gs.find((g) => g.kind === 'doneToday')?.items ?? []
+  const done = doneTodayOf(snap.tasks, today)
   const next = nextUp(snap.tasks, events, today, nowLocal().slice(11, 16))
   // 下一件是一条待办时，列表里不再列它一遍
   const list = next?.key ? items.filter((x) => x.key !== next.key) : items

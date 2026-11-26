@@ -136,7 +136,7 @@
 .cal-chip {
   height: 20px;
   border-radius: 5px;
-  background: var(--fill2);
+  background: var(--cal-task, var(--fill2));
   font-size: 12px;
   padding: 0 6px;
   overflow: hidden;
@@ -149,12 +149,26 @@
   text-decoration: line-through;
   color: var(--t3);
 }
-.cal-chip.on {
-  box-shadow: 0 0 0 2px var(--acc-ring);
+/* 待办小条（月看法、「全天」那一行）：左边一道强调色、一圈细边，和周看法的待办块一样（日程小条是它日历的颜色，见下） */
+.cal-chip:not(.ev):not(.ghost) {
+  box-shadow:
+    inset 2px 0 0 var(--acc),
+    inset 0 0 0 1px color-mix(in srgb, var(--acc) 35%, transparent);
+}
+.cal-chip.done:not(.ev) {
+  box-shadow:
+    inset 2px 0 0 color-mix(in srgb, var(--acc) 50%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--acc) 20%, transparent);
+}
+.cal-chip.on,
+.cal-chip.on:not(.ev):not(.ghost) {
+  box-shadow:
+    inset 2px 0 0 var(--acc),
+    0 0 0 2px var(--acc-ring);
 }
 /* 系统日程（只读）：它日历的颜色，左边一道 */
 .cal-chip.ev {
-  background: color-mix(in srgb, var(--c) 16%, transparent);
+  background: color-mix(in srgb, var(--c) var(--cal-ev-k, 16%), var(--cal-ev-base, transparent));
   box-shadow: inset 2px 0 0 var(--c);
 }
 .cal-body {
@@ -163,7 +177,7 @@
   position: relative;
 }
 .cal-hrs > div {
-  height: 40px;
+  height: var(--cal-hour, 40px);
   font-size: 11px;
   color: var(--t3);
   text-align: right;
@@ -177,7 +191,7 @@
   position: relative;
   border-left: 1px solid var(--line);
   background-image: linear-gradient(var(--line) 1px, transparent 1px);
-  background-size: 100% 40px;
+  background-size: 100% var(--cal-hour, 40px);
   min-width: 0;
 }
 .cal-col.today {
@@ -188,8 +202,11 @@
   left: 3px;
   right: 3px;
   border-radius: 6px;
-  background: var(--card);
-  box-shadow: var(--shadow);
+  /* 每套主题自己的待办块底色（themes.css --cal-task，实底：压在格线上、半透明的岛上都读得清） */
+  background: var(--cal-task, var(--card));
+  /* 一圈强调色细边（2026-11-25 用户「可以」，设计复审：深色里待办和同色系的日程只靠竖条和小锁分不开）；日程块、虚线框不要 */
+  --cal-ring: inset 0 0 0 1px color-mix(in srgb, var(--acc) 35%, transparent);
+  box-shadow: var(--cal-ring), var(--shadow);
   border-left: 3px solid var(--acc);
   padding: 3px 6px;
   font-size: 12px;
@@ -203,14 +220,21 @@
   text-overflow: ellipsis;
 }
 .cal-blk .bm {
-  color: var(--t3);
+  color: var(--cal-blk-t2, var(--t3));
   font-size: 11px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* 做完的：不整块变淡（变淡以后块和格子分不开、钟点不到 3，设计复审），块底、竖条淡一半、不要阴影，字用最淡的那一级加划线 */
 .cal-blk.done {
-  opacity: 0.55;
+  background: color-mix(in srgb, var(--cal-task, var(--card)) 50%, transparent);
+  border-left-color: color-mix(in srgb, var(--acc) 50%, transparent);
+  box-shadow: none;
+}
+.cal-blk.done .bt,
+.cal-blk.done .bm {
+  color: var(--isle-t3, var(--t3));
 }
 /* 下沿拉着改多长（宿主给了 onResize 才有）：块底下 6 高一条，悬停出一道短横线 */
 .cal-rs {
@@ -238,17 +262,17 @@
   opacity: 0.7;
 }
 .cal-blk.rsz {
-  box-shadow: 0 0 0 2px var(--acc-ring);
+  box-shadow: var(--cal-ring), 0 0 0 2px var(--acc-ring);
   z-index: 3;
 }
 .cal-blk.done .bt {
   text-decoration: line-through;
 }
 .cal-blk.on {
-  box-shadow: 0 0 0 2px var(--acc-ring);
+  box-shadow: var(--cal-ring), 0 0 0 2px var(--acc-ring);
 }
 .cal-blk.ev {
-  background: color-mix(in srgb, var(--c) 15%, var(--win));
+  background: color-mix(in srgb, var(--c) var(--cal-ev-k, 15%), var(--cal-ev-base, var(--win)));
   border-left-color: var(--c);
   box-shadow: none;
 }
@@ -358,6 +382,29 @@
   font-size: 12px;
   color: var(--t3);
   padding: 0 4px;
+  text-align: left;
+  border-radius: 4px;
+  flex: none;
+}
+button.cal-more:hover {
+  background: var(--fill);
+  color: var(--t1);
+}
+/* 「还有N条」点开：盖在这一格上的小卡（--pop、--shadow-up、圆角 8，fixed，不被月格子裁掉），这天的全部列出来，点外面或 Esc 收起 */
+.cal-mpop {
+  max-height: 260px;
+  overflow: auto;
+  z-index: 20;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  background: var(--pop);
+  border-radius: 8px;
+  box-shadow: var(--shadow-up);
+}
+.cal-mpop .cal-dn {
+  padding: 0 2px 2px;
 }
 /* 月看法的一条：名字在前、钟点小字在后（格子窄，名字要先露出来） */
 .cal-chip.mad {
@@ -382,7 +429,7 @@
   flex: none;
   margin-left: auto;
   font-size: 11px;
-  color: var(--t3);
+  color: var(--cal-blk-t2, var(--t3));
 }
 .cal-chip.mad .tm.late {
   color: var(--red-t);
@@ -666,10 +713,18 @@
   border: 1.5px dashed var(--acc);
   background: var(--acc-soft);
   font-size: 11px;
-  padding: 2px 6px;
+  padding: 2px 3px;
   color: var(--acc-t);
   pointer-events: none;
   z-index: 3;
+}
+/* 落点框上的钟点垫一层底：压在别的块上也读得清（设计复审） */
+.cal-slot span {
+  display: inline-block;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: var(--pop);
+  line-height: 16px;
 }
 
 /* ---------- 定日子和时间的选择器（WhenPicker，task-pd289）：照「定日子」小菜单（cm-tdmenu）和详情小卡（td-pop）的数 ----------

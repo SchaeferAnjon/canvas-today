@@ -7,6 +7,8 @@ import { allSkins, type Appearance, DEFAULT_SETTINGS as NOTES_DEFAULT, normalize
 import type { Lang } from './i18n'
 import { DEFAULT_MC_LEAD, MC_LEADS, type McLead } from './mc'
 import { DEFAULT_QUICK_KEY, isCombo } from './quick'
+import { type KeyOverrides, normalizeKeys } from './keymap'
+import { type AiPick, normalizePick } from '@cn/ai-engines/shared'
 
 /** 外观和画布笔记同一套（task-aph2j：主题渐变、浓淡、动不动也一样）；画布今日不能从电脑选图 */
 export type TodayAppearance = Pick<Appearance, 'followSystem' | 'day' | 'night' | 'skin' | 'frame' | 'winBg' | 'wallMix' | 'wallMove' | 'wallSpeed' | 'glassLevel'>
@@ -42,6 +44,12 @@ export interface PlanSettings {
 
 export const DEFAULT_PLAN: PlanSettings = { onOpen: true, tray: true, journal: null }
 
+export interface PaneWidths {
+  left?: number
+  right?: number
+  day?: number
+}
+
 export interface TodaySettings {
   lang: Lang
   /** 外观跟画布笔记的设置走（主题、界面风格、窗口背景） */
@@ -54,6 +62,8 @@ export interface TodaySettings {
   /** 左栏、右栏开着没有 */
   left: boolean
   right: boolean
+  /** 拖过的栏宽（左栏、右栏、排一天右边「今天的时间」，px）；没有的是没拖过、用默认（双击分隔条回到默认） */
+  widths?: PaneWidths
   /** 画布笔记的设置里没有库时，这里记上次打开的 */
   lastVault?: string
   /** 在画布今日里自己选过库（设置里「换一个库…」）：以后先开它，不跟画布笔记上次的 */
@@ -76,6 +86,17 @@ export interface TodaySettings {
   mcLead: McLead
   /** 日历和提醒事项的设置引导看过了（第一次连上时自动出一次，关掉就不再自动出；设置里能再打开） */
   calGuideSeen?: boolean
+  /**
+   * 右栏 AI 的全能模式（2026-11-25）：在画布今日里切过才有；没有时跟画布笔记 设置 › AI 的全能模式，那边也没设过是开着（shared/ai-agent.ts omniState）
+   */
+  omni?: boolean
+  /** 设置 › 快捷键里改过的键（shared/keymap.ts）：命令 → 键，null 是清掉了；没有的照默认 */
+  keys?: KeyOverrides
+  /**
+   * 设置 › AI 里画布今日自己选的（对标清单 U4）：右栏 AI 对话（chat）、拆成小步和排时间这些小活（quick）各用哪一家、模型、想多久；
+   * 没有的那一样跟画布笔记 设置 › AI 的同一行（没装画布笔记时是默认那家）
+   */
+  aiOwn?: { chat?: AiPick; quick?: AiPick }
 }
 
 const notesLook = NOTES_DEFAULT.appearance
@@ -131,6 +152,17 @@ function normalizePlan(raw: unknown): PlanSettings {
   }
 }
 
+/** 栏宽只认 100 到 2000 的数，整数；一个都没有就不写这一项 */
+function widthsOf(raw: unknown): { widths?: PaneWidths } {
+  const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
+  const w: PaneWidths = {}
+  for (const k of ['left', 'right', 'day'] as const) {
+    const v = r[k]
+    if (typeof v === 'number' && Number.isFinite(v) && v >= 100 && v <= 2000) w[k] = Math.round(v)
+  }
+  return Object.keys(w).length ? { widths: w } : {}
+}
+
 /** 读出来的设置一项项检查，不对的用默认值。user：导入的 VS Code 主题（和画布笔记同一份；删掉了的不认，回到默认；白天只认浅色、夜里只认深色，同画布笔记） */
 export function normalizeToday(raw: unknown, sysLang: Lang = 'zh', user: readonly SkinInfo[] = []): TodaySettings {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
@@ -160,6 +192,7 @@ export function normalizeToday(raw: unknown, sysLang: Lang = 'zh', user: readonl
     quickKey: isCombo(r.quickKey) ? r.quickKey : DEFAULT_TODAY.quickKey,
     left: typeof r.left === 'boolean' ? r.left : true,
     right: typeof r.right === 'boolean' ? r.right : true,
+    ...widthsOf(r.widths),
     ...(typeof r.lastVault === 'string' ? { lastVault: r.lastVault } : {}),
     ...(r.vaultChosen === true ? { vaultChosen: true } : {}),
     autoUpdate: typeof r.autoUpdate === 'boolean' ? r.autoUpdate : DEFAULT_TODAY.autoUpdate,
@@ -171,6 +204,17 @@ export function normalizeToday(raw: unknown, sysLang: Lang = 'zh', user: readonl
     plan: normalizePlan(r.plan),
     mcLead: r.mcLead === null || MC_LEADS.includes(r.mcLead as McLead) ? (r.mcLead as McLead) : DEFAULT_MC_LEAD,
     ...(r.calGuideSeen === true ? { calGuideSeen: true } : {}),
+    ...(typeof r.omni === 'boolean' ? { omni: r.omni } : {}),
+    ...(() => {
+      const k = normalizeKeys(r.keys)
+      return Object.keys(k).length ? { keys: k } : {}
+    })(),
+    ...(() => {
+      const a = (r.aiOwn && typeof r.aiOwn === 'object' ? r.aiOwn : {}) as Record<string, unknown>
+      const chat = normalizePick(a.chat)
+      const quick = normalizePick(a.quick)
+      return chat || quick ? { aiOwn: { ...(chat ? { chat } : {}), ...(quick ? { quick } : {}) } } : {}
+    })(),
   }
 }
 

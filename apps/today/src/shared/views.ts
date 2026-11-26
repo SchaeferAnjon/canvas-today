@@ -3,7 +3,7 @@
  * 一条「没做完」= 没勾、没取消；子任务（挂在别的待办下面的）不单独列，除非它自己写了日子。
  */
 import type { CalItem } from '@cn/calendar'
-import { byDoneDate, diffDays, doneDays, foldersInOrder, isTodoNotePath, type ISODate, notesInOrder } from '@cn/tasks'
+import { byDoneDate, type Prio, diffDays, doneDays, foldersInOrder, isTodoNotePath, type ISODate, notesInOrder, stillListed } from '@cn/tasks'
 import type { NoteView, Snapshot, TaskView } from './api'
 import { INBOX_NOTE } from './brand'
 import { isoPlus } from './when'
@@ -22,7 +22,7 @@ export type Nav = 'inbox' | 'today' | 'tomorrow' | 'week' | 'all' | 'done' | `li
 export interface Group {
   name: string
   /** 名字从哪来：要翻译的键，或者原样（## 标题、日期） */
-  kind: 'overdue' | 'today' | 'tomorrow' | 'doneToday' | 'noDate' | 'day' | 'heading' | 'none' | 'folder' | 'note' | 'doneDay' | 'doneFold'
+  kind: 'overdue' | 'today' | 'tomorrow' | 'noDate' | 'day' | 'heading' | 'none' | 'folder' | 'note' | 'doneDay' | 'doneFold'
   date?: ISODate
   items: TaskView[]
   /** 拖到组名上改成哪天（date:2026-11-23） */
@@ -68,16 +68,22 @@ export function notesWithTodo(s: Snapshot, keep?: string): NoteView[] {
   return s.notes.filter((n) => has.has(n.path) || n.path === keep).sort((a, b) => b.mtimeMs - a.mtimeMs || a.path.localeCompare(b.path))
 }
 
-export function groupsOf(nav: Nav, ts: readonly TaskView[], today: ISODate): Group[] {
+/** 今天勾掉的（菜单栏小窗里划掉留在下面、点了能改回；主窗口的「今天」里不再列，勾掉就进「已完成」） */
+export const doneTodayOf = (ts: readonly TaskView[], today: ISODate) => ts.filter((t) => t.done && t.doneDate === today && listed(t)).sort(byPlace)
+
+/**
+ * just：刚勾掉、还在原处留一行「已完成 · 撤回」的（@cn/tasks JUST_MS，和画布笔记待办同一份规则 stillListed）；
+ * 过了就只在「已完成」里（以前「今天」里多一组「今天勾掉的」划线留着，对标清单 U12）
+ */
+export function groupsOf(nav: Nav, ts: readonly TaskView[], today: ISODate, just?: ReadonlySet<string>): Group[] {
   const tom = isoPlus(today, 1)
-  const live = ts.filter((t) => open(t) && listed(t))
+  const live = ts.filter((t) => stillListed(t, just) && listed(t))
   if (nav === 'today') {
     const g: Group[] = []
     const od = live.filter((t) => t.date && t.date < today).sort((a, b) => a.date!.localeCompare(b.date!) || byTime(a, b))
     if (od.length) g.push({ name: 'overdue', kind: 'overdue', items: od, red: true })
     g.push({ name: 'today', kind: 'today', date: today, items: live.filter((t) => t.date === today).sort(byTime), drop: 'date:' + today, timeOnly: true })
     g.push({ name: 'tomorrow', kind: 'tomorrow', date: tom, items: live.filter((t) => t.date === tom).sort(byTime), drop: 'date:' + tom, fold: true })
-    g.push({ name: 'doneToday', kind: 'doneToday', items: ts.filter((t) => t.done && t.doneDate === today && listed(t)).sort(byPlace), done: true })
     return g
   }
   if (nav === 'tomorrow') return [{ name: 'tomorrow', kind: 'tomorrow', date: tom, items: live.filter((t) => t.date === tom).sort(byTime), drop: 'date:' + tom }]
@@ -105,7 +111,7 @@ export function groupsOf(nav: Nav, ts: readonly TaskView[], today: ISODate): Gro
   // 和画布笔记左栏「按文件夹」里一样（2026-11-24「记得把canvas today也改了」）
   const path = nav.slice(5)
   const all = ts.filter((t) => t.path === path && t.parent === null)
-  const mine = all.filter((t) => !t.done).sort(byPlace)
+  const mine = all.filter((t) => !t.done || !!just?.has(t.key)).sort(byPlace)
   const out: Group[] = []
   let cur: (Group & { at: number | null }) | null = null
   for (const t of mine) {
@@ -115,16 +121,28 @@ export function groupsOf(nav: Nav, ts: readonly TaskView[], today: ISODate): Gro
     }
     cur.items.push(t)
   }
-  const done = all.filter((t) => t.done).sort(byDoneDate)
+  const done = all.filter((t) => t.done && !just?.has(t.key)).sort(byDoneDate)
   if (done.length) out.push({ name: 'doneFold', kind: 'doneFold', items: done, done: true })
   return out
 }
 
 /** 四象限：没做完的按优先级分四格（⏫ 🔼 🔽 没设） */
-export function quadOf(ts: readonly TaskView[]): Record<0 | 1 | 2 | 3, TaskView[]> {
-  const live = ts.filter((t) => open(t) && listed(t))
-  const by = (p: number) => live.filter((t) => t.prio === p).sort((a, b) => (a.date ?? '9999').localeCompare(b.date ?? '9999') || byTime(a, b))
-  return { 3: by(3), 2: by(2), 1: by(1), 0: by(0) }
+/** 四象限的一格：1 高 ⏫、2 中 🔼、3 低 🔽、4 最低 ⏬；none 是没设优先级的「没分」那一条（2026-11-25 按推荐小改，以前没设的放第 4 格） */
+export type QuadKey = 1 | 2 | 3 | 4 | 'none'
+export const quadKeyOf = (t: Pick<TaskView, 'prio' | 'lowest'>): QuadKey => (t.prio === 3 ? 1 : t.prio === 2 ? 2 : t.prio === 1 ? (t.lowest ? 4 : 3) : 'none')
+/** 拖进这一格要写的优先级（none 是去掉记号） */
+export const QUAD_PRIO: Record<QuadKey, { prio: Prio; lowest: boolean }> = {
+  1: { prio: 3, lowest: false },
+  2: { prio: 2, lowest: false },
+  3: { prio: 1, lowest: false },
+  4: { prio: 1, lowest: true },
+  none: { prio: 0, lowest: false },
+}
+
+export function quadOf(ts: readonly TaskView[], just?: ReadonlySet<string>): Record<QuadKey, TaskView[]> {
+  const live = ts.filter((t) => stillListed(t, just) && listed(t))
+  const by = (k: QuadKey) => live.filter((t) => quadKeyOf(t) === k).sort((a, b) => (a.date ?? '9999').localeCompare(b.date ?? '9999') || byTime(a, b))
+  return { 1: by(1), 2: by(2), 3: by(3), 4: by(4), none: by('none') }
 }
 
 /** 日历上某一天的：有钟点的画成块，没钟点的放在「全天」那一行；勾掉的也画（淡一点） */

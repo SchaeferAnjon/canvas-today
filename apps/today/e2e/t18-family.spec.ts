@@ -40,7 +40,7 @@ test('侧栏第六页「软件家族」：画布笔记一张表三行、MeetCapt
   const { page } = run
   try {
     await page.locator('.ab[data-k="settings"]').click()
-    await expect(nav(page).getByRole('button')).toHaveText(['一般', '外观', '日历和提醒事项', 'AI', '库', '排一天', '软件家族'])
+    await expect(nav(page).getByRole('button')).toHaveText(['一般', '外观', '日历和提醒事项', 'AI', '库', '排一天', '软件家族', '快捷键'])
     await nav(page).getByRole('button', { name: '软件家族' }).click()
     await expect(dlg(page).locator('.sa-head')).toContainText('同一个人做的几个软件：装了的能互相接上，没装的先看看能做什么')
     expect(await dlg(page).locator('.fm-card').evaluateAll((els) => els.map((e) => e.getAttribute('data-app')))).toEqual(['canvas-notes', 'meetcaption'])

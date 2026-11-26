@@ -52,8 +52,10 @@ test('勾掉「读完三篇相关论文」：文件里只那一行变成 - [x] �
     await expect(page.locator('.toast')).toContainText('《小论文计划》第7行改成了 - [x]')
     await expect.poll(() => run.read('写作/小论文计划.md')).not.toBe(before)
     expect(onlyLine(before, run.read('写作/小论文计划.md'), 6)).toBe('- [x] 读完三篇相关论文 📅 2026-11-22 🔼 ✅ 2026-11-22')
-    // 挪到「今天勾掉的」那一组
-    await expect(page.locator('.center .grp', { hasText: '今天勾掉的' })).toBeVisible()
+    // 原处留一行「已完成 · 撤回」，2 秒后从「今天」里拿掉、只在「已完成」里（对标清单 U12）
+    await expect(page.locator('.center .row.just', { hasText: '读完三篇相关论文' })).toContainText('已完成 · 撤回')
+    await expect(page.locator('.center .row', { hasText: '读完三篇相关论文' })).toHaveCount(0, { timeout: 4000 })
+    await expect(page.locator('.center .grp', { hasText: '今天勾掉的' })).toHaveCount(0)
     await page.locator('.toast').getByRole('button', { name: '撤回' }).click()
     await expect(page.locator('.toast')).toContainText('撤回了')
     await expect.poll(() => run.read('写作/小论文计划.md')).toBe(before)

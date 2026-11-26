@@ -1,0 +1,166 @@
+/* 空对话（greeting.tsx，从画布笔记 app.css、ai.css、reading/reading.css 搬来）：问候靠底、左对齐，下面紧跟输入框上面那排快捷命令。
+   引擎标志 22 + 8 + 宋体 600 22/1.35 的钟点问候；下面 4，13/1.5 --t2 一句跟着在看的东西走 */
+.msgs.greeting {
+  justify-content: flex-end;
+}
+.ai-greet .hi {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ai-greet .eng-logo {
+  flex: none;
+}
+.ai-greet h2 {
+  margin: 0;
+  font: 600 22px/1.35 var(--serif, 'Songti SC', 'STSong', 'Noto Serif SC', 'Source Han Serif SC', Georgia, serif);
+  color: var(--t1, var(--text));
+}
+.ai-greet p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--t2, var(--text-2));
+}
+/* 这一格可能很矮（右栏开着网页时只有一半高）：调用的那一格量着收问候，放不下先藏标志和那一行问候（tight1），再放不下整个不画（tight2），
+   底下那排快捷命令一直在 */
+.ai-empty.tight1 .hi {
+  display: none;
+}
+.ai-empty.tight2 {
+  display: none;
+}
+/* 读 PDF 那种右栏下格（ParaRead、MeetCaption 的对话那一格也带 .reading-ai）：按它的高收，矮于 140 藏大标题，那一句也放不下就整个不画 */
+.reading-ai .msgs {
+  container-type: size;
+}
+@container (max-height: 140px) {
+  .reading-ai .ai-empty .hi {
+    display: none;
+  }
+}
+@container (max-height: 47.98px) {
+  .reading-ai .ai-empty {
+    display: none;
+  }
+}
+
+/* 快捷命令：一排，左右 12（和输入框外沿对齐），到输入框 8（输入框的上外边距）；放不下的收进「⋯」，不换第二排 */
+.aiq {
+  position: relative;
+  flex: none;
+  padding: 0 12px;
+}
+.aiq .qrow {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+/* 28 高、圆角 8、左 8 右 10，1px --line2 内描边、--card 底；图标 14 --t2 + 6 + 12px --t1；悬停 --fill */
+.aiq .qc {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px 0 8px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--card, var(--bg-elevated));
+  box-shadow: inset 0 0 0 1px var(--line2, var(--stroke-strong));
+  font-family: var(--sans, var(--font-sans));
+  font-size: 12px;
+  color: var(--t1, var(--text));
+}
+.aiq .qc:hover,
+.aiq .qc.on {
+  background: var(--fill, var(--fill-2));
+}
+.aiq .qc[aria-disabled='true'] {
+  opacity: 0.55;
+  cursor: default;
+}
+.aiq .qc .qi {
+  flex: none;
+  color: var(--t2, var(--text-2));
+}
+/* 收起的照样画着好量宽度，不占位、看不见 */
+.aiq .qc.folded {
+  position: absolute;
+  visibility: hidden;
+  pointer-events: none;
+}
+.aiq .qc.more {
+  width: 28px;
+  padding: 0;
+  justify-content: center;
+}
+/* 自己存的命令（画布笔记 task-9womr）：一道 1×16 --line2 竖线后面，图标强调色 */
+.aiq .qsep {
+  flex: none;
+  width: 1px;
+  height: 16px;
+  margin: 0 2px;
+  background: var(--line2, var(--stroke-strong));
+}
+.aiq .qsep.folded {
+  display: none;
+}
+.aiq .qc.own .qi,
+.aiq .qmenu button.own .qi {
+  color: var(--acc-t, var(--accent-text));
+}
+.aiq .qc[hidden] {
+  display: none;
+}
+/* 「⋯」往上弹：--pop、圆角 12、--shadow-up、内边距 6；行 30 高、圆角 8；先列收起的几条，一道线，最后「全部命令 /」 */
+.aiq .qmenu {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  min-width: 220px;
+  max-width: calc(100% - 24px);
+  margin-left: 12px;
+  padding: 6px;
+  border-radius: 12px;
+  background: var(--pop, var(--bg-popover));
+  -webkit-backdrop-filter: var(--blur, var(--blur-pop));
+  backdrop-filter: var(--blur, var(--blur-pop));
+  box-shadow: var(--shadow-up, var(--shadow-pop));
+  z-index: 20;
+}
+.aiq .qmenu button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 30px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  font-family: var(--sans, var(--font-sans));
+  font-size: 13px;
+  color: var(--t1, var(--text));
+  text-align: left;
+  white-space: nowrap;
+}
+.aiq .qmenu button:hover {
+  background: var(--fill, var(--fill-2));
+}
+.aiq .qmenu button .qi {
+  flex: none;
+  color: var(--t2, var(--text-2));
+}
+.aiq .qmenu .sep {
+  height: 1px;
+  margin: 5px 4px;
+  background: var(--line, var(--stroke));
+}
+.aiq .qmenu .k {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--t3, var(--text-3));
+}

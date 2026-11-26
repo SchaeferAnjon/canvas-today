@@ -101,4 +101,13 @@ export const DREAM_JUDGE: Table = {
   '{n}个文件里{k}个是图片和附件': '{k} of {n} files are images or attachments',
   '已存 · 梦游以后照这张表整理': 'Saved · Dream sorts by this table from now on',
   '确认过：{date} · 存在库里的 {file}': 'Confirmed {date} · saved in the library at {file}',
+  // ---------- 梦游对照里改去处、新名字（renderer/dream/DreamTab.tsx 的 MoveBlock） ----------
+  '「{dir}」里已经有「{name}」，这篇改叫「{now}」': '“{dir}” already has “{name}”, so this one will be called “{now}”',
+  '去处改成「{dir}/」，收下时挪到这里': 'Destination changed to “{dir}/”; it moves there when you keep it',
+  '新名字改成「{name}」，收下时提到它的链接跟着换': 'New name: “{name}”; links to it update when you keep it',
+  '挪到「{dir}」，点了换个文件夹': 'Moves to “{dir}”; click to pick another folder',
+  '换个文件夹 · 梦游原来建议「{dir}/」': 'Pick another folder · Dream first suggested “{dir}/”',
+  换个文件夹: 'Pick another folder',
+  '新名字「{name}」，点了改': 'New name “{name}”; click to change',
+  改名字: 'Rename',
 }

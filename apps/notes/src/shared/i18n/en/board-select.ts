@@ -142,9 +142,6 @@ export const BOARD_SELECT: Table = {
   平移: 'pan',
 
   // ---------- 一起拖、删 ----------
-  '挪进了「{name}」：文档里这{n}段也挪进了这一节，位置行去掉了': (p) => `Moved into “${p.name}”: ${count(p.n, 'paragraph')} moved into that section, position lines removed`,
-  '挪了{n}张：只改了这{n}张的位置行（从列里拿出来的{m}张多了一行位置），正文顺序不变': (p) => `Moved ${cards(p.n)}: only their position lines changed (${count(p.m, 'card')} taken out of columns got one), text order unchanged`,
-  '挪了{n}张：只改了这{n}张的位置行，正文顺序不变': (p) => `Moved ${cards(p.n)}: only their position lines changed, text order unchanged`,
   选中的卡在文件里找不到了: 'The selected cards are no longer in the file',
   选中的几块在文件里找不到了: 'The selected blocks are no longer in the file',
   编辑器还没载入: 'The editor isn’t loaded yet',

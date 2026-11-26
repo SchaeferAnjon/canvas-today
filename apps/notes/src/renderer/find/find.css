@@ -1,0 +1,142 @@
+/*
+ * 找的条（⇧⌘F，renderer/find/FindBar.tsx）：照导图第二批设计页「② 在导图里找」那一屏。
+ * 贴在这一栏右上角，右 14、上 14，宽 392（窄的栏里最多到栏宽减 28）；一行 32 高，按钮 26 方、圆角 6。
+ * 里面的类名都带 fb- 前缀：PDF 上的框（.pdfpane .fr）这类短名字会套到找的条上（designer 复审看到 PDF 里找的条塌了）
+ */
+.cn-findbar {
+  position: absolute;
+  right: 14px;
+  top: 14px;
+  z-index: 45;
+  width: 392px;
+  max-width: calc(100% - 28px);
+  padding: 4px;
+  border-radius: 10px;
+  background: var(--pop);
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
+  box-shadow: var(--shadow-up);
+  color: var(--t2);
+  font: 13px var(--sans);
+}
+.cn-findbar .fb-row {
+  height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 2px 0 8px;
+}
+.cn-findbar input {
+  flex: 1;
+  min-width: 0;
+  margin-left: 6px;
+  border: 0;
+  outline: none;
+  background: none;
+  color: var(--t1);
+  font: 13px var(--sans);
+}
+.cn-findbar input::placeholder {
+  color: var(--t3);
+}
+.cn-findbar .fb-count {
+  padding: 0 6px;
+  font-size: 12px;
+  color: var(--t3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.cn-findbar button {
+  width: 26px;
+  height: 26px;
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--t2);
+  display: grid;
+  place-items: center;
+  cursor: default;
+}
+.cn-findbar button:hover:not(:disabled) {
+  background: var(--fill);
+}
+.cn-findbar button.on,
+.cn-findbar button.on:hover:not(:disabled) {
+  background: var(--fill2);
+  color: var(--t1);
+}
+/* AI 对话里找（BoardFind toText）：条开着时对话顶上让出条的高度（上 14 + 条 40 + 8），第一条里搜到的字不被条盖住、滚过去也停在条下面；
+   对话目录那列短横线挪到条下面（和文档里目录从 64 起一样） */
+.msgs-box.finding > .msgs {
+  padding-top: 62px;
+  scroll-padding-top: 62px;
+}
+.msgs-box.finding .chat-toc-wrap {
+  top: 62px;
+}
+.cn-findbar button:disabled {
+  opacity: 0.4;
+}
+.cn-findbar button.fb-txt {
+  width: auto;
+  padding: 0 8px;
+  font: 12px var(--sans);
+  color: var(--t1);
+}
+.cn-findbar .fb-gap {
+  width: 1px;
+  height: 16px;
+  margin: 0 3px;
+  background: var(--line2);
+}
+.cn-findbar .fb-rep {
+  border-top: 1px solid var(--line);
+}
+.cn-findbar .fb-note {
+  padding: 2px 10px 6px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--t3);
+}
+.cn-findbar .fb-note b {
+  color: var(--t2);
+  font-weight: 500;
+}
+
+/* 中间栏的宽网页：找的条贴在网页这一格的右上角 */
+.wpane .wbody {
+  position: relative;
+}
+
+/* 文档里找到的字（DocFind，编辑器的装饰）：淡底，当前那一处深一点、强调色细边（同导图里找到的） */
+.cm-find {
+  background: var(--acc-soft);
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px var(--acc-ring);
+}
+.cm-find-cur {
+  background: color-mix(in srgb, var(--acc) 30%, transparent);
+  box-shadow: 0 0 0 1.5px var(--acc);
+}
+/* PDF、白板里找到的字（CSS 高亮，不改页面的 DOM） */
+::highlight(cn-find) {
+  background-color: color-mix(in srgb, var(--acc) 22%, transparent);
+}
+::highlight(cn-find-cur) {
+  background-color: color-mix(in srgb, var(--acc) 45%, transparent);
+}
+/* 白板上跳到的那张卡闪一下（强调色外圈，约 2 秒后没了） */
+.cn-find-flash {
+  animation: cn-find-flash 2s ease-out;
+}
+@keyframes cn-find-flash {
+  0%,
+  60% {
+    box-shadow: 0 0 0 2px var(--acc);
+  }
+  100% {
+    box-shadow: 0 0 0 2px transparent;
+  }
+}

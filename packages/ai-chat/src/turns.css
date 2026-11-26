@@ -122,6 +122,23 @@
   line-height: 1.6;
   color: var(--t2, var(--text-2));
 }
+/* 问的那一句点了回到原处（UserTurn 的 onQuote，MeetCaption 回到那句字幕）：同样子的一颗按钮，悬停字深一档 */
+.reading-ai .um-wrap .uq.go {
+  border-top: 0;
+  border-right: 0;
+  border-bottom: 0;
+  background: none;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.reading-ai .um-wrap .uq.go:hover {
+  color: var(--t1, var(--text));
+}
+.reading-ai .um-wrap .uq.go:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--acc-ring, var(--accent-ring));
+}
 .reading-ai .am .txt {
   font-size: 13px;
   line-height: 1.7;

@@ -13,15 +13,17 @@ export interface Actions {
   tick(t: TaskView): void
   /** 左栏清单换到这一页（「全部」里点笔记名） */
   goNav(n: Nav): void
-  setDate(t: TaskView, date: string | null, time?: string | null, how?: 'allday'): void
-  setPrio(t: TaskView, p: Prio, say?: boolean): void
+  /** how：allday 拖到「全天」（拿掉钟点）；slot 拖到时间线的某个钟点（和日程重叠时提示条说一句） */
+  setDate(t: TaskView, date: string | null, time?: string | null, how?: 'allday' | 'slot'): void
+  /** lowest：低优先级写成 ⏬（四象限第 4 格） */
+  setPrio(t: TaskView, p: Prio, say?: boolean, lowest?: boolean): void
   /** 详情里改一项（时间、提醒、重复、标题、加一步）：不弹提示条，改动在「存在哪」那一行看得到 */
   field(t: TaskView, op: EditOp): void
   del(t: TaskView): void
   move(t: TaskView, to: string): void
   add(text: string, ctx: AddCtx, when?: When | null): Promise<boolean>
-  /** 定日子和时间的选择器（task-pd289）：贴着 el 弹，改什么写进这一条，关上时说一句带撤销；after：关上时最后定的日子（收工记「挪到哪天」） */
-  pickWhen(t: TaskView, el: HTMLElement, keys?: boolean, after?: (date: string | null) => void): void
+  /** 定日子和时间的选择器（task-pd289）：贴着 el 弹，改什么写进这一条，关上时说一句带撤销；after：关上时最后定的日子（收工记「挪到哪天」）；place：排一天「排进时间」，日子先填今天 */
+  pickWhen(t: TaskView, el: HTMLElement, keys?: boolean, after?: (date: string | null) => void, place?: boolean): void
   /** 排一天「不做了」：[-] ❌ 今天，提示条能撤销 */
   cancel(t: TaskView): void
   /** 估时（分钟，[估时:: …]）；null 拿掉 */
@@ -66,3 +68,14 @@ export function useActions(): Actions {
   if (!a) throw new Error('useActions 要在 Desk 里面用')
   return a
 }
+
+/**
+ * 刚勾掉的（@cn/tasks JUST_MS，和画布笔记待办同一份规则）：在原处留一行「已完成 · 撤回」，过了就只在「已完成」里。
+ * undo：那一行上的「撤回」（撤回这一次勾掉，提示条那句一起收）
+ */
+export interface Just {
+  keys: ReadonlySet<string>
+  undo(key: string): void
+}
+export const JustCtx = createContext<Just>({ keys: new Set(), undo: () => undefined })
+export const useJust = () => useContext(JustCtx)

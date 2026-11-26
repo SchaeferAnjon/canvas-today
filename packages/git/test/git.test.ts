@@ -20,6 +20,25 @@ it('新库：是仓库、分支 main、没有提交', async () => {
   expect(await isRepo(tmpdir())).toBe(false)
 })
 
+it('放在别的仓库下面的文件夹不算仓库（2026-11-26 收件箱：空文件夹当库、上层是仓库，软件拿上层的仓库用，提交了上层的文件）', async () => {
+  writeFileSync(join(dir, '上层的文件.txt'), '上层\n')
+  mkdirSync(join(dir, '笔记/新库'), { recursive: true })
+  const sub = join(dir, '笔记/新库')
+  expect(await isRepo(sub)).toBe(false)
+  // 软件这时给它建自己的仓库：建完它就是仓库，状态和提交只管它自己，上层的文件不进来
+  await init(sub)
+  expect(await isRepo(sub)).toBe(true)
+  await git(sub, ['config', 'user.name', 'Test'])
+  await git(sub, ['config', 'user.email', 'test@example.com'])
+  expect(await status(sub)).toEqual([])
+  writeFileSync(join(sub, '第一篇.md'), '# 第一篇\n')
+  await commitAll(sub, '第一篇')
+  expect((await log(sub))[0]!.files.map((f) => f.path)).toEqual(['第一篇.md'])
+  // 路径写法不同（多一个 /、经过 .. ）也认得是同一个文件夹
+  expect(await isRepo(join(dir, '笔记/../笔记/新库/'))).toBe(true)
+  expect(await isRepo(join(dir, '笔记'))).toBe(false)
+})
+
 it('状态、提交、历史里有改了哪些文件（中文文件名不转义）', async () => {
   writeFileSync(join(dir, '所思所想.md'), '# 所思所想\n第一行\n')
   writeFileSync(join(dir, 'b.md'), 'b\n')

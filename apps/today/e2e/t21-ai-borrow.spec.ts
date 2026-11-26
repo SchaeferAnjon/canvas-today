@@ -54,7 +54,8 @@ test('借画布笔记那把 Key：先问一句，不用就收起；用它存一�
     // 设置 › AI：跟画布笔记「小活」那一行；Key 已存一份 ••••9z9z
     await page.locator('.ab[data-k="settings"]').click()
     await dlg(page).getByRole('navigation', { name: '设置分页' }).getByRole('button', { name: 'AI', exact: true }).click()
-    await expect(dlg(page)).toContainText('读画布笔记设置 › AI的「小活」那一行：现在是Claude API · Haiku 5.5')
+    await expect(dlg(page).locator('[data-row="aiFollow"]')).toContainText('跟画布笔记设置 › AI 的「小活」那一行')
+    await expect(dlg(page).getByTestId('ai-pick-quick')).toContainText('Claude API · Haiku 5.5')
     await expect(dlg(page)).toContainText('Key也用画布笔记那把：Claude API')
     await expect(dlg(page)).toContainText('已存一份 · ••••9z9z')
     if (process.env.CT_SHOTS) await dlg(page).screenshot({ path: join(process.env.CT_SHOTS, '13-today-settings.png') })

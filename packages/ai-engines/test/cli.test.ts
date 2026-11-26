@@ -100,7 +100,7 @@ describe('找命令行（CN-87）', () => {
     expect(p).toContain('/usr/bin')
   })
 
-  it('找到了还要能跑：--version 跑得通算装好；退出码不是 0、3 秒没反应、跑不起来都算运行不了，说一句中文', async () => {
+  it('找到了还要能跑：--version 跑得通算装好；退出码不是 0、20 秒没反应、跑不起来都算运行不了，说一句中文', async () => {
     const good = script(join(base, 'check/good'), 'echo "codex-cli 0.163.0"')
     expect(await checkCli(good)).toEqual({ ok: true, version: 'codex-cli 0.163.0' })
     const bad = script(join(base, 'check/bad'), 'echo "dyld: Library not loaded: libssl.3.dylib" >&2\nexit 134')
@@ -111,4 +111,9 @@ describe('找命令行（CN-87）', () => {
     chmodSync(join(base, 'check/broken'), 0o755)
     expect((await checkCli(join(base, 'check/broken'))).ok).toBe(false)
   })
+
+  it('r172 A6：起得慢的（node 起的 gemini、opencode 刚开机时 5 到 17 秒）不算运行不了：默认等 20 秒', async () => {
+    const lazy = script(join(base, 'check/lazy'), 'sleep 3.5\necho "0.64.0"')
+    expect(await checkCli(lazy)).toEqual({ ok: true, version: '0.64.0' })
+  }, 15_000)
 })

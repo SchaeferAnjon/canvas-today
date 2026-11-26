@@ -50,7 +50,7 @@ test('设置（照画布笔记分页）：不跟画布笔记时换 A 风格、�
     const s = page.locator('.set')
     const nav = s.getByRole('navigation', { name: '设置分页' })
     // 左边七页（第四页 AI task-587os，第六页排一天，第七页软件家族 task-59o3v），开在「一般」
-    await expect(nav.getByRole('button')).toHaveText(['一般', '外观', '日历和提醒事项', 'AI', '库', '排一天', '软件家族'])
+    await expect(nav.getByRole('button')).toHaveText(['一般', '外观', '日历和提醒事项', 'AI', '库', '排一天', '软件家族', '快捷键'])
     await expect(nav.getByRole('button', { name: '一般' })).toHaveAttribute('aria-current', 'page')
     await expect(s.getByRole('heading', { name: '一般' })).toBeVisible()
     await nav.getByRole('button', { name: '外观' }).click()
@@ -75,7 +75,7 @@ test('设置（照画布笔记分页）：不跟画布笔记时换 A 风格、�
     await s.getByRole('switch', { name: '开着时常驻菜单栏' }).click()
     await s.getByLabel('界面语言').selectOption({ label: 'English' })
     await expect(page.getByRole('region', { name: 'Settings' })).toBeVisible()
-    await expect(page.getByRole('navigation', { name: 'Settings pages' }).getByRole('button')).toHaveText(['General', 'Appearance', 'Calendar & Reminders', 'AI', 'Vault', 'Plan the day', 'App family'])
+    await expect(page.getByRole('navigation', { name: 'Settings pages' }).getByRole('button')).toHaveText(['General', 'Appearance', 'Calendar & Reminders', 'AI', 'Vault', 'Plan the day', 'App family', 'Shortcuts'])
     const saved = JSON.parse(readFileSync(join(run.userData, 'settings.json'), 'utf8'))
     expect(saved).toMatchObject({ lang: 'en', followNotes: false, tray: false, appearance: { frame: 'a', skin: 'petrol', winBg: 'cave' } })
     await page.keyboard.press('Escape')

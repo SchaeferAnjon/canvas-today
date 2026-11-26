@@ -116,6 +116,9 @@ export interface DocColumn {
    * end 是整节在文档里的末尾（挪整节用）
    */
   slice?: { section: string | null; first: boolean; end: number }
+  /** 列的样式（白板装饰，ink-decor.ts）：列名下面紧跟的那一行 `<!-- column style=header color=2 -->` 上的属性和那一行的范围 */
+  attrs?: Record<string, string>
+  styleLine?: { from: number; to: number }
 }
 
 export interface DocBoard {
@@ -464,6 +467,16 @@ export function splitDoc(text: string): DocBoard {
         else if (a.id) pendingTag = { id: a.id, from: b.from, to: b.to }
         pendingAttrs = extraOf(a)
         continue
+      }
+      // 列名下面紧跟的样式行（没有 x、y 的 column 行）：整列的样式
+      const styled = k === 0 && s.head && b.kind === 'html' ? COLUMN_LINE.exec(t) : null
+      if (styled) {
+        const a = lineAttrs(styled[1]!)
+        if (a.x === undefined && a.y === undefined) {
+          if (Object.keys(a).length) col.attrs = a
+          col.styleLine = { from: b.from, to: b.to }
+          continue
+        }
       }
       if (b.kind === 'html' && /^<!--\s*(column|\/?col|columns)\b/.test(t)) continue
       if (b.kind === 'heading') {

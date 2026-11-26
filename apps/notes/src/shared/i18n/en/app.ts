@@ -297,7 +297,6 @@ export const APP: Table = {
   建在最外层: 'At the top level',
   '新建文件夹…': 'New folder…',
   '剪进「{dir}」': (p) => `Clip into “${p.dir}”`,
-  '网页上剪的默认记进这篇，第一次剪先问一句；点开能改': 'Clips from this page go into this note by default; the first clip asks first. Click to change',
   '网页上剪的、问的记进这篇；点开能改': 'Clips and questions from this page go into this note. Click to change',
   '网页上剪的一段一张卡片进收件箱；点开能改': 'Each clip from this page becomes a card in the Inbox. Click to change',
   '网页上剪的一段一张卡片进这个文件夹；点开能改': 'Each clip from this page becomes a card in this folder. Click to change',
@@ -319,4 +318,10 @@ export const APP: Table = {
   '挪进「{dir}」了，剪成了一张卡片': (p) => `Moved into “${p.dir}” as a card`,
   '这个网站以后剪进「{dir}」，一段一张卡片': (p) => `From now on this site clips into “${p.dir}”, one card per clip`,
   库里最外层: 'Top level of the vault',
+  // ---------- 剪藏去处规则（2026-11-25）：整页写进配对的那篇 ----------
+  '整页写进《{title}》末尾了。': (p) => `Saved the whole page at the end of “${p.title}”.`,
+  '剪藏这一页：整页写进《{title}》末尾': (p) => `Clip this page: the whole page goes at the end of “${p.title}”`,
+  '撤回了，《{title}》里那一节拿掉了': (p) => `Undone; that section was removed from “${p.title}”`,
+  '整页写进《{title}》末尾了': (p) => `Saved the whole page at the end of “${p.title}”`,
+  中间没开着能写的文档: 'No editable document is open in the middle',
 }

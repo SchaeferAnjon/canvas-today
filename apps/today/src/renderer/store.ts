@@ -98,6 +98,8 @@ function applyLook() {
     r.style.removeProperty('--frame-photo')
     r.dataset.winbg = look.winBg === 'wall' ? 'wall' : 'none'
   }
+  // 几块岛、设置弹窗透不透只认 <html data-glass>（同画布笔记 skin.ts）：B + 照片或主题渐变时透；纯色、A 照旧实底
+  r.toggleAttribute('data-glass', (!!photo || look.winBg === 'wall') && look.frame === 'b')
   // 主题渐变那一层（和画布笔记同一份，@cn/design/wall）
   applyWall({ mix: look.wallMix, move: look.wallMove, speed: look.wallSpeed }, { e2e: s.e2e })
   r.lang = s.settings.lang === 'zh' ? 'zh-CN' : 'en'

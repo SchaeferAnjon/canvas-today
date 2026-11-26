@@ -32,7 +32,12 @@
  *         可以再跟两个 az,al（方位角、高度角 ×100，弧度）；再跟两个 h,o（点的高 ×100、不透明度 ×1000）。
  *         一笔里每点个数一样（5、7 或 9）；没写的 az 是 0、al 是 π/2（手指）、h 和 w 一样、o 是 1。
  *         取整一律 floor(v × 倍数 + 0.5)（TS 和 Swift 一样）。精度是实测定的：0.01 时铅笔纹理和 PencilKit 只差 0.24% 的像素，钢笔一点不差。
- *    键的顺序：程序写的时候照上面（组行 g、on、x、y、t；笔画行 id、g、pen、c、seed、t、from、p），认不出的键原样跟在后面。
+ *       读 PDF 上写的（iPad 读 PDF 手写，设计页 159，2026-11-25 用户定）组行多一个 `"pg":<页号>`（从 1 数），x、y 换成这一页里的位置：
+ *       PDF 点，页面 cropBox 的左上角起、按页面没旋转时算（PDF 自己带 /Rotate 时画的时候字和笔一起转）。文件在
+ *       `附件/<PDF 名>/笔迹.ink`（pdfInkPathOf，和读 PDF 截图同一个文件夹），PDF 原文件一个字节不动。笔画行和白板一样。
+ *       iPad 第一次打开时把旧的 `附件/手写/<PDF 名>/第 N 页.drawing` 迁进来，记一行
+ *       `{"moved":"附件/手写/<PDF 名>/第 N 页.drawing","sha":"<内容指纹前 12 位>","pg":N}`（认不出的行，原样留着、合并按整行认）。
+ *    键的顺序：程序写的时候照上面（组行 g、on、pg、x、y、t；笔画行 id、g、pen、c、seed、t、from、p），认不出的键原样跟在后面。
  *    只改了的那几行重写，别的行一个字节不动（打开再保存不变，和 md 同一条规矩）。
  *
  * 三、改的时候改哪几行：加一笔加一行（新的一组再加一行组行）；挪一整组只改组那一行（点相对组原点）；
@@ -56,16 +61,24 @@
  *      · 两边都擦断了 X（擦的地方不一样）：只留一边擦剩的几段，留后擦的那边（几段里 t 最大的大，一样取 keep 那边），
  *        另一边那几段不要（先擦的那一截会回来，不会两边的几段叠在一起）。这两种都算一处 clashes。
  *    合出来的每一行都是某一边原来的那一行（只有上面换了颜色、组的那几段重写）。两边都只在文末各加了几笔：两边的都留下，keep 那边的在前。
+ *    贴纸、胶带两种装饰行（ink-decor.ts）在这里是认不出的行，合并时按它们的编号认（decorKey）、两边都改了比它们的 t。
  */
 import { INK_FILE } from './app-files'
 import { attachmentDir } from './attachments'
 import { type DocUnit, freshId, placeLine, tagLine, unitId } from './doc-board'
+import { decorKey, decorTime } from './ink-decor'
+import { attachDirFor } from './reading-note'
 
 export const INK_VERSION = 1
 
 /** 这块白板的笔迹文件：附件/<白板路径去掉 .md>/笔迹.ink */
 export function inkPathOf(notePath: string): string {
   return `${attachmentDir(notePath)}/${INK_FILE}`
+}
+
+/** 这份 PDF 的笔迹文件：附件/<PDF 名>/笔迹.ink（attachDirFor，和读 PDF 截图同一个文件夹；组行带 pg） */
+export function pdfInkPathOf(pdf: string): string {
+  return `${attachDirFor(pdf)}/${INK_FILE}`
 }
 
 /** 笔画认的几种笔（文件里的名字 → PencilKit 的 PKInk.InkType.rawValue）；认不出的原样留着、Mac 按钢笔画 */
@@ -83,14 +96,28 @@ export const INK_PENS: Record<string, string> = {
  * 笔盘的颜色（浅色下的值，文件里也记这个；深色主题照 darkInk 画）：墨水 5 色、荧光笔 3 色（设计页 134「每套主题配 5 色墨水 + 3 色荧光笔」，
  * 颜色取自 design/ipad-ink/README.md）。十套主题共用这一份：文件里记的是颜色本身，换主题、换设备不变；深色五套由 darkInk 校准
  */
-export const INK_COLORS = ['#1d2421', '#2459c6', '#d64545', '#12805a', '#e08a00'] as const
+export const INK_COLORS = ['#1d2421', '#1e4aa4', '#9f2323', '#12805a', '#c27700'] as const
+
+/**
+ * 改过色值的墨水（2026-11-25 用户看了 143「可以」：深色主题下红、蓝在深色卡上太暗，照设计复审改成红 #9f2323、蓝 #1e4aa4，
+ * 接受浅色下红偏砖红；2026-11-26 橙 #e08a00 → #c27700，浅色主题下在白板、卡片上够 3:1）：文件里记着旧值的笔（#d64545、#2459c6、#e08a00）文件一个字节不动，画的时候照新值画（inkColor）；改色时写新值
+ */
+export const INK_RENAMED: Readonly<Record<string, string>> = { '#d64545': '#9f2323', '#2459c6': '#1e4aa4', '#e08a00': '#c27700' }
+
+/** 画这一笔用的颜色（浅色下）：旧色值换成新的，带透明度的保留透明度；别的原样 */
+export function inkColor(c: string): string {
+  const n = INK_RENAMED[c.slice(0, 7).toLowerCase()]
+  return n ? n + c.slice(7) : c
+}
 export const HIGHLIGHT_COLORS = ['#ffd84d', '#9be3b7', '#ffb3c7'] as const
 
 export interface InkGroup {
   id: string
   /** 挂在哪张卡上（卡的编号）；null 是钉在白板上 */
   on: string | null
-  /** 组的原点：白板坐标，挂卡的是相对卡左上角 */
+  /** 读 PDF 上写的：第几页（从 1 数）；白板上的没有这个键 */
+  pg?: number
+  /** 组的原点：白板坐标，挂卡的是相对卡左上角；读 PDF 的是这一页里的位置（cropBox 左上角起、没旋转、PDF 点） */
   x: number
   y: number
   /** 最后一次改这一行的时间（毫秒） */
@@ -272,7 +299,7 @@ const intOf = (raw: string | undefined): number | null => {
   return n !== null && Number.isSafeInteger(n) ? n : null
 }
 
-const GROUP_KEYS = new Set(['g', 'on', 'x', 'y', 't'])
+const GROUP_KEYS = new Set(['g', 'on', 'pg', 'x', 'y', 't'])
 const STROKE_KEYS = new Set(['id', 'g', 'pen', 'c', 'seed', 't', 'from', 'p'])
 
 /** 读一行 */
@@ -303,8 +330,10 @@ export function parseInkLine(raw: string): InkLine {
     const x = m.has('x') ? numOf(m.get('x')) : 0
     const y = m.has('y') ? numOf(m.get('y')) : 0
     const t = optInt('t')
-    if (!id || (m.has('on') && !on) || x === null || y === null || t === undefined) return { kind: 'other', raw }
-    return { kind: 'group', raw, group: { id, on, x, y, t }, extra: extraOf(GROUP_KEYS) }
+    const pg = m.has('pg') ? intOf(m.get('pg')) : undefined
+    if (!id || (m.has('on') && !on) || x === null || y === null || t === undefined || pg === null || (pg !== undefined && pg < 1)) return { kind: 'other', raw }
+    const group: InkGroup = pg === undefined ? { id, on, x, y, t } : { id, on, pg, x, y, t }
+    return { kind: 'group', raw, group, extra: extraOf(GROUP_KEYS) }
   }
   if (m.has('ink')) {
     const v = intOf(m.get('ink'))
@@ -322,7 +351,7 @@ export function inkLineText(l: InkLine): string {
   if (l.kind === 'head') return `{"ink":${l.v}${extraText(l.extra)}}`
   if (l.kind === 'group') {
     const g = l.group
-    return `{"g":${quote(g.id)}${g.on !== null ? `,"on":${quote(g.on)}` : ''},"x":${fmt2(g.x)},"y":${fmt2(g.y)}${g.t !== null ? `,"t":${g.t}` : ''}${extraText(l.extra)}}`
+    return `{"g":${quote(g.id)}${g.on !== null ? `,"on":${quote(g.on)}` : ''}${g.pg !== undefined ? `,"pg":${g.pg}` : ''},"x":${fmt2(g.x)},"y":${fmt2(g.y)}${g.t !== null ? `,"t":${g.t}` : ''}${extraText(l.extra)}}`
   }
   const s = l.stroke
   return `{"id":${quote(s.id)},"g":${quote(s.g)},"pen":${quote(s.pen)},"c":${quote(s.c)}${s.seed !== null ? `,"seed":${s.seed}` : ''}${s.t !== null ? `,"t":${s.t}` : ''}${s.from !== null ? `,"from":${quote(s.from)}` : ''},"p":${quote(s.p)}${extraText(l.extra)}}`
@@ -476,7 +505,7 @@ export function moveInk(doc: InkDoc, ids: Iterable<string>, dx: number, dy: numb
     const grp = groups.get(g)
     if (!grp) continue
     if (n === ss.length) whole.add(g)
-    else split.set(g, { id: (o.newId ?? inkId)(), on: grp.on, x: round2(grp.x + dx), y: round2(grp.y + dy), t: o.now })
+    else split.set(g, { ...grp, id: (o.newId ?? inkId)(), x: round2(grp.x + dx), y: round2(grp.y + dy), t: o.now })
   }
   const out: InkLine[] = []
   const placed = new Set<string>()
@@ -573,11 +602,11 @@ function keyOf(l: InkLine): string {
   if (l.kind === 'head') return 'h'
   if (l.kind === 'group') return 'g:' + l.group.id
   if (l.kind === 'stroke') return 's:' + l.stroke.id
-  return 'o:' + l.raw
+  return decorKey(l.raw) ?? 'o:' + l.raw
 }
 
 const textOf = (l: InkLine) => l.raw ?? inkLineText(l)
-const timeOf = (l: InkLine) => (l.kind === 'group' ? (l.group.t ?? 0) : l.kind === 'stroke' ? (l.stroke.t ?? 0) : l.kind === 'head' ? l.v : 0)
+const timeOf = (l: InkLine) => (l.kind === 'group' ? (l.group.t ?? 0) : l.kind === 'stroke' ? (l.stroke.t ?? 0) : l.kind === 'head' ? l.v : decorTime(l.raw))
 
 /** 同一个键写了几行时后面的算 */
 function byKey(doc: InkDoc): Map<string, InkLine> {
@@ -719,3 +748,6 @@ export function darkInk(c: string): string {
   const shift = 255 - Math.max(...rgb) - Math.min(...rgb)
   return '#' + rgb.map((x) => (x + shift).toString(16).padStart(2, '0')).join('') + (m[2] ?? '')
 }
+
+/** 装饰行（ink-decor.ts）读写一行 JSON 用的同一套扫法 */
+export { scanObject as scanInkObject, quote as inkQuote, unquote as inkUnquote }

@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import { removeField, setDate, setDone, setId, setPrio, setRemind, setRepeat, setTime, setTitle } from '../src/edit'
 import { addSubtask, appendTask, blockOf, editLine, moveBlock, removeBlock, scanTasks } from '../src/file'
-import { isTaskLine, parseTaskLine } from '../src/line'
+import { isLowest, isTaskLine, parseTaskLine } from '../src/line'
 import { completeTask } from '../src/recur'
 import { sameTasks } from '../src/dupes'
 import { setWhen } from '../src/when'
@@ -121,6 +121,14 @@ describe('写回：新记号插在 ^块编号、#标签、注释前面，块编�
     expect(setRemind(L, '提前1小时')).toBe('- [ ] 🚗 驾照刷题 📅 2026-09-17 🔔 提前1小时 ^dida-6a98574d')
     expect(setRepeat(L, '每天')).toBe('- [ ] 🚗 驾照刷题 📅 2026-09-17 🔁 每天 ^dida-6a98574d')
     expect(setPrio(L, 3)).toBe('- [ ] 🚗 驾照刷题 📅 2026-09-17 ⏫ ^dida-6a98574d')
+    // 最低 ⏬（画布今日四象限第 4 格）：读成低，isLowest 认得出；低 🔽 和 ⏬ 之间来回只换那一个记号
+    const lo = setPrio(L, 1, true)
+    expect(lo).toBe('- [ ] 🚗 驾照刷题 📅 2026-09-17 ⏬ ^dida-6a98574d')
+    expect(parseTaskLine(lo)!.prio).toBe(1)
+    expect(isLowest(parseTaskLine(lo)!)).toBe(true)
+    expect(setPrio(lo, 1)).toBe('- [ ] 🚗 驾照刷题 📅 2026-09-17 🔽 ^dida-6a98574d')
+    expect(isLowest(parseTaskLine(setPrio(lo, 1))!)).toBe(false)
+    expect(setPrio(lo, 0)).toBe(L)
     expect(setId(L, 'a1b2c3')).toBe('- [ ] 🚗 驾照刷题 📅 2026-09-17 🆔 a1b2c3 ^dida-6a98574d')
     expect(setTitle(L, '驾照刷题 50 道')).toBe('- [ ] 驾照刷题 50 道 📅 2026-09-17 ^dida-6a98574d')
   })

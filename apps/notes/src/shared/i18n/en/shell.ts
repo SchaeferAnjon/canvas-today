@@ -112,7 +112,7 @@ export const SHELL: Table = {
   '这一条抄在{n}处（比如滴答同步进每天的日记），这里只显示一份；勾掉、改日子会把{n}处一起改': (p) => `This to-do is copied in ${p.n} places (for example synced into each day’s journal); it is shown once here, and checking it off or rescheduling it changes all ${p.n}`,
   '空着，拖一条到「{name}」上就改到这天': 'Empty; drag a to-do onto “{name}” to move it here',
   '还有{n}条 ›': (p) => `${p.n} more ›`,
-  '已完成 {n} 条 {arrow}': 'Done {n} {arrow}',
+  '已完成{n}条 {arrow}': 'Done {n} {arrow}',
   '再列{n}条 ›': 'Show {n} more ›',
   '还没有勾掉的待办。勾掉一条，它就到这里来。': 'Nothing checked off yet. Check one off and it lands here.',
   '没写完成日子': 'No completion date',

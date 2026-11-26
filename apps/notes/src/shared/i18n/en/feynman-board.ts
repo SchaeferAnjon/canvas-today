@@ -19,6 +19,7 @@ export const FEYNMAN_BOARD: Table = {
   直接写一个词: 'Type a word',
   '直接写一个词，比如：范数': 'Type a word, e.g. norm',
   '或者从这块白板上挑：': 'Or pick from this board:',
+  整块白板: 'The whole board',
 
   // ---------- 列头 ----------
   '费曼 · {topic}': 'Feynman · {topic}',

@@ -39,6 +39,9 @@ export interface UserTurnProps {
   onContextMenu?(e: React.MouseEvent<HTMLElement>): void
   /** 气泡下面悬停出的那排（画布笔记：拷贝 · 存成快捷回复） */
   acts?: ReactNode
+  /** 扩展点：点问的那一句（quote）时宿主处理（MeetCaption：回到那句字幕）；给了那一句是一颗按钮，quoteTip 是悬停提示。不给时只是字 */
+  onQuote?(): void
+  quoteTip?: string
 }
 
 export function UserTurn(p: UserTurnProps) {
@@ -57,7 +60,14 @@ export function UserTurn(p: UserTurnProps) {
             <img src={pastedUrl(n)} alt={t('粘贴的图')} />
           </div>
         ))}
-      {p.quote && <div className="uq">「{p.quote}」</div>}
+      {p.quote &&
+        (p.onQuote ? (
+          <button type="button" className="uq go" title={p.quoteTip} onClick={p.onQuote}>
+            「{p.quote}」
+          </button>
+        ) : (
+          <div className="uq">「{p.quote}」</div>
+        ))}
       {p.mats?.length ? (
         <MatMsg text={p.text} mats={[...p.mats]} lead={crop} {...(p.mentions ? { mentions: p.mentions } : {})} {...(p.onContextMenu ? { onContextMenu: p.onContextMenu } : {})} />
       ) : (
@@ -83,8 +93,9 @@ export interface AnswerTurnProps {
   /** 引用这条回答里的字时写的来源（「AI的回答 · 第28页」） */
   src: string
   testId?: string
-  /** 回答头：读了什么（「读了第4页」）、谁答的（「Claude Code · Opus 5.5 · High」，前面画那一家的标志）；ok：勾画成绿的 */
-  head?: { read?: string; by?: string; ok?: boolean } | null
+  /** 回答头：读了什么（「读了第4页」）、谁答的（「Claude Code · Opus 5.5 · High」，前面画那一家的标志）；ok：勾画成绿的；
+   *  icon：扩展点，read 前面画别的图标（宿主 icon() 认的名字；MeetCaption「会上还没说到」画书），不给画勾 */
+  head?: { read?: string; by?: string; ok?: boolean; icon?: string } | null
   /** 谁答的那一家的标志（不给按 by 的名字认画布笔记那十家） */
   logo?: ReactNode
   steps?: readonly StepView[]
@@ -98,6 +109,8 @@ export interface AnswerTurnProps {
   txtRef?: Ref<HTMLDivElement>
   txtKey?: string
   onContextMenu?(e: React.MouseEvent<HTMLElement>): void
+  /** 扩展点：回答头、步骤、「正在想…」和正文之间宿主自己画的（ParaRead：「已思考（用时 3 秒）」那一行，点开看想了什么） */
+  before?: ReactNode
   /** 正文下面的：出错、回答下面那排、记进笔记的进度 */
   children?: ReactNode
 }
@@ -109,7 +122,7 @@ export function AnswerTurn(p: AnswerTurnProps) {
     <div className="am" data-testid={p.testId} data-msg={p.msg} data-src={p.src} onContextMenu={p.onContextMenu}>
       {h && (h.read || h.by) && (
         <div className="read">
-          {h.read && <Icon name="check" size={12} {...(h.ok ? { className: 'ok' } : {})} />}
+          {h.read && <Icon name={h.icon ?? 'check'} size={12} {...(h.ok ? { className: 'ok' } : {})} />}
           {h.read && <span className="rd">{h.read}</span>}
           {h.by && (
             <span className="by">
@@ -124,6 +137,7 @@ export function AnswerTurn(p: AnswerTurnProps) {
         <StepRow key={s.id} s={s} />
       ))}
       {p.thinking && <div className="thinking">{p.thinking}</div>}
+      {p.before}
       {p.text && (
         <div className="txt md" key={p.txtKey ?? 'txt'} ref={p.txtRef}>
           {chat.renderMarkdown(p.text, { conv: p.conv, ...(p.steps ? { steps: p.steps } : {}) })}

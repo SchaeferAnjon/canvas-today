@@ -1,0 +1,14 @@
+{
+  "name": "@cn/web-session",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "内置浏览器的登录：从 Chrome 导入登录、登录分区留得住（会话 cookie、强杀前写盘）、退出前写盘；画布笔记、画布订阅共用，只用 Electron 主进程的 Session",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@cn/quit-fast": "workspace:*"
+  },
+  "license": "GPL-3.0-or-later"
+}

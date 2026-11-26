@@ -263,8 +263,12 @@ const line = (s: string, last: boolean) => {
   return (last ? ls[ls.length - 1] : ls[0]) ?? ''
 }
 
-/** 找到的命令行能不能跑：`<命令> --version`，timeoutMs 内跑完、退出码 0 才算装好。按路径和修改时间记着，换了版本再跑一次 */
-export function checkCli(path: string, timeoutMs = 3000): Promise<CliCheck> {
+/**
+ * 找到的命令行能不能跑：`<命令> --version`，timeoutMs 内跑完、退出码 0 才算装好。按路径和修改时间记着，换了版本再跑一次。
+ * 限时 20 秒（r172 A6：以前 3 秒，gemini、opencode 这类 node 起的命令行在刚开机、四家一起查时常要 5 到 17 秒，被当成「找到了，运行不了」；
+ * 没查完之前照旧先当能用）
+ */
+export function checkCli(path: string, timeoutMs = 20_000): Promise<CliCheck> {
   const name = basename(path)
   const key = fileKey(path)
   if (!key) return Promise.resolve({ ok: false, why: t('{path} 不在了', { path }) })

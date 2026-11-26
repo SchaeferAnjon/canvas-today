@@ -10,7 +10,8 @@ import { mkdir, readdir, readFile, rm, stat } from 'node:fs/promises'
 import { atomicWrite, ChangedOutsideError, type FileStamp, readStamped } from '@cn/atomic'
 import { basename, dirname, join, relative, resolve, sep } from 'node:path'
 import { isMcRecord, merge3, prop } from '@cn/format'
-import { type FileTask, type Habit, isHabitPath, keyOf, parseHabit, type RingBy, sameTasks, scanTasks } from '@cn/tasks'
+import { isInternalPath } from '@cn/git'
+import { type FileTask, type Habit, isHabitPath, isLowest, keyOf, parseHabit, type RingBy, sameTasks, scanTasks } from '@cn/tasks'
 import type { HabitView, NoteView, Snapshot, TaskView } from '../shared/api'
 import { feedsSrcOf } from '../shared/feeds-link'
 import { mcSrcOf } from '../shared/mc'
@@ -94,7 +95,11 @@ export class TaskVault {
       for (const ent of await readdir(dir, { withFileTypes: true })) {
         if (ent.isDirectory()) {
           if (!ent.name.startsWith('.') && !SKIP_DIRS.has(ent.name)) subs.push(walk(join(dir, ent.name)))
-        } else if (ent.isFile() && ent.name.toLowerCase().endsWith('.md')) paths.push(this.rel(join(dir, ent.name)))
+        } else if (ent.isFile() && ent.name.toLowerCase().endsWith('.md')) {
+          // 软件自己的配置不算笔记（和画布笔记同一个判断 @cn/git isInternalPath；隐藏文件夹上面已经跳过）
+          const rel = this.rel(join(dir, ent.name))
+          if (!isInternalPath(rel)) paths.push(rel)
+        }
       }
       await Promise.all(subs)
     }
@@ -160,6 +165,7 @@ export class TaskVault {
           remind: t.task.remind,
           repeat: t.task.repeat,
           prio: t.task.prio,
+          ...(isLowest(t.task) ? { lowest: true } : {}),
           doneDate: t.task.doneDate,
           minutes: t.task.minutes,
           parent: t.parent === null ? null : key(t.parent),
@@ -327,7 +333,7 @@ export class TaskVault {
         )
         return
       }
-      if (parts.some((x) => x.startsWith('.') || SKIP_DIRS.has(x)) || !rel.toLowerCase().endsWith('.md')) return
+      if (parts.some((x) => x.startsWith('.') || SKIP_DIRS.has(x)) || !rel.toLowerCase().endsWith('.md') || isInternalPath(rel)) return
       clearTimeout(this.timers.get(rel))
       this.timers.set(
         rel,

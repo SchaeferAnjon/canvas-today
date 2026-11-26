@@ -19,6 +19,13 @@ it.skipIf(!existsSync(join(ROOT, PR_TOKENS)))('ParaRead 的主题定义了共用
   expect(THEME_VARS.filter((v) => !pr.has(v))).toEqual([])
 })
 
+// MeetCaption 问 AI 的对话框（2026-11-25 起用这个包）：它的 tokens.css 加对话框自己的 chat.css（补了 --paper、--right-w）；画布笔记、ParaRead 的公开仓库不带它，那边跳过
+const MC_TOKENS = 'apps/meetcaption/src/renderer/shared/tokens.css'
+it.skipIf(!existsSync(join(ROOT, MC_TOKENS)))('MeetCaption 的主题定义了共用组件要的每个变量', () => {
+  const mc = defined(MC_TOKENS, 'apps/meetcaption/src/renderer/chat/chat.css')
+  expect(THEME_VARS.filter((v) => !mc.has(v))).toEqual([])
+})
+
 it('包里的 css 只用表里的变量；别的都带默认值（ParaRead 不定义也不坏）', () => {
   const src = join(__dirname, '../src')
   const css = (readdirSync(src, { recursive: true }) as string[]).filter((f) => f.endsWith('.css'))

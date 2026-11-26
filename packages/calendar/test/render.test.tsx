@@ -44,15 +44,15 @@ describe('周看法', () => {
 })
 
 describe('月看法', () => {
-  it('每格 mday:，三条以上只列两条再「还有N条」，日程在前；过期没做的钟点红字', () => {
+  it('每格 mday:，最多列三条，多了「还有N条」（是一颗按钮，点了列全），日程在前；过期没做的钟点红字', () => {
     const many: CalItem[] = [1, 2, 3].map((i) => ({ key: `m${i}`, title: `第${i}条`, date: '2026-11-23' }))
     const html = renderToStaticMarkup(<MonthGrid lang="zh" month="2026-11-01" today={today} items={[...items, ...many]} events={events} />)
     expect(html.match(/data-drop="mday:/g)).toHaveLength(35)
     const cell = html.slice(html.indexOf('data-drop="mday:2026-11-23"'), html.indexOf('data-drop="mday:2026-11-24"'))
     expect(cell).toContain('交房租')
     expect(cell).toContain('组会')
-    expect(cell).not.toContain('交论文初稿')
-    expect(cell).toContain('还有4条')
+    expect(cell.match(/class="cal-chip mad/g)).toHaveLength(3)
+    expect(cell).toContain('<button class="cal-more" aria-expanded="false">还有3条</button>')
     expect(html).toContain('<span class="tm late">23:59</span>')
   })
   it('一条带 dot（画布笔记数据库的日历：状态在哪一组的颜色）：名字前一个小圆点；不带的照旧没有', () => {

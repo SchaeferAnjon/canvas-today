@@ -17,3 +17,8 @@ declare module '*?raw' {
   const text: string
   export default text
 }
+/** 画布笔记 agent 里画网页小指针用的标志（主进程借画布笔记的 agent 跑全能模式时一起打包，shared/engine-logo-html.ts） */
+declare module '*?inline' {
+  const url: string
+  export default url
+}

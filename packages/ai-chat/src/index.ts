@@ -28,3 +28,5 @@ export * from './use-dismiss'
 export * from './chat-jump'
 // 跟着最新的往下滚、人往上翻就停、「↓ 新回答」
 export * from './follow'
+// 空对话：问候、输入框上面一排快捷命令
+export * from './greeting'

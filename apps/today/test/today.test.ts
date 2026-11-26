@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 import type { Snapshot, TaskView } from '../src/shared/api'
 import { repeatLabel, TABLES, tr } from '../src/shared/i18n'
 import { lookFromNotes, normalizeToday } from '../src/shared/settings'
-import { cntAll, cntInbox, cntToday, cntWeek, findAgain, groupsOf, notesWithTodo, quadOf } from '../src/shared/views'
+import { cntAll, cntInbox, cntToday, cntWeek, doneTodayOf, findAgain, groupsOf, notesWithTodo, QUAD_PRIO, quadKeyOf, quadOf } from '../src/shared/views'
 import { dayLabel, thirdPick, whenLabel } from '../src/shared/when'
 
 const T = '2026-11-22'
@@ -99,24 +99,41 @@ describe('清单怎么分组（照原型 listView）', () => {
     task({ title: '子任务', parent: '写作/甲.md#5' }),
     task({ title: '取消的', date: T, cancelled: true }),
   ]
-  it('今天：过期、今天（按钟点）、明天、今天勾掉的', () => {
+  it('今天：过期、今天（按钟点）、明天；勾掉的不在这里，只在「已完成」（对标清单 U12，同画布笔记待办）', () => {
     const g = groupsOf('today', ts, T)
     expect(g.map((x) => [x.kind, x.items.map((i) => i.title)])).toEqual([
       ['overdue', ['过期']],
       ['today', ['今天 11 点', '今天没钟点']],
       ['tomorrow', ['明天一']],
-      ['doneToday', ['今天勾掉']],
     ])
+    expect(groupsOf('done', ts, T).flatMap((x) => x.items.map((i) => i.title))).toContain('今天勾掉')
+    expect(doneTodayOf(ts, T).map((x) => x.title)).toEqual(['今天勾掉'])
+  })
+  it('刚勾掉的（just）在原处留着：今天那组、四象限、一篇笔记里都还在，一篇里不进「已完成 N 条」', () => {
+    const just = ts.find((x) => x.title === '今天勾掉')!
+    const keys = new Set([just.key])
+    expect(groupsOf('today', ts, T, keys).find((g) => g.kind === 'today')!.items.map((i) => i.title)).toContain('今天勾掉')
+    expect(quadOf(ts, keys).none.map((x) => x.title)).toContain('今天勾掉')
+    const inNote = groupsOf(`list:${just.path}`, ts, T, keys)
+    expect(inNote.find((g) => g.kind === 'doneFold')?.items.map((i) => i.title) ?? []).not.toContain('今天勾掉')
+    expect(inNote.flatMap((g) => (g.kind === 'doneFold' ? [] : g.items.map((i) => i.title)))).toContain('今天勾掉')
   })
   it('数：今天（含过期）、收件箱（收件箱那篇没日子的）、最近七天', () => {
     expect(cntToday(ts, T)).toBe(3)
     expect(cntInbox(ts)).toBe(1)
     expect(cntWeek(ts, T)).toBe(4)
   })
-  it('四象限按优先级', () => {
+  it('四象限按优先级：⏫ 第 1 格、🔼 第 2 格、🔽 第 3 格、⏬ 第 4 格，没设的在「没分」', () => {
     const q = quadOf(ts)
-    expect(q[3].map((x) => x.title)).toEqual(['别处没日子'])
-    expect(q[0].map((x) => x.title)).not.toContain('子任务')
+    expect(q[1].map((x) => x.title)).toEqual(['别处没日子'])
+    expect(q.none.map((x) => x.title)).not.toContain('子任务')
+    const a = [task({ title: '高', prio: 3 }), task({ title: '中', prio: 2 }), task({ title: '低', prio: 1 }), task({ title: '最低', prio: 1, lowest: true }), task({ title: '没设', prio: 0 })]
+    const b = quadOf(a)
+    expect([b[1], b[2], b[3], b[4], b.none].map((g) => g.map((x) => x.title))).toEqual([['高'], ['中'], ['低'], ['最低'], ['没设']])
+    // 拖进哪一格写什么
+    expect(QUAD_PRIO[4]).toEqual({ prio: 1, lowest: true })
+    expect(QUAD_PRIO.none).toEqual({ prio: 0, lowest: false })
+    expect(quadKeyOf({ prio: 1, lowest: true })).toBe(4)
   })
   it('一篇笔记按 ## 标题分组，同名的两节分开', () => {
     const a = [task({ path: 'n.md', line: 3, title: '一', heading: '这周', headingLine: 1 }), task({ path: 'n.md', line: 9, title: '二', heading: '这周', headingLine: 7 })]
@@ -188,6 +205,13 @@ describe('设置', () => {
     expect(normalizeToday({}, 'en')).toMatchObject({ lang: 'en', followNotes: true, tray: true, left: true, right: true })
     expect(normalizeToday({ lang: 'fr', appearance: { skin: 'nope', frame: 'x' } }).appearance.skin).toBe('mint')
     expect(normalizeToday({ appearance: { skin: 'petrol', frame: 'a' } }).appearance).toMatchObject({ skin: 'petrol', frame: 'a' })
+  })
+
+  it('拖过的栏宽：只认 100 到 2000 的数（取整），不对的那一栏当没拖过；一栏都没有就没有这一项', () => {
+    expect(normalizeToday({}).widths).toBeUndefined()
+    expect(normalizeToday({ widths: {} }).widths).toBeUndefined()
+    expect(normalizeToday({ widths: { left: 280.4, right: 'x', day: 340 } }).widths).toEqual({ left: 280, day: 340 })
+    expect(normalizeToday({ widths: { left: 20, right: 9999, day: Number.NaN } }).widths).toBeUndefined()
   })
 
   it('导入的 VS Code 主题（task-wxr2a）：还在就认，删掉了回到默认；白天只认浅色、夜里只认深色；跟画布笔记时也认它导入的', () => {

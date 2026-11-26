@@ -242,3 +242,14 @@
   height: 24px;
   padding: 0 6px;
 }
+
+/* 回答下面那排（宿主给 className="ans-acts"）：最新那条一直露着（on），之前的悬停那条回答、Tab 走到这一排才露
+   （位置一直占着，露出来下面的字不跳）；⋯ 开着时也露（开着时带 on）。从画布笔记 ai.css 搬来 */
+.am .ans-acts:not(.on) {
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.am:hover .ans-acts,
+.am .ans-acts:focus-within {
+  opacity: 1;
+}

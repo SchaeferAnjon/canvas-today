@@ -11,10 +11,12 @@ import { INBOX_NOTE } from '../shared/brand'
 import { repeatLabel, tr } from '../shared/i18n'
 import { calItems, cntAll, cntToday, type Group, groupsOf, type Nav, open, quadOf } from '../shared/views'
 import { dayLabel, isoPlus, mdLabel, thirdPick, whenLabel } from '../shared/when'
-import { useActions } from './actions'
+import { useActions, useJust } from './actions'
 import { prioText, usePreview } from './ai-preview'
 import type { PlanChange } from '../shared/ai-chat'
-import { nowLocal, refreshAi, useCalEvents, useData, useLang } from './store'
+import { getData, nowLocal, refreshAi, useCalEvents, useData, useLang } from './store'
+import { keysOf } from '../shared/keymap'
+import { comboOf } from '../shared/quick'
 import { Check, EngineLogo, Ic, useT } from './ui'
 import { McSrcChip, McToday } from './mc'
 import { withMcLinks } from '../shared/mc'
@@ -27,14 +29,40 @@ export function noteLabel(path: string): string {
   return path.replace(/^.*\//, '').replace(/\.md$/i, '')
 }
 
+/** 闪一下的那几条（拖进来一次加了几条时几条一起闪，键用换行连着） */
+const isFlash = (flash: string | null, key: string) => !!flash && flash.split('\n').includes(key)
+
 // ---------- 一行（原型 row()） ----------
 
 export function Row({ t, today, sel, flash, timeOnly, showNote = true, quad = false }: { t: TaskView; today: string; sel: boolean; flash: boolean; timeOnly?: boolean; showNote?: boolean; quad?: boolean }) {
   const a = useActions()
   const lang = useLang()
   const pv = usePreview().get(t.key)
+  const just = useJust()
   const od = !!t.date && t.date < today && !t.done
   const subs = t.subs.length
+  // 刚勾掉的（2 秒）：原处一行「已完成 · 撤回」，然后整行淡出、进「已完成」（同画布笔记待办 TodoList Row）
+  if (t.done && just.keys.has(t.key))
+    return (
+      <div className="row done just" data-drag={t.key} data-part="刚勾掉的一行">
+        <Check t={t} onToggle={() => just.undo(t.key)} />
+        <span className="rt">{t.mc?.title ?? t.feeds?.title ?? t.title}</span>
+        <span className="rjust" role="status">
+          {tr(lang, 'done')}
+          {' · '}
+          <button
+            className="link"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation()
+              just.undo(t.key)
+            }}
+          >
+            {tr(lang, 'undo')}
+          </button>
+        </span>
+      </div>
+    )
   return (
     <div className={`row${sel ? ' on' : ''}${t.done ? ' done' : ''}${t.cancelled ? ' cancel' : ''}${flash ? ' flash' : ''}${pv ? ' aim-hit' : ''}`} data-drag={t.key} data-part="任务行">
       <Check t={t} onToggle={() => a.tick(t)} />
@@ -86,7 +114,7 @@ function PreviewMark({ c, today, quad }: { c: PlanChange; today: string; quad: b
   const t = useT()
   const bits: string[] = []
   if (c.date !== undefined || c.time !== undefined) bits.push(whenLabel(lang, { date: c.date ?? c.from.date, time: c.time === undefined ? c.from.time : c.time }, today))
-  if (c.prio !== undefined) bits.push(quad ? String(4 - c.prio) : prioText(lang, c.prio))
+  if (c.prio !== undefined) bits.push(quad ? (c.prio ? String(4 - c.prio) : t('qNone')) : prioText(lang, c.prio))
   const steps = c.steps ? t('chatBadgeSteps', c.steps.length) : null
   return (
     <span className="aim-mv" data-part="AI 预览">
@@ -134,7 +162,11 @@ export function QuickAdd({ ctx, nav, today }: { ctx: AddCtx; nav: Nav; today: st
     lang,
     now: nowLocal,
     ask: (title, now) => window.ct.whenAi(title, now).catch(() => null),
-    isPickKey: (e) => e.metaKey && e.altKey && !e.ctrlKey && !e.shiftKey && e.code === 'KeyT',
+    // 「定日子和时间」的键照设置 › 快捷键（默认 ⌥⌘T）
+    isPickKey: (e) => {
+      const st = getData().state!.settings
+      return keysOf('pick-when', st).includes(comboOf(e) ?? '')
+    },
     weekStart: 0,
   })
   const q = useMemo(() => {
@@ -168,7 +200,7 @@ export function QuickAdd({ ctx, nav, today }: { ctx: AddCtx; nav: Nav; today: st
       </div>
       <div className="chips" id="qachips">
         {!q ? (
-          <span>{nav === 'today' ? t('defaultToday') : nav === 'tomorrow' ? t('defaultTomorrow') : t('recogAt')}</span>
+          <span>{nav === 'today' ? t('defaultToday') : nav === 'tomorrow' ? t('defaultTomorrow') : t('recogAt', keysOf('pick-when', getData().state!.settings)[0] ?? null)}</span>
         ) : (
           <QuickChips q={q} today={today} ai={when.ai ? (ai?.engine ?? null) : undefined} />
         )}
@@ -228,7 +260,8 @@ export function ListView({ nav, snap, today, sel, flash }: { nav: Nav; snap: Sna
   const t = useT()
   const a = useActions()
   setSnapForSubs(snap)
-  const groups = useMemo(() => groupsOf(nav, snap.tasks, today), [nav, snap, today])
+  const just = useJust().keys
+  const groups = useMemo(() => groupsOf(nav, snap.tasks, today, just), [nav, snap, today, just])
   // 一篇笔记里「已完成 N 条 ›」默认收着，换一篇收回去；「已完成」看法换走再回来从头列
   const [foldOpen, setFoldOpen] = useState(false)
   const [doneShown, setDoneShown] = useState(DONE_PAGE)
@@ -263,7 +296,7 @@ export function ListView({ nav, snap, today, sel, flash }: { nav: Nav; snap: Sna
   // 「全部」里加的进收件箱
   const ctx: AddCtx = nav.startsWith('list:') ? { note: nav.slice(5) } : nav === 'all' ? 'inbox' : (nav as AddCtx)
   const name = (g: Group) =>
-    g.kind === 'overdue' || g.kind === 'today' || g.kind === 'tomorrow' || g.kind === 'doneToday' || g.kind === 'noDate'
+    g.kind === 'overdue' || g.kind === 'today' || g.kind === 'tomorrow' || g.kind === 'noDate'
       ? t(g.kind)
       : g.kind === 'day'
         ? `${dayLabel(lang, g.date!, today)} · ${mdLabel(lang, g.date!)}`
@@ -284,7 +317,7 @@ export function ListView({ nav, snap, today, sel, flash }: { nav: Nav; snap: Sna
                 : ''
   // 「全部」的笔记那组、一篇笔记里不再写出处；「已完成」先列 DONE_PAGE 条
   const showNote = nav !== 'all' && !nav.startsWith('list:')
-  const rows = (items: TaskView[], timeOnly?: boolean) => items.map((x) => <Row key={x.key} t={x} today={today} sel={sel === x.key} flash={flash === x.key} timeOnly={timeOnly} showNote={showNote} />)
+  const rows = (items: TaskView[], timeOnly?: boolean) => items.map((x) => <Row key={x.key} t={x} today={today} sel={sel === x.key} flash={isFlash(flash, x.key)} timeOnly={timeOnly} showNote={showNote} />)
   let left = nav === 'done' ? doneShown : Infinity
   const doneTotal = nav === 'done' ? groups.reduce((n, g) => n + g.items.length, 0) : 0
   return (
@@ -707,15 +740,39 @@ function AiSplit({ x }: { x: TaskView }) {
 
 // ---------- 四象限（原型 quadView） ----------
 
+/** 「没分」那一条收着没有：记在这台设备上 */
+const NONE_FOLD_KEY = 'ct.quad.noneFold'
+function readNoneFold(): boolean {
+  try {
+    return localStorage.getItem(NONE_FOLD_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+/**
+ * 四象限：四格是设了优先级的（⏫ 🔼 🔽 ⏬），没设的在四格下面一条能收起的「没分」（2026-11-25 按推荐小改；以前没设的放第 4 格）。
+ * 拖进一格就写那一格的记号，拖回「没分」去掉记号；「没分」收着时也能往里拖
+ */
 export function QuadView({ snap, today, sel, flash }: { snap: Snapshot; today: string; sel: string | null; flash: string | null }) {
   const t = useT()
   setSnapForSubs(snap)
-  const q = quadOf(snap.tasks)
+  const q = quadOf(snap.tasks, useJust().keys)
+  const [fold, setFold] = useState(readNoneFold)
+  const toggle = () => {
+    const next = !fold
+    setFold(next)
+    try {
+      localStorage.setItem(NONE_FOLD_KEY, next ? '1' : '0')
+    } catch {
+      // 存不了（隐私模式）就只管这一次
+    }
+  }
   const Q = [
-    [3, 'q1', 'q1', 'q1s'],
-    [2, 'q2', 'q2', 'q2s'],
-    [1, 'q3', 'q3', 'q3s'],
-    [0, 'q4', 'q4', 'q4s'],
+    [1, 'prio:3', 'q1', 'q1', 'q1s'],
+    [2, 'prio:2', 'q2', 'q2', 'q2s'],
+    [3, 'prio:1', 'q3', 'q3', 'q3s'],
+    [4, 'prio:lowest', 'q4', 'q4', 'q4s'],
   ] as const
   return (
     <>
@@ -724,18 +781,30 @@ export function QuadView({ snap, today, sel, flash }: { snap: Snapshot; today: s
         <span className="t2">{t('quadSub')}</span>
       </div>
       <div className="quad" data-part="四象限">
-        {Q.map(([p, c, n, s]) => (
-          <div key={c} className={`q ${c}`} data-drop={`prio:${p}`}>
+        {Q.map(([k, drop, c, n, s]) => (
+          <div key={c} className={`q ${c}`} data-drop={drop}>
             <div className="qh">
               <span className="qn">{c.slice(1)}</span>
               <b>{t(n)}</b>
-              <span className="t3 sm">{`${t(s)} · ${q[p].length}`}</span>
+              <span className="t3 sm">{`${t(s)} · ${q[k].length}`}</span>
             </div>
             <div className="ql">
-              {q[p].length ? q[p].map((x) => <Row key={x.key} t={x} today={today} sel={sel === x.key} flash={flash === x.key} quad />) : <div className="more">{t('dropHere')}</div>}
+              {q[k].length ? q[k].map((x) => <Row key={x.key} t={x} today={today} sel={sel === x.key} flash={isFlash(flash, x.key)} quad />) : <div className="more">{t('dropHere')}</div>}
             </div>
           </div>
         ))}
+      </div>
+      <div className={'q quad-none' + (fold ? ' fold' : '')} data-part="没分" data-drop="prio:0">
+        <button type="button" className="qnh" aria-expanded={!fold} onClick={toggle}>
+          <Ic n={fold ? 'chevron-right' : 'chevron-down'} s={14} />
+          <b>{t('qNone')}</b>
+          <span className="t3 sm">{`${t('qNoneSub')} · ${q.none.length}`}</span>
+        </button>
+        {!fold && (
+          <div className="ql">
+            {q.none.length ? q.none.map((x) => <Row key={x.key} t={x} today={today} sel={sel === x.key} flash={isFlash(flash, x.key)} quad />) : <div className="more">{t('qNoneEmpty')}</div>}
+          </div>
+        )}
       </div>
     </>
   )

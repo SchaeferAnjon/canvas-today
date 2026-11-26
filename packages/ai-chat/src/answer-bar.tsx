@@ -9,6 +9,7 @@
  * 样子只用两边同名的 CSS 变量（answer-bar.css）。悬停提示写在 data-tip 上（画布笔记的提示层认它），另带 aria-label。
  */
 import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useDismiss } from './use-dismiss'
 import { createPortal } from 'react-dom'
 import { useUi } from './context'
 import type { IconName } from './host'
@@ -121,14 +122,16 @@ export function AnswerBar(p: AnswerBarProps) {
   const [menu, setMenu] = useState<HTMLElement | null>(null)
   const [flash, setFlash] = useState<string | null>(null)
   const replies = p.replies ?? []
-  const sig = [...p.acts.map((a) => a.id + a.label + (flash === a.id ? a.flash?.label : '')), '|', ...replies.map((r) => r.id + r.label)].join('\u0001')
+  // ⋯ 里一样都放不进的（MeetCaption 问 AI 只有「拷贝」）：不画 ⋯；画布笔记、ParaRead 总有菜单，照旧
+  const hasMore = !!(p.head?.length || p.menu?.length || replies.length || p.moreReplies?.length || p.adjust || p.tail?.length)
+  const sig = [...p.acts.map((a) => a.id + a.label + (flash === a.id ? a.flash?.label : '')), '|', ...replies.map((r) => r.id + r.label), hasMore ? '…' : ''].join('\u0001')
 
   // 量每颗多宽：字变了量一次；藏着的时候（右栏切到别的格、display: none）量出来全是 0，不记，等露出来宽度变了再量
   const measure = useCallback(() => {
     const m = meas.current
     if (!m) return
     const w = (sel: string) => [...m.querySelectorAll<HTMLElement>(sel)].map((e) => e.getBoundingClientRect().width)
-    const next = { acts: w('[data-m=act]'), actsIcon: w('[data-m=act-i]'), more: w('[data-m=more]')[0] ?? 24, replies: w('[data-m=reply]') }
+    const next = { acts: w('[data-m=act]'), actsIcon: w('[data-m=act-i]'), more: m.querySelector('[data-m=more]') ? (w('[data-m=more]')[0] ?? 24) : 0, replies: w('[data-m=reply]') }
     if (!next.acts.some((x) => x > 0)) return
     setSizes((s) => (s && JSON.stringify(s) === JSON.stringify(next) ? s : next))
   }, [])
@@ -230,11 +233,11 @@ export function AnswerBar(p: AnswerBarProps) {
       <div className="cn-ab-measure" ref={meas} aria-hidden="true">
         {p.acts.map((a) => actBtn(a, false, 'act'))}
         {p.acts.map((a) => actBtn(a, true, 'act-i'))}
-        {moreBtn(true)}
+        {hasMore && moreBtn(true)}
         {replies.map((r) => replyBtn(r, true))}
       </div>
       {p.acts.map((a) => actBtn(a, fit.icons))}
-      {moreBtn()}
+      {hasMore && moreBtn()}
       {shown.length > 0 && <span className="cn-ab-sep" />}
       {shown.map((r) => replyBtn(r))}
       {menu && (
@@ -347,17 +350,13 @@ export function AbMenu(p: { anchor: HTMLElement; label: string; onClose(): void;
       clearInterval(tick)
     }
   }, [p.anchor, onClose])
+  // 点外面（网页里也算）、窗口失焦关；Esc 关上、焦点回到 ⋯（公共的 useDismiss）
+  useDismiss(true, [ref, p.anchor], (why) => {
+    p.onClose()
+    if (why === 'esc') p.anchor.focus()
+  })
   useEffect(() => {
-    const down = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node) && !p.anchor.contains(e.target as Node)) p.onClose()
-    }
     const key = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation()
-        p.onClose()
-        p.anchor.focus()
-        return
-      }
       if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
       const rows = [...(ref.current?.querySelectorAll<HTMLElement>('.cn-ab-mi:not([aria-disabled])') ?? [])]
       if (!rows.length) return
@@ -365,12 +364,8 @@ export function AbMenu(p: { anchor: HTMLElement; label: string; onClose(): void;
       const at = rows.indexOf(document.activeElement as HTMLElement)
       rows[(at + (e.key === 'ArrowDown' ? 1 : rows.length - 1) + (at < 0 && e.key === 'ArrowUp' ? 1 : 0)) % rows.length]!.focus()
     }
-    document.addEventListener('mousedown', down)
     document.addEventListener('keydown', key, true)
-    return () => {
-      document.removeEventListener('mousedown', down)
-      document.removeEventListener('keydown', key, true)
-    }
+    return () => document.removeEventListener('keydown', key, true)
   }, [p])
   return createPortal(
     <div ref={ref} className={'cn-ab-menu' + (p.className ? ' ' + p.className : '')} role="menu" aria-label={p.label} style={pos ? { left: pos.left, top: pos.top } : { visibility: 'hidden' }}>

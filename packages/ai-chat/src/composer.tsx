@@ -285,6 +285,8 @@ export interface Lead {
   /** × 的说法 */
   removeLabel: string
   onRemove(): void
+  /** 扩展点：点这张（× 以外）时宿主自己处理（MeetCaption：回到引用的那句字幕）；不给是展开看全文 */
+  onOpen?(): void
 }
 
 export interface AiInputProps {
@@ -332,6 +334,10 @@ export interface AiInputProps {
    * 点它 onWake（收起旁支），光标回到这里。字和材料都留着
    */
   slim?: { onWake(): void } | null
+  /** 扩展点：false 时不收图（没有「+」，贴图、拖图不接；MeetCaption 问 AI 只问字）；不给是收 */
+  images?: boolean
+  /** 扩展点：AI 现在用不了（MeetCaption 场次用完）：字打不进去、发不出去 */
+  disabled?: boolean
 }
 
 /** 开着的 AI 输入框：右键「问 AI 这张图」附进看得见的那个（网页图拖进对话） */
@@ -404,6 +410,8 @@ export function AiInput(p: AiInputProps) {
   const atOpen = !!query && atItems.length > 0 && atShut !== query.from
   const atAt = Math.min(atOn, Math.max(0, atItems.length - 1))
   useEffect(() => setAtOn(0), [query?.from, query?.q])
+  // @ 菜单：点输入框外面（网页里也算）、窗口失焦收起，同 esc：这一次 @ 接着打字也不再弹（公共的 useDismiss；esc 归输入框的键盘处理）
+  useDismiss(atOpen, [root], () => query && setAtShut(query.from), { esc: false })
   const putCaret = (at: number) => {
     prevCaret.current = at
     setCaret(at)
@@ -488,10 +496,11 @@ export function AiInput(p: AiInputProps) {
     <>
       <div
         ref={root}
-        className={'aiin' + (p.className ? ' ' + p.className : '') + (drop ? ' hot' : '') + (p.omni || p.note ? ' with-omni' : '')}
+        className={'aiin' + (p.className ? ' ' + p.className : '') + (drop ? ' hot' : '') + (p.omni || p.note ? ' with-omni' : '') + (p.disabled ? ' off' : '')}
         data-testid="ai-input"
         data-composer=""
         onDragOver={(e) => {
+          if (p.images === false || p.disabled) return
           const file = [...e.dataTransfer.items].some((i) => i.kind === 'file' && i.type.startsWith('image/'))
           // 右栏网页里拖出来的图：带的是网址和 html（不是文件），网页开始拖时报过（宿主的 webImage.dragLive）
           const web = !file && !!chat.webImage?.dragLive() && (e.dataTransfer.types.includes('text/uri-list') || e.dataTransfer.types.includes('text/html'))
@@ -538,6 +547,7 @@ export function AiInput(p: AiInputProps) {
           rows={1}
           aria-label={t('问 AI')}
           placeholder={p.placeholder}
+          disabled={p.disabled}
           value={c.text}
           data-own={p.own ? '1' : undefined}
           onChange={(e) => {
@@ -551,6 +561,7 @@ export function AiInput(p: AiInputProps) {
           onCompositionEnd={() => setIme(null)}
           onKeyDown={onKeyDown}
           onPaste={(e) => {
+            if (p.images === false) return
             const files = imageFiles([...e.clipboardData.items].filter((i) => i.kind === 'file').map((i) => i.getAsFile()))
             if (!files.length) return
             e.preventDefault()
@@ -583,9 +594,11 @@ export function AiInput(p: AiInputProps) {
           </div>
         )}
         <div className={'ft' + (row.tight ? ' tight' : '')} ref={row.ref}>
-          <button className="pick add" aria-label={t('加图')} data-tip={t('加图')} data-side="above" onClick={() => void c.pickImages()}>
-            <Icon name="add" size={14} />
-          </button>
+          {p.images !== false && (
+            <button className="pick add" aria-label={t('加图')} data-tip={t('加图')} data-side="above" onClick={() => void c.pickImages()}>
+              <Icon name="add" size={14} />
+            </button>
+          )}
           {p.bar ?? (p.picks && (p.picks.none ? <NoAi onSetup={p.picks.none.onSetup} /> : <AiPicks {...p.picks} />))}
           <span className="k" data-testid="ai-hint">
             {hint}
@@ -595,7 +608,7 @@ export function AiInput(p: AiInputProps) {
               <Icon name="primitive-square" size={12} />
             </button>
           ) : (
-            <button className="send" aria-label={t('发送')} disabled={p.sendDisabled} data-tip={p.sendTip} data-side="above-left" onClick={p.onSend}>
+            <button className="send" aria-label={t('发送')} disabled={p.sendDisabled || p.disabled} data-tip={p.sendTip} data-side="above-left" onClick={p.onSend}>
               <Icon name="arrow-up" size={14} />
             </button>
           )}
@@ -723,7 +736,7 @@ export const omniTip = (engine: string) =>
  * 开着时轨道是强调色（开关是「选中」，强调色只给选中和标记）。
  * 那句说明放不下时整句藏起来（不省略成半截），只留开关和「全能模式」，悬停提示里有全文（英文版设计稿第 2 节）
  */
-function OmniLine(p: OmniProps) {
+export function OmniLine(p: OmniProps) {
   const { t } = useUi()
   const say = useRef<HTMLSpanElement>(null)
   const [fits, setFits] = useState(true)
@@ -783,7 +796,9 @@ function Shelf(p: { c: Composer; lead: Lead | null }) {
           className={'chipm lead' + (p.lead.quote !== undefined ? ' q' : ' img')}
           data-testid="reading-att"
           onClick={(e) => {
-            if (!(e.target as Element).closest('.pxx')) open('lead', e.currentTarget)
+            if ((e.target as Element).closest('.pxx')) return
+            if (p.lead!.onOpen) p.lead!.onOpen()
+            else open('lead', e.currentTarget)
           }}
         >
           {p.lead.quote !== undefined ? (

@@ -76,6 +76,41 @@ export const readKey = (src: string) => `read:${src}`
 /** 菜单里点的是读 PDF 那一套的对话：它的来源；不是就是 null */
 export const readSrc = (key: string) => (key.startsWith('read:') ? key.slice(5) : null)
 
+/** 画布今日问的对话的 key：today:<编号>（apps/today/src/shared/ai-chat.ts 的 chatPlace），一段一个 key、不挂在哪一页 */
+export const isTodayConvo = (key: string) => key.startsWith('today:')
+
+const dirsOf = (p: string) => p.split('/').slice(0, -1)
+
+/** 这一页在哪个文件夹里（「课程 › study project 2」那几截）；网页、首页这些没有 */
+export function pathOf(page: string): string[] {
+  if (page.startsWith('file:')) return dirsOf(page.slice(5))
+  if (page.startsWith('folder:')) return dirsOf(page.slice(7))
+  const src = readSrc(page)
+  if (src && !src.startsWith('web:')) return dirsOf(src)
+  return []
+}
+
+/**
+ * 对话菜单里一段归哪一组（「最近在别处问的」一行、「全部对话」一组）：挂的那页；网页按网站（读 PDF 那套框着问的和右栏网页标签上问的同一组）；
+ * 画布今日问的、没挂页面的、找回的各归一组。一段一个 key 的（today:<编号>、搬出来的 conv:<编号>）不是页面，不能拿自己的 key 当一组：
+ * 那样每段自己成一组、组名是它的第一问，下面又一行同样的字（2026-11-25 用户截图）
+ */
+export type ConvoGroup = { key: string } & ({ kind: 'page'; page: string; path: string[] } | { kind: 'site'; host: string } | { kind: 'today' | 'nopage' | 'recovered' })
+
+export function convoGroup(key: string, pages: ConvPages): ConvoGroup {
+  const page = pageOfConvo(key, pages)
+  if (isTodayConvo(page)) return { kind: 'today', key: 'today:' }
+  if (page === NO_PAGE || isMovedConvo(page)) return { kind: 'nopage', key: NO_PAGE }
+  if (page === 'recovered') return { kind: 'recovered', key: page }
+  const src = readSrc(page)
+  const url = src?.startsWith('web:') ? src.slice(4) : page.startsWith('page:') ? page.slice(5) : null
+  if (url !== null) {
+    const host = hostOf(url)
+    return { kind: 'site', key: `site:${host}`, host }
+  }
+  return { kind: 'page', key: page, page, path: pathOf(page) }
+}
+
 export const hostOf = (url: string) => {
   try {
     return new URL(url).hostname.replace(/^www\./, '')

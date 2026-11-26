@@ -194,7 +194,8 @@ test('⌘K：像要排日程的话第一行「问AI：…」回车直接开对�
     // 别的话：第一行还是加一条，「问AI」在搜到的待办后面
     await page.keyboard.press('Meta+k')
     await page.keyboard.type('冰岛')
-    await expect(pal.locator('.pr')).toHaveText([/^加一条「冰岛」/, /订冰岛租车/, '问AI：冰岛'])
+    // 名字里有「冰岛」的清单排在搜到的待办后面（bug 一批 1125b：⌘K 搜得到清单）
+    await expect(pal.locator('.pr')).toHaveText([/^加一条「冰岛」/, /订冰岛租车/, /^冰岛行程/, '问AI：冰岛'])
     await page.keyboard.press('Escape')
 
     // 已经有对话时 ⌘K 开新的一段

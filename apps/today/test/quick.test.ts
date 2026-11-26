@@ -1,7 +1,7 @@
 /** 全局快速加一条（画布今日特色第一条线）：键的写法、不给的键、#清单 写进哪一篇；菜单栏小窗的「下一件」 */
 import { describe, expect, it } from 'vitest'
 import type { NoteView, TaskView } from '../src/shared/api'
-import { accelOf, comboOf, destRing, isCombo, notesFor, quickKeyOften, quickKeyProblem, quickLines } from '../src/shared/quick'
+import { accelOf, comboOf, destRing, isCombo, listSuggest, listToken, notesFor, prioSuggest, quickKeyOften, quickKeyProblem, quickLines, tokenAt } from '../src/shared/quick'
 import { normalizeToday } from '../src/shared/settings'
 import { nextUp } from '../src/shared/views'
 
@@ -62,6 +62,45 @@ describe('#清单 写进哪一篇', () => {
   })
   it('贴进几行：一行一条，空行不算', () => {
     expect(quickLines('明天 买牛奶\r\n\n  周三 交作业 \n')).toEqual(['明天 买牛奶', '周三 交作业'])
+  })
+})
+
+describe('打 # 和 ! 时的候选', () => {
+  const notes = [note('收件箱/待办.md', 9), note('课程/线性代数/待办.md', 8), note('课程/ecp/Lecture05 笔记.md', 3), note('写作/小论文计划.md', 2), note('写作/周报.md', 6), note('课程/线性代数/作业.md', 1), note('阅读/杀死一只知更鸟.md', 4)]
+  it('光标所在的「#几个字」「!几个字」：从空白或行首起；字中间的 # ! 不算', () => {
+    expect(tokenAt('交报告 #', 5)).toEqual({ kind: 'list', from: 4, to: 5, q: '' })
+    expect(tokenAt('交报告 #作业 明天', 6)).toEqual({ kind: 'list', from: 4, to: 7, q: '作' })
+    expect(tokenAt('#课', 2)).toEqual({ kind: 'list', from: 0, to: 2, q: '课' })
+    expect(tokenAt('交报告 !', 5)).toEqual({ kind: 'prio', from: 4, to: 5, q: '' })
+    expect(tokenAt('交报告 ！高', 6)).toEqual({ kind: 'prio', from: 4, to: 6, q: '高' })
+    expect(tokenAt('好!', 2)).toBeNull()
+    expect(tokenAt('C#', 2)).toBeNull()
+    expect(tokenAt('交报告 #作业 明天', 10)).toBeNull()
+    expect(tokenAt('', 0)).toBeNull()
+  })
+  it('# 什么都没打按最近改的列（不列收件箱）；打了字名字里有的在前、文件夹里有的在后，一个字也找', () => {
+    expect(listSuggest(notes, '').map((x) => x.path)).toEqual(['课程/线性代数/待办.md', '写作/周报.md', '阅读/杀死一只知更鸟.md', '课程/ecp/Lecture05 笔记.md', '写作/小论文计划.md', '课程/线性代数/作业.md'])
+    expect(listSuggest(notes, '作').map((x) => x.path)).toEqual(['课程/线性代数/作业.md', '写作/周报.md', '写作/小论文计划.md'])
+    expect(listSuggest(notes, '没有这篇')).toEqual([])
+  })
+  it('选上写什么：笔记名去掉空白；叫「待办」这种重名的写文件夹名；带空格的名字 #后面不带空格也对得上', () => {
+    const at = (p: string) => notes.find((x) => x.path === p)!
+    expect(listToken(notes, at('写作/小论文计划.md'))).toBe('小论文计划')
+    expect(listToken(notes, at('课程/线性代数/待办.md'))).toBe('线性代数')
+    expect(listToken(notes, at('课程/ecp/Lecture05 笔记.md'))).toBe('Lecture05笔记')
+    expect(notesFor(notes, 'Lecture05笔记')[0]!.path).toBe('课程/ecp/Lecture05 笔记.md')
+  })
+  it('! 的三档：高中低（英文 high medium low），打了字只留对得上的，打全了不列', () => {
+    expect(prioSuggest('', 'zh')).toEqual([
+      { prio: 3, token: '高' },
+      { prio: 2, token: '中' },
+      { prio: 1, token: '低' },
+    ])
+    expect(prioSuggest('m', 'en')).toEqual([{ prio: 2, token: 'medium' }])
+    expect(prioSuggest('l', 'en')).toEqual([{ prio: 1, token: 'low' }])
+    expect(prioSuggest('high', 'zh')).toEqual([])
+    expect(prioSuggest('低', 'zh')).toEqual([])
+    expect(prioSuggest('x', 'zh')).toEqual([])
   })
 })
 

@@ -1,6 +1,6 @@
 /**
  * 拖一条改日子（照两份原型的拖法）：按住 data-drag 的那一条挪过 5 才算拖，一块写着名字的小牌跟着鼠标（.cal-ghost），
- * 指到 data-drop 上亮一圈（.cal-over）；指到周看法按钟点的那一列（day:）出一个写着钟点的虚线框（.cal-slot，半小时一格）。
+ * 指到 data-drop 上亮一圈（.cal-over）；指到周看法按钟点的那一列（day:）出一个写着钟点和到几点的虚线框（.cal-slot「15:00–17:00」，半小时一格，高照这一条多长）。
  * 松开交给宿主 drop(那一条, 目标, 钟点)；没挪就是 click。拖系统日程（data-ev）挪过 5 交给 readonly（宿主说一句「只读」）。
  * 右键 data-drag 的那一条交给 menu。整个页面一份（document 上听），宿主在最外层用一次。
  */
@@ -8,6 +8,7 @@ import { useEffect, useRef } from 'react'
 import { codiconSvg } from '@cn/design/codicon-svg'
 import { trackDrag } from '@cn/design/drag-end'
 import { HOUR } from './WeekGrid'
+import { hhmm } from '@cn/tasks'
 import { parseDrop, slotAt } from './model'
 
 export interface DragHandlers {
@@ -98,8 +99,12 @@ export function useDragDrop(h: DragHandlers): void {
         const p = document.createElement('div')
         p.className = 'cal-slot'
         p.style.top = (m / 60) * hp + 'px'
-        p.style.height = ((ref.current.minutes?.(d.key!) ?? 60) / 60) * hp - 2 + 'px'
-        p.textContent = d.time
+        const len = ref.current.minutes?.(d.key!) ?? 60
+        p.style.height = (len / 60) * hp - 2 + 'px'
+        // 钟点和多长：「15:00–17:00」
+        const t = document.createElement('span')
+        t.textContent = `${d.time}–${hhmm(Math.min(1440, m + len))}`
+        p.appendChild(t)
         tg.appendChild(p)
       } else tg.classList.add('cal-over')
     }

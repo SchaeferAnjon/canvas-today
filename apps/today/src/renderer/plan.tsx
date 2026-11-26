@@ -11,10 +11,11 @@ import type { CalEvent } from '@cn/calendar'
 import type { JournalInfo, Snapshot, TaskView } from '../shared/api'
 import { INBOX_NOTE } from '../shared/brand'
 import { type Lang, repeatLabel, tr } from '../shared/i18n'
-import { blocksToday, capacity, type CloseItem, closeSection, DEFAULT_EST, est, EST_CHOICES, estLabel, leftOf, MORNING, nowAndNext, planLists, type PlanStep, spanLabel, trayLine } from '../shared/plan'
+import { blocksToday, capacity, type CloseItem, closeSection, DEFAULT_EST, est, EST_CHOICES, estLabel, leftOf, looseByNote, MORNING, nowAndNext, planLists, type PlanStep, spanLabel, trayLine } from '../shared/plan'
 import { calItems } from '../shared/views'
 import { dayLabel, isoPlus } from '../shared/when'
 import { useActions } from './actions'
+import { DAY_MIN, DaySash, PMAIN_MIN, useWidth } from './panes'
 import { usePreview } from './ai-preview'
 import { mmss, useFocusLeft } from './focus'
 import { nowMs, useCalEvents, useData, useLang } from './store'
@@ -119,8 +120,10 @@ export function PlanView({ step, onStep, snap, today, onStarted, closed, onClose
   const events = useCalEvents(today, today)
   // 开工这一步：现在那一块在时间线上框一圈
   const cur = step === 'now' ? nowAndNext(snap.tasks, today, nowMin).cur : null
+  // 右边「今天的时间」拖过宽的照拖过的（panes.tsx）；左边这一步至少留 320
+  const dayW = useWidth('day')
   return (
-    <div className="plan" data-part="排一天">
+    <div className="plan" data-part="排一天" style={dayW.w ? { gridTemplateColumns: `minmax(min(${PMAIN_MIN}px, 100% - ${DAY_MIN}px), 1fr) minmax(${DAY_MIN}px, ${dayW.w}px)` } : undefined}>
       <div className="pmain">
         {step === 'left' && <StepLeft snap={snap} today={today} onNext={() => onStep('pick')} />}
         {step === 'pick' && <StepPick snap={snap} today={today} events={events} nowMin={nowMin} onNext={() => onStep('place')} />}
@@ -128,9 +131,17 @@ export function PlanView({ step, onStep, snap, today, onStarted, closed, onClose
         {step === 'now' && <StepNow snap={snap} today={today} events={events} nowMin={nowMin} />}
         {step === 'close' && <StepClose snap={snap} today={today} nowMin={nowMin} closed={closed} onClosed={onClosed} />}
       </div>
-      <DayLine snap={snap} today={today} events={events} nowMin={nowMin} sel={cur?.key ?? null} />
+      <DayLine snap={snap} today={today} events={events} nowMin={nowMin} sel={cur?.key ?? null} sash={<DaySash w={dayW} />} />
     </div>
   )
+}
+
+/** 在哪篇：文件夹深的只留最后两层（「…› 01daily › 2026 › 2026-11-22」），笔记名不被截掉；整条路径悬停看 */
+function placeOf(path: string, inbox: string): string {
+  if (path === INBOX_NOTE) return inbox
+  const dirs = path.includes('/') ? path.slice(0, path.lastIndexOf('/')).split('/') : []
+  const folder = (dirs.length > 2 ? ['…', ...dirs.slice(-2)] : dirs).join(' › ')
+  return [folder, noteLabel(path)].filter(Boolean).join(' › ')
 }
 
 /** 一条的第二行：在哪篇、过期几天、抄了几处 */
@@ -139,13 +150,10 @@ function Meta({ x, today, est = false }: { x: TaskView; today: string; est?: boo
   const lang = useLang()
   // 第 1 步本来都是剩下的：昨天的不写，更早的写过期几天（不用红字：一屏都红就分不出什么，设计复审）
   const late = x.date && x.date < today && isoPlus(x.date, 1) !== today ? t('planOverdue', Math.round((Date.parse(today) - Date.parse(x.date)) / 86_400_000)) : null
-  // 在哪篇：文件夹深的只留最后两层（「…› 01daily › 2026 › 2026-11-22」），笔记名不被截掉；整条路径悬停看
-  const dirs = x.path.includes('/') ? x.path.slice(0, x.path.lastIndexOf('/')).split('/') : []
-  const folder = (dirs.length > 2 ? ['…', ...dirs.slice(-2)] : dirs).join(' › ')
   return (
     <div className="pmeta">
       <Ic n="file" s={12} />
-      <span className="pnote" title={x.path}>{x.path === INBOX_NOTE ? t('inbox') : [folder, noteLabel(x.path)].filter(Boolean).join(' › ')}</span>
+      <span className="pnote" title={x.path}>{placeOf(x.path, t('inbox'))}</span>
       {x.date && x.date > today && <span>{` · ${dayLabel(lang, x.date, today)}`}</span>}
       {x.time && x.date === today && <span>{` · ${x.time}`}</span>}
       {x.repeat && (
@@ -194,7 +202,7 @@ function StepLeft({ snap, today, onNext }: { snap: Snapshot; today: string; onNe
       ) : (
         <div className="plist">
           {left.map((x) => (
-            <div className="prow" key={x.key} data-key={x.key} data-part="剩下的一条">
+            <div className="prow" key={x.key} data-key={x.key} data-drag={x.key} tabIndex={0} onFocus={() => a.select(x)} data-part="剩下的一条">
               <Check t={x} onToggle={() => a.tick(x)} />
               <div className="pt">
                 <div className="ptt">{x.title}</div>
@@ -275,24 +283,24 @@ function StepPick({ snap, today, events, nowMin, onNext }: { snap: Snapshot; tod
       {t('planToday')}
     </button>
   )
+  const row = (x: TaskView, right: (x: TaskView) => React.ReactNode, withEst = false) => (
+    // 能直接拖进右边「今天的时间」（落在哪个钟点排到哪，App 的 useDragDrop）；Tab 到这一条再按 ⌥⌘T 用键盘排
+    <div className="prow" key={x.key} data-key={x.key} data-drag={x.key} tabIndex={0} onFocus={() => a.select(x)}>
+      <Check t={x} onToggle={() => a.tick(x)} />
+      <div className="pt">
+        <div className="ptt">{x.title}</div>
+        <Meta x={x} today={today} est={withEst} />
+      </div>
+      <div className="pacts">{right(x)}</div>
+    </div>
+  )
   const group = (name: string, list: TaskView[], right: (x: TaskView) => React.ReactNode, part: string, withEst = false) =>
     list.length > 0 && (
       <div data-part={part}>
         <div className="pgrp">
           {name} <span className="n">{list.length}</span>
         </div>
-        <div className="plist">
-          {list.map((x) => (
-            <div className="prow" key={x.key} data-key={x.key}>
-              <Check t={x} onToggle={() => a.tick(x)} />
-              <div className="pt">
-                <div className="ptt">{x.title}</div>
-                <Meta x={x} today={today} est={withEst} />
-              </div>
-              <div className="pacts">{right(x)}</div>
-            </div>
-          ))}
-        </div>
+        <div className="plist">{list.map((x) => row(x, right, withEst))}</div>
       </div>
     )
   return (
@@ -316,12 +324,61 @@ function StepPick({ snap, today, events, nowMin, onNext }: { snap: Snapshot; tod
       )}
       {group(t('inbox'), ls.inbox, add, '收件箱')}
       {group(t('planWeekDue'), ls.week, add, '这周到期')}
+      <LooseGroup snap={snap} row={(x) => row(x, add)} />
       <div className="pfoot">
         <button className="btn pri" onClick={onNext}>
           {t('planNext')}
         </button>
       </div>
     </>
+  )
+}
+
+/** 一篇里先露几条，多的「再看 N 条」 */
+const LOOSE_FIRST = 5
+
+/**
+ * 从全库挑「别的笔记里没定日子的」（2026-11-25 用户「可以 加进来」）：一篇笔记一行（在哪篇 + 几条），默认收着、点开看，
+ * 笔记按最近改过的在前；一篇里多时先露 5 条，「再看 N 条」点开其余。每条照样「+ 今天做」、能拖进右边（同上面几组的一行）
+ */
+function LooseGroup({ snap, row }: { snap: Snapshot; row: (x: TaskView) => React.ReactNode }) {
+  const t = useT()
+  const notes = useMemo(() => looseByNote(snap.tasks, new Map(snap.notes.map((n) => [n.path, n.mtimeMs]))), [snap])
+  const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set())
+  const [all, setAll] = useState<ReadonlySet<string>>(() => new Set())
+  if (!notes.length) return null
+  const flip = (set: ReadonlySet<string>, p: string) => {
+    const next = new Set(set)
+    if (!next.delete(p)) next.add(p)
+    return next
+  }
+  return (
+    <div data-part="别的笔记">
+      <div className="pgrp">
+        {t('planLooseGrp')} <span className="n">{notes.reduce((n, g) => n + g.tasks.length, 0)}</span>
+      </div>
+      {notes.map((g) => {
+        const on = open.has(g.path)
+        const shown = all.has(g.path) ? g.tasks : g.tasks.slice(0, LOOSE_FIRST)
+        return (
+          <div className="pnote-g" key={g.path} data-note={g.path}>
+            <button className="pnote-h" aria-expanded={on} onClick={() => setOpen((v) => flip(v, g.path))}>
+              <Ic n={on ? 'chevron-down' : 'chevron-right'} s={14} />
+              <span className="nm" title={g.path}>
+                {placeOf(g.path, t('inbox'))}
+              </span>
+              <span className="n num">{g.tasks.length}</span>
+            </button>
+            {on && <div className="plist">{shown.map(row)}</div>}
+            {on && shown.length < g.tasks.length && (
+              <button className="link pmore" onClick={() => setAll((v) => flip(v, g.path))}>
+                {t('planMoreN', g.tasks.length - shown.length)}
+              </button>
+            )}
+          </div>
+        )
+      })}
+    </div>
   )
 }
 
@@ -589,7 +646,10 @@ function LinePreview({ raw }: { raw: string }) {
 
 // ---------- 右边：今天的时间 ----------
 
-function DayLine({ snap, today, events, nowMin, sel }: { snap: Snapshot; today: string; events: readonly CalEvent[]; nowMin: number; sel: string | null }) {
+/** 时间线一小时多高（日历那一格是 40）：一小时的块放得下两行标题和钟点 */
+export const PLAN_HOUR = 56
+
+function DayLine({ snap, today, events, nowMin, sel, sash }: { snap: Snapshot; today: string; events: readonly CalEvent[]; nowMin: number; sel: string | null; sash: React.ReactNode }) {
   const t = useT()
   const lang = useLang()
   const a = useActions()
@@ -614,6 +674,7 @@ function DayLine({ snap, today, events, nowMin, sel }: { snap: Snapshot; today: 
   const nPlaced = blocksToday(snap.tasks, today).length
   return (
     <section className="pday" data-part="今天的时间">
+      {sash}
       <div className="pday-h">
         <Ic n="calendar" s={14} />
         <b>{t('planDayLine')}</b>
@@ -622,7 +683,7 @@ function DayLine({ snap, today, events, nowMin, sel }: { snap: Snapshot; today: 
           {cal?.active ? t('planDaySum', nEv, nPlaced) : t('planDaySumNoCal', nPlaced)}
         </span>
       </div>
-      <WeekGrid lang={lang} days={[today]} today={today} nowMin={nowMin} items={items} events={events} ghosts={ghosts} sel={sel} startHour={8} onResize={(key, m) => {
+      <WeekGrid lang={lang} days={[today]} today={today} nowMin={nowMin} items={items} events={events} ghosts={ghosts} sel={sel} startHour={8} hour={PLAN_HOUR} onResize={(key, m) => {
         const x = snap.tasks.find((y) => y.key === key)
         if (x) a.setMinutes(x, m)
       }} />

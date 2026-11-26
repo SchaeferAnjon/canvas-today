@@ -22,6 +22,12 @@ export function localStamp(ms: number): string {
   return `${isoOf(ms)}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 }
 
+/** 本地钟点「09:05」（对话菜单里一段的时间：和画布笔记一样写「今天 13:18」「周一 10:42」） */
+export function clockOf(ms: number): string {
+  const d = new Date(ms)
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
 export function mdLabel(lang: Lang, d: ISODate): string {
   const m = Number(d.slice(5, 7))
   const day = Number(d.slice(8, 10))

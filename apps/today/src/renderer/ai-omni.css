@@ -1,0 +1,41 @@
+/* 右栏 AI 的全能模式（ai-omni.tsx）：头上「能动手」、步骤行、这一轮的改动（开关是 @cn/ai-chat AiInput 的 omni，样式在 composer.css） */
+
+/* ---------- 头上「能动手：…」：窄了一行省略（胶囊本身在 today.css .aim-can） ---------- */
+.aim-can .tx {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------- AI 做的每一步：@cn/ai-chat 的 StepRow（它的样式挂在 .am 下面），一行 24 高 ---------- */
+.aim .ct-steps {
+  display: flex;
+  flex-direction: column;
+}
+.aim .ct-steps .read.tstep {
+  display: flex;
+}
+
+/* ---------- 这一轮的改动：改了哪几个文件（一行一个，路径在 / 处折行） ---------- */
+.aim .ct-files {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  font-size: 12px;
+  color: var(--t2);
+}
+.aim .ct-files li {
+  display: flex;
+  gap: 8px;
+  min-height: 20px;
+  align-items: baseline;
+}
+.aim .ct-files .k {
+  flex: none;
+  min-width: 28px;
+  color: var(--t3);
+}
+.aim .ct-files .p {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}

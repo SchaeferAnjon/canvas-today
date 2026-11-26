@@ -3,7 +3,10 @@
 // 状态在 FAKE_CLI_STATE 目录的 <家>.json 里，测试中途改它就是「命令行换了」：
 //   version 版本；unknown 不认的参数（claude 照 commander 的原话报 unknown option）；models 模型列表；
 //   update 跑「更新」时：{ to: 新版本, then: 换完以后改哪些字段, fail: 失败时的原话 }；missing 没有了的 app-server 方法（codex）
+//   loggedIn: false 演没登录（claude，首次问AI引导登录）：-p 照 2.1.332 的原话回「Not logged in · Please run /login」，
+//   auth status 报 loggedIn false；auth login 照真的调 $BROWSER 开授权页，loginMs 后（默认 300）记成登好了；loginFail 登录失败的原话
 // 每次被调都在 <家>.log 里记一行参数（测试看软件真跑了什么）。
+import { spawnSync } from 'node:child_process'
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
@@ -57,6 +60,7 @@ function claude() {
     return
   }
   if (argv[0] === 'update' || argv[0] === 'upgrade') return update()
+  if (argv[0] === 'auth') return claudeAuth()
   // commander 先认参数：不认的、值不对的直接报，和真的一样
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
@@ -76,6 +80,14 @@ function claude() {
   const answer = (prompt) => {
     if (state.silent) return
     out({ type: 'system', subtype: 'init', session_id: session, model })
+    if (state.loggedIn === false) {
+      // 2.1.332 没登录时的样子：一条合成的 assistant（error authentication_failed）+ is_error 的 result，退出码 1
+      const said = 'Not logged in · Please run /login'
+      out({ type: 'assistant', session_id: session, error: 'authentication_failed', message: { model: '<synthetic>', content: [{ type: 'text', text: said }] } })
+      out({ type: 'result', subtype: 'success', is_error: true, result: said, session_id: session })
+      process.exitCode = 1
+      return
+    }
     const text = /只回一个字/.test(`${flagOf('--system-prompt') ?? ''}${prompt}`) ? '好' : `这是假 Claude Code ${version} 的回答（模型 ${model}，effort ${effort ?? '没给'}）。`
     if (state.noStream) out({ type: 'assistant', session_id: session, message: { content: [{ type: 'text', text }] } })
     else {
@@ -109,6 +121,30 @@ function claude() {
     if (flagOf('--resume') === 'gone') return fail(`No conversation found with session ID: gone`)
     answer(prompt)
   })
+}
+
+/** claude auth status / login（2.1.332 的 --help：status 默认 --json；login --claudeai 用会员订阅登） */
+function claudeAuth() {
+  const loggedIn = state.loggedIn !== false
+  if (argv[1] === 'status') {
+    if (argv.includes('--text')) say(loggedIn ? 'Logged in with Claude subscription.' : 'Not logged in. Run claude auth login to authenticate.')
+    else say(JSON.stringify(loggedIn ? { loggedIn: true, authMethod: 'claude.ai', apiProvider: 'firstParty' } : { loggedIn: false, authMethod: 'none', apiProvider: 'firstParty' }, null, 2))
+    process.exitCode = loggedIn ? 0 : 1
+    return
+  }
+  if (argv[1] === 'login') {
+    say('Opening browser to sign in…')
+    // 和真的一样认 BROWSER：给它授权页的网址（回调地址是本机端口）
+    const url = 'https://claude.com/cai/oauth/authorize?code=true&client_id=fake&response_type=code&redirect_uri=http%3A%2F%2Flocalhost%3A54545%2Fcallback&state=fake'
+    if (process.env.BROWSER) spawnSync(process.env.BROWSER, [url], { stdio: 'ignore' })
+    setTimeout(() => {
+      if (state.loginFail) return fail(state.loginFail)
+      writeFileSync(file, JSON.stringify({ ...JSON.parse(readFileSync(file, 'utf8')), loggedIn: true }))
+      say('Login successful.')
+    }, state.loginMs ?? 300)
+    return
+  }
+  return fail(`error: unknown command '${argv[1]}'`)
 }
 
 // ---------------------------------------------------------------- codex

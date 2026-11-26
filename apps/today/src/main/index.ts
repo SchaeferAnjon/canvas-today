@@ -13,10 +13,10 @@ import { activeSkin, skinOf } from '../../../notes/src/shared/appearance'
 import { ThemeStore } from '../../../notes/src/main/themes'
 import { themeInfo } from '../../../notes/src/shared/vscode-theme'
 import { deviceDir, lineAt, minutesOf, splitLines } from '@cn/tasks'
-import type { AddCtx, AiSlot, AppState, LookState, EditReq, FocusOp, FocusTask, GitInfo, HabitOp, TaskView } from '../shared/api'
+import type { AddCtx, AiSettingsView, AiSlot, AppState, LookState, EditReq, FocusOp, FocusTask, GitInfo, HabitOp, TaskView } from '../shared/api'
 import type { Busy, SchedCandidate } from '../shared/ai-plan'
 import type { CloseItem } from '../shared/plan'
-import { type ChatCtx, chatTitle, type CtxEvent, type CtxTask, type ChatPlan, pickTasks, type TodayMsg } from '../shared/ai-chat'
+import { type ChatCtx, chatTitle, checkMentions, type CtxEvent, type CtxTask, type ChatPlan, mentionBlock, pickTasks, type TodayMsg } from '../shared/ai-chat'
 import { INBOX_NOTE } from '../shared/brand'
 import PKG from '../../package.json'
 import { BRAND, noteUrl, releaseUrl } from '../shared/brand'
@@ -32,13 +32,22 @@ import { API_IDS, isApi } from '@cn/ai-engines/shared'
 import { calPrefsPath } from './cal-hidden'
 import { CalendarLink } from './calendar'
 import { addSubtasks, addTask, applyEdit, applyPlan, ensureTaskId, newList, setTimes } from './edits'
+import { saveShots } from './quick-attach'
 import { TodayChats } from './ai-chat'
+import { TodayAgent } from './ai-agent'
+import { type AgentMode, modeOf, omniState, type TodayChatEvent } from '../shared/ai-agent'
+import type { EngineId } from '../../../notes/src/shared/agent'
+import { chatPlace } from '../shared/ai-chat'
+import { FAKE } from './ai'
+import { isCli } from '@cn/ai-engines/shared'
 import { checkMaterials, imageNames, withMaterials } from '@cn/ai-chat/materials'
-import { PASTED_PICK_EXTS } from '@cn/ai-engines'
-import { ENGINE_LABEL, pickLabel } from '@cn/ai-engines/shared'
+import { PASTED_PICK_EXTS, type PastedImages } from '@cn/ai-engines'
+import { ENGINE_LABEL, normalizePick, pickLabel } from '@cn/ai-engines/shared'
 import { FocusTimer } from './focus'
 import { habitEdit } from './habits'
-import { appMenu, calMenu, habitMenu, taskMenu } from './menu'
+import { appMenu, attachEditMenu, calMenu, habitMenu, taskMenu } from './menu'
+import { RollingLog, shareLog } from '../../../notes/src/main/crash-log'
+import { logIpcErrors, revealLogs, setupCrashLog, watchWindow } from '../../../notes/src/main/crash-watch'
 import { RemMirror } from './mirror'
 import { helperCommand, RemHelper } from './rem-helper'
 import { notifier, Reminders } from './remind'
@@ -60,6 +69,19 @@ import { capQuitWait, disableSlowFeatures, flushSessions, skipWindowRestore } fr
 app.setPath('userData', process.env.CT_USER_DATA || join(app.getPath('appData'), BRAND.userDataDir))
 app.setName(BRAND.name)
 guardScreen()
+// 隐藏窗口的网页不降优先级（要在 app ready 之前）：Electron 45 起从没显示过的窗口，渲染进程一开始就按「在后台」降优先级，机器一忙就一直停在加载中。
+// 测试模式窗口从不显示；正式用时主窗口显示前、快速加一条、菜单栏弹窗也是隐藏的。scripts/test/renderer-backgrounding.test.ts 守着
+app.commandLine.appendSwitch('disable-renderer-backgrounding')
+/**
+ * 出错日志（同画布笔记 main.log 那一套，bug 一批 1125b）：界面没接住的错、React 根的错、界面进程没了、卡住、页面没载进来、
+ * 界面调主进程出的系统错都记进 ~/Library/Logs/Canvas Today/main.log；测试和指定了设置目录时放在设置目录的 logs/（CT_LOG_DIR 可指定）。
+ * 要在注册任何 ipcMain.handle 之前（logIpcErrors 包的是之后注册的）
+ */
+const crashLog = new RollingLog(process.env.CT_LOG_DIR || (E2E || process.env.CT_USER_DATA ? join(app.getPath('userData'), 'logs') : join(app.getPath('home'), 'Library/Logs', BRAND.name)))
+shareLog(crashLog)
+logIpcErrors(crashLog)
+// 输入框、选了字的右键：界面没接管的给标准编辑菜单（主窗口、菜单栏小窗、快速加一条都是；同画布笔记）
+app.on('browser-window-created', (_e, w) => attachEditMenu(w.webContents, () => lang()))
 // 退出时会在后台优先级的线程上写盘的 Chromium 功能不开：盘忙时它们写不完，退出就一直等（packages/quit-fast，和画布笔记一样）
 disableSlowFeatures(app.commandLine)
 // 不读、不存 AppKit 的窗口状态（窗口是自己建的，用不上）：上次退出被结束过，这次开起来就去问系统要「崩溃数据」，盘忙时一分钟不回话，退出跟着等
@@ -316,6 +338,7 @@ function createWindow() {
     win = null
     rendererReady = false
   })
+  watchWindow(crashLog, win)
   load(win, 'index')
 }
 
@@ -379,7 +402,7 @@ const quick = new QuickPanel({
  * 小框里回车：一条条写进库（没写 # 的进收件箱、不定日子），收起、焦点还给原来的软件，弹一条通知（点了在画布今日里打开，「撤销」一起撤掉）。
  * 写不进去时小框不收，说哪里不对
  */
-async function quickAdd(items: QuickItem[], openIt: boolean): Promise<QuickAddResult> {
+async function quickAdd(items: QuickItem[], openIt: boolean, pasted: PastedImages): Promise<QuickAddResult> {
   const v = needVault()
   const l = lang()
   const d = today()
@@ -387,7 +410,15 @@ async function quickAdd(items: QuickItem[], openIt: boolean): Promise<QuickAddRe
   // 几条一次提交
   const failed = await committer!.batch(async () => {
     for (const it of items) {
-      const r = await addTask(v, it.text, 'inbox', d, v.snapshot(), it.when, localNowOf(now()), it.dest)
+      // 贴的图：写进哪篇定下来以后存进那篇的附件文件夹，挂在这一条下面，和这一条一起提交
+      const attach = it.images?.length
+        ? async (path: string) => {
+            const shots = await saveShots(v.root, path, await pasted.images(it.images))
+            committer!.addFiles(shots.paths)
+            return shots.lines
+          }
+        : undefined
+      const r = await addTask(v, it.text, 'inbox', d, v.snapshot(), it.when, localNowOf(now()), it.dest, attach)
       if (!r.ok) {
         if (r.reason === 'empty') continue
         for (const x of [...done].reverse()) await v.undo(x.undo)
@@ -519,12 +550,14 @@ function registerIpc() {
     const v = needVault()
     return addTask(v, text, ctx, today(), v.snapshot(), when, localNowOf(now()))
   })
+  /** 小活（认时间、拆小步、排时间）用哪一家：设置 › AI 里画布今日自己选过的（对标清单 U4）> 画布笔记「小活」那一行 > 默认 */
+  const quickPick = () => settings.read().aiOwn?.quick ?? aiPick(notesDir)
   // 写时间问 AI（task-pd289）：「小活」那一家，Claude Code 用 Haiku，只送这一句；工作目录是自己设置目录里单独一格
   ipcMain.handle('ct:whenAi', (_e, text: unknown, now: unknown) => {
     if (typeof text !== 'string' || typeof now !== 'string' || !/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?$/.test(now)) return null
     const cwd = join(app.getPath('userData'), 'ai-when')
     mkdirSync(cwd, { recursive: true })
-    return aiWhen(aiPick(notesDir), text, now, cwd)
+    return aiWhen(quickPick(), text, now, cwd)
   })
   ipcMain.handle('ct:undo', async (_e, id: unknown) => {
     if (typeof id !== 'string') throw new Error('撤销的参数不对')
@@ -536,6 +569,11 @@ function registerIpc() {
     return newList(needVault(), name)
   })
   ipcMain.handle('ct:git', () => gitInfo())
+  // ⌘ 悬停预览（对标清单 U8）：那一篇现在的字，只读；库外的、不是 .md 的不给
+  ipcMain.handle('ct:noteText', async (_e, path: unknown) => {
+    if (typeof path !== 'string' || !/\.md$/i.test(path)) return null
+    return (await needVault().current(path))?.text ?? null
+  })
   ipcMain.handle('ct:openNote', async (_e, path: unknown, line: unknown) => {
     if (typeof path !== 'string') throw new Error('路径不对')
     needVault().abs(path)
@@ -587,7 +625,7 @@ function registerIpc() {
     if (!p || typeof p !== 'object') throw new Error('设置参数不对')
     const before = settings.read()
     const s = settings.set(p)
-    if (s.lang !== before.lang) {
+    if (s.lang !== before.lang || JSON.stringify(s.keys ?? {}) !== JSON.stringify(before.keys ?? {})) {
       appMenu(s.lang, menuHandlers)
       menuBar.relabel()
     }
@@ -653,7 +691,7 @@ function registerIpc() {
   const failText = (e: unknown) => ({ ok: false as const, message: String((e as Error)?.message ?? e), ...((e as Error)?.name === 'AbortError' ? { aborted: true } : {}), ...(e instanceof BorrowNeeded ? { borrow: e.engine } : {}) })
   initKeys(app.getPath('userData'), notesDir)
   ipcMain.handle('ct:aiInfo', () => {
-    const p = aiPick(notesDir)
+    const p = quickPick()
     const borrow = needBorrow(p.engine)
     return { ...aiLabel(p), ...(borrow ? { borrow } : {}) }
   })
@@ -685,7 +723,7 @@ function registerIpc() {
     const subs = t.subs.map((k) => s.tasks.find((x) => x.key === k)?.title).filter((x): x is string => !!x)
     const j = job(id)
     try {
-      return { ok: true, steps: await aiSplit(aiPick(notesDir), { title: t.title, date: t.date, path: t.path, heading: t.heading, subs, around }, v.root, j.ac.signal) }
+      return { ok: true, steps: await aiSplit(quickPick(), { title: t.title, date: t.date, path: t.path, heading: t.heading, subs, around }, v.root, j.ac.signal) }
     } catch (e) {
       return failText(e)
     } finally {
@@ -721,7 +759,7 @@ function registerIpc() {
     }
     const j = job(id)
     try {
-      const slots = await aiSchedule(aiPick(notesDir), { date: d, time: nowT }, cands, busy, v.root, j.ac.signal)
+      const slots = await aiSchedule(quickPick(), { date: d, time: nowT }, cands, busy, v.root, j.ac.signal)
       const byKey = new Map(cands.map((c) => [c.key, c.title]))
       return { ok: true, slots: slots.map((x) => ({ ...x, title: byKey.get(x.key) ?? '' })), candidates: cands.length, events: evs.filter((e) => !e.allDay).length }
     } catch (e) {
@@ -742,19 +780,22 @@ function registerIpc() {
   })
 
   // ---------- 右栏 AI 对话（task-ykkoz，main/ai-chat.ts） ----------
-  const chats = new TodayChats(notesDir, app.getPath('userData'))
+  const chats = new TodayChats(notesDir, app.getPath('userData'), () => settings.read().aiOwn?.chat)
   app.on('will-quit', () => chats.dispose())
   const chatId = (id: unknown) => {
     if (typeof id !== 'string' || !/^[\w-]{1,64}$/.test(id)) throw new Error('对话的参数不对')
     return id
   }
   /** AI 这一问看得到的：近两周的待办、收件箱里没定日子的、系统日历两周的日程（藏起的日历 events() 已经去掉） */
-  const chatCtx = async (): Promise<ChatCtx> => {
+  /** extra：@ 点名的那几篇（对标清单 U1）：里面没做完的最上层待办也交给 AI（带编号，排得动），不在近两周里的也算 */
+  const chatCtx = async (extra: readonly string[] = []): Promise<ChatCtx> => {
     const v = needVault()
     const d = today()
     const end = isoPlus(d, 13)
     const all = v.snapshot().tasks
-    const tasks: CtxTask[] = pickTasks(all, d, INBOX_NOTE).map((t, i) => ({
+    const near = pickTasks(all, d, INBOX_NOTE)
+    const named = all.filter((t) => extra.includes(t.path) && !t.done && !t.cancelled && t.parent === null && !near.includes(t)).slice(0, 60)
+    const tasks: CtxTask[] = [...near, ...named].map((t, i) => ({
       id: `t${i + 1}`,
       key: t.key,
       title: t.title,
@@ -781,20 +822,69 @@ function registerIpc() {
   }
   const seenOf = (c: ChatCtx) => ({
     tasks: c.tasks.filter((t) => t.date).length,
-    inbox: c.tasks.filter((t) => !t.date).length,
+    inbox: c.tasks.filter((t) => !t.date && t.path === INBOX_NOTE).length,
     events: c.events.length,
     // 先说有钟点的（组会、ecp 课），全天的排后面
     eventNames: [...new Set([...c.events.filter((e) => e.from !== undefined), ...c.events.filter((e) => e.from === undefined)].map((e) => e.title))].slice(0, 3),
   })
+  // 全能模式（2026-11-25，shared/ai-agent.ts）：画布笔记的 agent 跑；命令行四家能动手，API Key、本机模型照旧只排日程。
+  // 只开了画布今日自己的假 AI（CT_AI_FAKE=1，老测试）时照旧走排日程那一路；全能模式的测试另开画布笔记的假引擎（CN_AI_FAKE=1）
+  const agent = new TodayAgent(chats, () => vault?.root ?? null, () => vault?.snapshot().tasks ?? [])
+  const agentOk = (engine: string) => isCli(engine) && (!FAKE() || process.env.CN_AI_FAKE === '1')
+  const omniNow = () => omniState(settings.read().omni, chats.notesOmni())
+  /** 这段对话这一问怎么跑：全能、只在库里、不能动手（只排日程） */
+  const modeFor = (engine: EngineId): { mode: AgentMode } => (agentOk(engine) ? { mode: modeOf(engine, omniNow().on) } : { mode: 'none' })
   ipcMain.handle('ct:chatInfo', async (_e, id: unknown) => {
     const v = needVault()
     const p = chats.pickFor(v.root, chatId(id))
     const c = await chatCtx()
-    return { engines: chats.engineList(), pick: p.pick, own: p.own, label: p.label, seen: { ...seenOf(c), cal: !!calendar?.state().active } }
+    return { engines: chats.engineList(), pick: p.pick, own: p.own, label: p.label, seen: { ...seenOf(c), cal: !!calendar?.state().active }, omni: omniNow(), mode: modeFor(p.pick.engine).mode }
+  })
+  // 输入框下面的全能开关：记在画布今日自己的设置里（之后不再跟画布笔记的那个开关）
+  ipcMain.handle('ct:chatOmni', (_e, on: unknown) => {
+    if (typeof on !== 'boolean') throw new Error('对话的参数不对')
+    settings.set({ omni: on })
+    return omniNow()
+  })
+  // 这一轮 AI 改了的撤回（撤那一次提交）
+  ipcMain.handle('ct:chatRevert', async (_e, id: unknown, msgId: unknown) => {
+    const cid = chatId(id)
+    const v = needVault()
+    const { msgs } = chats.load(v.root, cid)
+    const m = msgs.find((x) => x.id === msgId)
+    if (!m?.commit || m.commit.reverted) throw new Error('这一轮的改动找不到了')
+    try {
+      const hash = await agent.revert(m.commit.hash)
+      m.commit = { ...m.commit, reverted: hash }
+      chats.save(v.root, cid, msgs)
+      return { ok: true as const, msgs }
+    } catch (e) {
+      return { ok: false as const, message: String((e as Error)?.message ?? e) }
+    }
   })
   ipcMain.handle('ct:chatDefault', () => {
     const p = chats.defaultPick()
     return { engine: p.engine, label: ENGINE_LABEL[p.engine], full: pickLabel(p, chats.modelsOf(p.engine)) }
+  })
+  // 设置 › AI（对标清单 U4）：两样各用哪一家（画布今日自己选的，没选是跟画布笔记的那一行）、能选哪几家
+  const aiSettings = (): AiSettingsView => {
+    const own = settings.read().aiOwn ?? {}
+    const row = (f: 'chat' | 'quick') => {
+      const base = chats.notesPick(f)
+      return { own: own[f] ?? null, follow: base, followLabel: pickLabel(base, chats.modelsOf(base.engine)) }
+    }
+    return { engines: chats.engineList(), notes: chats.hasNotes, chat: row('chat'), quick: row('quick') }
+  }
+  ipcMain.handle('ct:aiSettings', () => aiSettings())
+  ipcMain.handle('ct:aiSetOwn', (_e, f: unknown, pick: unknown) => {
+    if (f !== 'chat' && f !== 'quick') throw new Error('AI 设置的参数不对')
+    const n = pick === null ? null : normalizePick(pick)
+    if (pick !== null && !n) throw new Error('AI 参数不对')
+    const cur = settings.read().aiOwn ?? {}
+    const { [f]: _old, ...rest } = cur
+    void _old
+    settings.set({ aiOwn: n ? { ...rest, [f]: n } : rest })
+    return aiSettings()
   })
   ipcMain.handle('ct:chatList', () => chats.list(needVault().root))
   ipcMain.handle('ct:chatLoad', (_e, id: unknown) => chats.load(needVault().root, chatId(id)))
@@ -818,24 +908,96 @@ function registerIpc() {
     })
   })
   ipcMain.handle('ct:chatPasted', (_e, name: unknown) => chats.pasted.dataUrl(name))
-  ipcMain.handle('ct:chatAsk', async (_e, id: unknown, text: unknown, jobId: unknown, mats: unknown) => {
+  ipcMain.handle('ct:chatAsk', async (_e, id: unknown, text: unknown, jobId: unknown, mats: unknown, opts: unknown) => {
     const cid = chatId(id)
+    // 全局快速输入框问的：全能模式开着照右栏那样动手（能建待办），关着只回答、不动库（用户 2026-11-25 选方案 B）
+    const quickAsk = !!opts && typeof opts === 'object' && (opts as { quick?: unknown }).quick === true
+    const sender = _e.sender
+    // 小框问的：字和步骤也发给主窗口（⌘J 接到右栏时还在答，右栏接着收）；答完告诉主窗口重读这一段
+    const emit = (ev: TodayChatEvent) => {
+      if (!sender.isDestroyed()) sender.send('ct:chatEvent', jobId, ev)
+      if (quickAsk && win && !win.isDestroyed() && win.webContents !== sender) win.webContents.send('ct:chatEvent', jobId, ev)
+    }
+    const saved = () => {
+      if (quickAsk && win && !win.isDestroyed() && win.webContents !== sender) win.webContents.send('ct:chatSaved', cid)
+    }
     if (typeof text !== 'string' || !text.trim() || text.length > 4000) throw new Error('对话的参数不对')
     // 画布今日的输入框只收图（没有引用一段）：只认图那几块
     const pics = checkMaterials(mats)?.filter((x) => x.kind === 'image')
     const images = await chats.pasted.images(imageNames(pics))
     const v = needVault()
+    // @ 点名的笔记（对标清单 U1）：库里读得到的那几篇，内容接在这句话后面交给 AI，里面的待办进上下文
+    const mentions = checkMentions(opts && typeof opts === 'object' ? (opts as { mentions?: unknown }).mentions : undefined)
+    const named: { path: string; text: string }[] = []
+    for (const m of mentions) {
+      const cur = await v.current(m.path).catch(() => null)
+      if (cur) named.push({ path: m.path, text: cur.text })
+    }
+    const ask = withMaterials(text.trim(), pics) + mentionBlock(named)
+    const chatCtxNamed = () => chatCtx(named.map((n) => n.path))
     const { msgs } = chats.load(v.root, cid)
     const before = msgs.slice()
     const nextId = () => (msgs.length ? Math.max(...msgs.map((m) => m.id)) + 1 : 1)
-    msgs.push({ id: nextId(), role: 'user', time: now(), text: text.trim(), ...(pics?.length ? { mats: pics } : {}) })
+    msgs.push({ id: nextId(), role: 'user', time: now(), text: text.trim(), ...(pics?.length ? { mats: pics } : {}), ...(mentions.length ? { mentions } : {}) })
     const title = before.length ? undefined : chatTitle(text)
     chats.save(v.root, cid, msgs, title)
     const { pick, label } = chats.pickFor(v.root, cid)
     const j = job(jobId)
+    const how = modeFor(pick.engine)
+    if (quickAsk && how.mode !== 'omni') {
+      try {
+        const c = await chatCtxNamed()
+        const say = await chats.answer(pick, c, before, ask, join(app.getPath('userData'), 'ai-chat'), j.ac.signal, images)
+        msgs.push({ id: nextId(), role: 'ai', time: now(), text: say, engine: pick.engine, by: label })
+        chats.save(v.root, cid, msgs)
+        return { ok: true, msgs }
+      } catch (e) {
+        const aborted = (e as Error)?.name === 'AbortError'
+        if (!aborted) {
+          msgs.push({ id: nextId(), role: 'ai', time: now(), text: '', engine: pick.engine, by: label, error: String((e as Error)?.message ?? e) })
+          chats.save(v.root, cid, msgs)
+        }
+        return { ok: false, aborted, msgs }
+      } finally {
+        saved()
+        j.done()
+      }
+    }
+    if (how.mode !== 'none') {
+      const mode = how.mode
+      const aiId = nextId()
+      try {
+        const c = await chatCtxNamed()
+        const r = await agent.ask({
+          mode,
+          pick,
+          place: chatPlace(cid),
+          msgId: aiId,
+          ctx: c,
+          text: ask,
+          ...(images.length ? { images } : {}),
+          before,
+          lang: lang(),
+          signal: j.ac.signal,
+          onEvent: emit,
+        })
+        const plan: ChatPlan | undefined = r.plan && (r.plan.changes.length || r.plan.dropped.length) ? { changes: r.plan.changes, dropped: r.plan.dropped, ...(r.plan.keep ? { keep: r.plan.keep } : {}), state: r.plan.changes.length ? 'open' : 'dropped' } : undefined
+        const say = r.text || r.plan?.say || ''
+        msgs.push({ id: aiId, role: 'ai', time: now(), text: say, engine: pick.engine, by: label, mode, steps: r.steps, ...(plan ? { plan } : {}), ...(r.commit ? { commit: r.commit } : {}), ...(r.error ? { error: r.error } : {}) })
+        chats.save(v.root, cid, msgs)
+        return { ok: true, msgs }
+      } catch (e) {
+        msgs.push({ id: aiId, role: 'ai', time: now(), text: '', engine: pick.engine, by: label, mode, error: String((e as Error)?.message ?? e) })
+        chats.save(v.root, cid, msgs)
+        return { ok: false, aborted: false, msgs }
+      } finally {
+        saved()
+        j.done()
+      }
+    }
     try {
-      const c = await chatCtx()
-      const r = await chats.ask(pick, c, before, withMaterials(text.trim(), pics), join(app.getPath('userData'), 'ai-chat'), j.ac.signal, images)
+      const c = await chatCtxNamed()
+      const r = await chats.ask(pick, c, before, ask, join(app.getPath('userData'), 'ai-chat'), j.ac.signal, images)
       const plan: ChatPlan | undefined = r.changes.length || r.dropped.length ? { changes: r.changes, dropped: r.dropped, ...(r.keep ? { keep: r.keep } : {}), state: r.changes.length ? 'open' : 'dropped' } : undefined
       msgs.push({ id: nextId(), role: 'ai', time: now(), text: r.say, engine: pick.engine, by: label, seen: seenOf(c), ...(plan ? { plan } : {}), ...(r.keep && !plan ? { text: `${r.say}\n${r.keep}` } : {}) })
       chats.save(v.root, cid, msgs)
@@ -848,8 +1010,20 @@ function registerIpc() {
       }
       return { ok: false, aborted, msgs }
     } finally {
+      saved()
       j.done()
     }
+  })
+  // 全局快速输入框 ⌘J：小框收起，主窗口右栏 AI 打开这一段（同一段对话，不是新开）；还在答的那一问右栏接着收字
+  ipcMain.handle('ct:chatHandoff', (_e, id: unknown, jobId: unknown) => {
+    const cid = chatId(id)
+    if (jobId !== null && typeof jobId !== 'string') throw new Error('对话的参数不对')
+    quick.hide(false)
+    if (!win) createWindow()
+    const send = () => win?.webContents.send('ct:openChat', { id: cid, job: jobId })
+    if (rendererReady) send()
+    else win!.webContents.once('did-finish-load', () => setTimeout(send, 300))
+    showMain()
   })
   /** 改动卡：收下（on 是勾着的那几条）/ 不要 / 撤销了 */
   const setPlan = (v: TaskVault, cid: string, msgId: unknown, f: (p: ChatPlan) => ChatPlan) => {
@@ -906,11 +1080,12 @@ function registerIpc() {
   ipcMain.handle('ct:openSettings', () => openSettings())
   ipcMain.handle('ct:quickAdd', (_e, items: unknown, openIt: unknown) => {
     if (!Array.isArray(items) || !items.length || items.length > 50) throw new Error('快速加一条的参数不对')
-    const ok = items.every((x) => x && typeof x === 'object' && typeof x.text === 'string' && (x.dest === null || typeof x.dest === 'string'))
+    const ok = items.every((x) => x && typeof x === 'object' && typeof x.text === 'string' && (x.dest === null || typeof x.dest === 'string') && (x.images === undefined || (Array.isArray(x.images) && x.images.every((n: unknown) => typeof n === 'string'))))
     if (!ok) throw new Error('快速加一条的参数不对')
     return quickAdd(
-      (items as QuickItem[]).map((x) => ({ text: x.text, dest: x.dest, when: x.when ?? null })),
+      (items as QuickItem[]).map((x) => ({ text: x.text, dest: x.dest, when: x.when ?? null, ...(x.images?.length ? { images: x.images } : {}) })),
       openIt === true,
+      chats.pasted,
     )
   })
   // 小窗、小框量好自己多高
@@ -1095,6 +1270,8 @@ const menuHandlers = {
   update: () => updater?.status() ?? null,
   checkUpdate: () => checkFromMenu(),
   installUpdate: () => void installUpdate(),
+  revealLogs: () => void revealLogs(crashLog),
+  keys: () => settings.read(),
 }
 
 // ---------- 检查更新 ----------
@@ -1183,6 +1360,7 @@ app.whenReady().then(async () => {
   else if (!app.isPackaged) app.dock?.setIcon(join(__dirname, '../../build/icon.png'))
   if (app.isPackaged && !E2E) app.setAsDefaultProtocolClient(BRAND.scheme)
   planDay = new PlanDayFile(join(app.getPath('userData'), 'plan-day.json'))
+  setupCrashLog(crashLog, () => win)
   registerIpc()
   registerPlanIpc()
   family = registerFamily({

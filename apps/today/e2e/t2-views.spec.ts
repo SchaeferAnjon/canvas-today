@@ -5,22 +5,73 @@ import { expect, test } from '@playwright/test'
 import { join } from 'node:path'
 import { dragTo, launch } from './app'
 
-test('四象限：从「不重要不紧急」拖到「重要且紧急」，那一行加上 ⏫', async () => {
+test('四象限：没设优先级的在四格下面「没分」；拖进「重要且紧急」那一行加上 ⏫，拖进第 4 格换成 ⏬，拖回「没分」记号拿掉', async () => {
   const run = await launch()
   const { page } = run
   try {
     await page.locator('.ab[data-k="quad"]').click()
     await expect(page.locator('.vhead h1')).toHaveText('四象限')
-    const q4 = page.locator('.q.q4')
-    const src = q4.locator('.row', { hasText: '改摘要' })
+    const none = page.locator('[data-part="没分"]')
+    await expect(none.locator('.qnh')).toContainText('没分')
+    // 没设优先级的「改摘要」在「没分」，不在第 4 格
+    const src = none.locator('.row', { hasText: '改摘要' })
+    await expect(src).toBeVisible()
+    await expect(page.locator('.q.q4 .row', { hasText: '改摘要' })).toHaveCount(0)
     await dragTo(page, src, page.locator('.q.q1'))
     await expect(page.locator('.toast')).toContainText('「改摘要」改成高优先级')
     await expect(page.locator('.toast')).toContainText('那一行加上 ⏫')
     await expect.poll(() => run.read('写作/小论文计划.md')).toContain('- [ ] 改摘要 ⏫\n')
     await expect(page.locator('.q.q1 .row', { hasText: '改摘要' })).toBeVisible()
-    // 再拖回「没设」：记号拿掉
-    await dragTo(page, page.locator('.q.q1 .row', { hasText: '改摘要' }), q4)
+    await expect(none.locator('.row', { hasText: '改摘要' })).toHaveCount(0)
+    // 拖进第 4 格「不重要不紧急」：记号换成 ⏬（最低）
+    await dragTo(page, page.locator('.q.q1 .row', { hasText: '改摘要' }), page.locator('.q.q4'))
+    await expect(page.locator('.toast')).toContainText('那一行加上 ⏬')
+    await expect.poll(() => run.read('写作/小论文计划.md')).toContain('- [ ] 改摘要 ⏬\n')
+    await expect(page.locator('.q.q4 .row', { hasText: '改摘要' })).toBeVisible()
+    if (process.env.CT_SHOTS) await page.screenshot({ path: join(process.env.CT_SHOTS, '四象限-没分展开.png') })
+    // 拖回「没分」：记号拿掉
+    await dragTo(page, page.locator('.q.q4 .row', { hasText: '改摘要' }), none)
     await expect.poll(() => run.read('写作/小论文计划.md')).toContain('- [ ] 改摘要\n')
+    await expect(none.locator('.row', { hasText: '改摘要' })).toBeVisible()
+  } finally {
+    await run.close()
+  }
+})
+
+test('四象限「没分」能收起，收着也能往里拖；收起记住（换页回来、重新载入都还收着）', async () => {
+  const run = await launch()
+  const { page } = run
+  try {
+    await page.locator('.ab[data-k="quad"]').click()
+    const none = page.locator('[data-part="没分"]')
+    const head = none.locator('.qnh')
+    await expect(head).toHaveAttribute('aria-expanded', 'true')
+    const n = await none.locator('.row').count()
+    expect(n).toBeGreaterThan(0)
+    await head.click()
+    await expect(head).toHaveAttribute('aria-expanded', 'false')
+    await expect(none.locator('.row')).toHaveCount(0)
+    await expect(head).toContainText(`· ${n}`)
+    // 收起时四格变高（「没分」只剩头一行）
+    const h = (await none.boundingBox())!.height
+    expect(h).toBeLessThan(50)
+    if (process.env.CT_SHOTS) await page.screenshot({ path: join(process.env.CT_SHOTS, '四象限-没分收起.png') })
+    // 收着也能往里拖：第 1 格的一条拖到收着的「没分」上，记号拿掉，数字加一
+    const first = page.locator('.q.q1 .row').first()
+    const title = (await first.locator('.rt').innerText()).trim()
+    await dragTo(page, first, none)
+    await expect(head).toContainText(`· ${n + 1}`)
+    await expect(page.locator('.q.q1 .row', { hasText: title })).toHaveCount(0)
+    // 换一页再回来：还收着
+    await page.locator('.ab[data-k="calendar"]').click()
+    await page.locator('.ab[data-k="quad"]').click()
+    await expect(page.locator('[data-part="没分"] .qnh')).toHaveAttribute('aria-expanded', 'false')
+    // 重新载入：还收着
+    await page.reload()
+    await page.locator('.ab[data-k="quad"]').click()
+    await expect(page.locator('[data-part="没分"] .qnh')).toHaveAttribute('aria-expanded', 'false')
+    await page.locator('[data-part="没分"] .qnh').click()
+    await expect(page.locator('[data-part="没分"] .row')).toHaveCount(n + 1)
   } finally {
     await run.close()
   }
@@ -36,9 +87,9 @@ async function quadBoxes(page: import('@playwright/test').Page) {
   })
 }
 
-test('四象限：四格等宽 2×2，标题不竖排、不出界——没设优先级的一长串长标题都在第 4 格时也一样（右栏是详情、是 AI；窗口窄时）', async () => {
+test('四象限：四格等宽 2×2，标题不竖排、不出界——一长串长标题都在第 4 格时也一样（右栏是详情、是 AI；窗口窄时）', async () => {
   // 用户 0.3.6 截图（r162）：24 条没设优先级的全在第 4 格，长标题把右边一列撑宽，左边一列挤成一条、「重要且紧急」一个字一行，右边被截掉
-  const long = Array.from({ length: 24 }, (_, i) => `- [ ] 放假：第${i + 1}个很长很长的假日名字（研究中心不上班，记得提前安排好手上所有的事情）📅 2026-12-${String((i % 28) + 1).padStart(2, '0')}`).join('\n')
+  const long = Array.from({ length: 24 }, (_, i) => `- [ ] 放假：第${i + 1}个很长很长的假日名字（研究中心不上班，记得提前安排好手上所有的事情）⏬ 📅 2026-12-${String((i % 28) + 1).padStart(2, '0')}`).join('\n')
   const run = await launch({ files: { '生活/日历.md': `# 日历\n\n${long}\n` }, size: { width: 1180, height: 760 } })
   const { page } = run
   try {

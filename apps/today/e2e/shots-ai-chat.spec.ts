@@ -122,3 +122,21 @@ test('AI 对话：和设计稿并排的截图', async () => {
     },
   })
 })
+
+// 对话菜单（2026-11-25 对话菜单分组：和画布笔记的对话菜单同一套规矩，组名 12 --t3、对话行 13 --t1、时间在右、当前这段打勾）
+test('AI 对话菜单：几段对话的截图', async () => {
+  test.setTimeout(300_000)
+  for (const skin of ['sky', 'petrol'] as const)
+    await shot(`9-chat-menu-${skin}`, {
+      skin,
+      prep: async (p) => {
+        await calWeek(p)
+        await openAi(p)
+        await ask(p, '明天太满了，帮我挪一挪')
+        await p.getByRole('button', { name: '新对话' }).click()
+        await ask(p, '把这周的作业排进空着的时间')
+        await p.locator('.aim-h .ttl').click()
+        await p.locator('.aim-menu.down .it').nth(1).waitFor()
+      },
+    })
+})

@@ -10,8 +10,11 @@
     "@cn/design": "workspace:*",
     "@cn/family": "workspace:*",
     "@cn/format": "workspace:*",
+    "@cn/git": "workspace:*",
     "@cn/tasks": "workspace:*",
+    "@cn/web-session": "workspace:*",
     "electron": "^45.3.2",
+    "electron-chrome-extensions": "4.10.0",
     "react": "^19.3.1"
   },
   "devDependencies": {

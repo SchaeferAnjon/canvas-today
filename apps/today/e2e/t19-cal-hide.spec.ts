@@ -87,7 +87,8 @@ test('右键「不在这里显示」：周、全天、月、小月历里那个�
     await quit(run)
     run = await launch({ root })
     const p2 = run.page
-    await p2.locator('.ab[data-k="calendar"]').click()
+    // 重开回到上次那一格（对标清单 U7）：还在日历
+    await expect(p2.locator('.ab[data-k="calendar"]')).toHaveAttribute('aria-pressed', 'true')
     await expect(row(p2, '工作')).toBeVisible()
     await expect(row(p2, '提醒事项')).toHaveClass(/off/)
     await expect(remBlk(p2, '组会')).toBeVisible()

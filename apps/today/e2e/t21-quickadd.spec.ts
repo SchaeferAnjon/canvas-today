@@ -9,7 +9,13 @@ import { CAL_SEED } from './fixtures'
 
 /** 那组键：设置里想要的、注册上了没有 */
 const keyState = (run: Running) => run.app.evaluate(() => (globalThis as unknown as { ctQuick: { state(): { wanted: string; registered: boolean } } }).ctQuick.state())
-const press = (run: Running) => run.app.evaluate(() => (globalThis as unknown as { ctQuick: { press(): Promise<void> } }).ctQuick.press())
+/** 按一次 ⌥⇧T；小框已经建好时等它真清空重写过（不然清空那一下会吃掉马上打的字） */
+async function press(run: Running) {
+  const qp = run.app.windows().find((w) => w.url().endsWith('/quick.html'))
+  const before = qp ? await qp.locator('.qp').getAttribute('data-opens') : null
+  await run.app.evaluate(() => (globalThis as unknown as { ctQuick: { press(): Promise<void> } }).ctQuick.press())
+  if (qp && before !== null) await expect.poll(() => qp.locator('.qp').getAttribute('data-opens')).not.toBe(before)
+}
 const isOpen = (run: Running) => run.app.evaluate(() => (globalThis as unknown as { ctQuick: { isOpen(): boolean } }).ctQuick.isOpen())
 const front = (run: Running, name: string) => run.app.evaluate((_e, n) => (globalThis as unknown as { ctQuick: { front(n: string): void } }).ctQuick.front(n), name)
 const restored = (run: Running) => run.app.evaluate(() => (globalThis as unknown as { ctQuick: { restored(): string[] } }).ctQuick.restored())
@@ -43,7 +49,8 @@ test('在别的软件里按 ⌥⇧T：弹出小框，边打边认出日子钟点
     expect(await isOpen(run)).toBe(true)
     const box = qp.getByLabel('快速加一条')
     await expect(box).toBeFocused()
-    await expect(qp.locator('#qgot')).toHaveText('写日子、钟点、提醒、重复、#清单、!优先级都认；没写日子的进收件箱，不定日子')
+    // 空着时是符号小抄：每个符号干什么
+    await expect(qp.locator('#qgot .qck')).toHaveText(['#清单选清单', '!高 !中 !低优先级', '周三3点日子钟点', '提前1小时提醒提醒', '每周一重复'])
     await expect(qp.locator('.qdest')).toContainText('写进《待办》收件箱没写#清单，放收件箱')
     // 真打字（一个键一个键）：下面一行跟着认
     await box.pressSequentially('明天下午三点 交实验报告 提前1小时提醒 #小论文计划 !高')
@@ -151,6 +158,11 @@ test('一次贴进几行：一行一条各认各的、各进各的笔记；#清�
     // 模糊找：「#杀死」对上《杀死一只知更鸟》
     await box.pressSequentially('读第五章 #杀死')
     await expect(qp.locator('.qdest b')).toHaveText('《杀死一只知更鸟》')
+    // 光标还在「#杀死」里：列着候选，先不说为什么；esc 收起候选再说
+    await expect(qp.locator('[data-part="候选"] [role="option"]')).toHaveText([/杀死一只知更鸟/])
+    await expect(qp.locator('.qdest .qwhy')).toHaveCount(0)
+    await box.press('Escape')
+    expect(await isOpen(run)).toBe(true)
     await expect(qp.locator('.qdest .qwhy')).toHaveText('按「#杀死」认出')
     // ⌘↵ 换一篇：换到收件箱（#杀死 留在标题里）
     await box.press('Meta+Enter')
@@ -189,6 +201,77 @@ test('一次贴进几行：一行一条各认各的、各进各的笔记；#清�
     await expect.poll(() => commits(run.vault).length).toBe(before + 1)
     expect(commits(run.vault)[0]).toContain('买牛奶')
     expect(commits(run.vault)[0]).toContain('整理桌面')
+  } finally {
+    await run.close()
+  }
+})
+
+test('打 # 列清单、打 ! 列优先级：↑↓ 选、↵ / Tab 填进去、esc 只收起候选；选的那篇就是写进去的那篇，加上后文件里那一行对', async () => {
+  const run = await launch()
+  try {
+    await press(run)
+    const qp = await quickPage(run)
+    const box = qp.getByLabel('快速加一条')
+    const sug = qp.locator('[data-part="候选"] [role="option"]')
+    // 打「#」：按最近改过的列几篇（不列收件箱），第一条亮着
+    await box.pressSequentially('交第四章习题 #')
+    await expect(sug).toHaveCount(6)
+    await expect(sug.first()).toHaveAttribute('aria-selected', 'true')
+    await expect(sug.filter({ hasText: '待办' })).toHaveCount(0)
+    // 接着打字：名字里有「作」的在前，文件夹里有的在后
+    await box.pressSequentially('作')
+    await expect(sug.locator('.qsm')).toHaveText(['作业', '周报', '小论文计划'])
+    await expect(sug.first()).toContainText('课程 › 线性代数')
+    // esc 只收起候选，小框还开着；接着打字（还在这一截里）也不再列
+    await box.press('Escape')
+    await expect(sug).toHaveCount(0)
+    expect(await isOpen(run)).toBe(true)
+    // 删掉重打 #：又列出来；↓ 再 ↑ 回到第一条，↵ 选上（不加）
+    await box.press('Backspace')
+    await box.press('Backspace')
+    await box.pressSequentially('#作')
+    await expect(sug).toHaveCount(3)
+    await box.press('ArrowDown')
+    await expect(sug.nth(1)).toHaveAttribute('aria-selected', 'true')
+    await box.press('ArrowUp')
+    await box.press('Enter')
+    await expect(box).toHaveValue('交第四章习题 #作业 ')
+    await expect(sug).toHaveCount(0)
+    expect(await isOpen(run)).toBe(true)
+    await expect(qp.locator('.qdest b')).toHaveText('《作业》')
+    await expect(qp.locator('.qdest')).toContainText('课程 › 线性代数')
+    // 打「!」：三档，↓ 到「中」，Tab 填进去
+    await box.pressSequentially('!')
+    await expect(sug.locator('.qsm')).toHaveText(['高优先级', '中优先级', '低优先级'])
+    await expect(sug.nth(0)).toContainText('!高')
+    // 候选列着时不先说「没对上」：认出来那一行、写进那一行的原因都不画
+    await expect(qp.locator('#qgot')).toHaveCount(0)
+    await expect(qp.locator('.qdest .qwhy')).toHaveCount(0)
+    await box.press('ArrowDown')
+    await box.press('Tab')
+    await expect(box).toHaveValue('交第四章习题 #作业 !中 ')
+    await expect(box).toBeFocused()
+    // 「!l」只剩低；点一下也能选（再删掉回到 !中）
+    await box.pressSequentially('明天 !l')
+    await expect(sug.locator('.qsm')).toHaveText(['低优先级'])
+    await sug.first().click()
+    await expect(box).toHaveValue('交第四章习题 #作业 !中 明天 !低 ')
+    await box.fill('交第四章习题 #作业 !中 明天')
+    await expect(qp.locator('#qgot .chip')).toHaveText(['明天', '中', '#作业'])
+    // 打全了的（!高、#作业）不列：↵ 是加上
+    await box.press('Enter')
+    await expect.poll(() => run.read('课程/线性代数/作业.md')).toContain('- [ ] 交第四章习题 📅 2026-11-23 🔼\n')
+    // 小框里中间某处打 #：只换掉那一截，后面的字留着
+    await press(run)
+    await box.fill('读第六章 明天')
+    await box.evaluate((el: HTMLTextAreaElement) => el.setSelectionRange(4, 4))
+    await box.pressSequentially(' #杀')
+    await expect(sug.locator('.qsm')).toHaveText(['杀死一只知更鸟'])
+    await box.press('Enter')
+    await expect(box).toHaveValue('读第六章 #杀死一只知更鸟 明天')
+    await expect(qp.locator('.qdest b')).toHaveText('《杀死一只知更鸟》')
+    await box.press('Enter')
+    await expect.poll(() => run.read('阅读/杀死一只知更鸟.md')).toContain('- [ ] 读第六章 📅 2026-11-23\n')
   } finally {
     await run.close()
   }
@@ -264,7 +347,7 @@ test('快捷键被别的软件占了：小窗和设置里说出来，点一组�
     await r.getByRole('button', { name: '改快速加一条的快捷键' }).click()
     await expect(r.getByRole('button', { name: '改快速加一条的快捷键' })).toHaveText('按一组新的键…')
     await page.keyboard.press('Meta+K')
-    await expect(r.getByRole('alert')).toHaveText('⌘K 是画布今日的「搜索、加一条」，换一组')
+    await expect(r.getByRole('alert')).toHaveText('⌘K 已经给了「搜索、加一条」，换一个')
     await expect(page.locator('.pal')).toHaveCount(0)
     // 只按 ⌥ 加字母：打字时会按到，不给
     await r.getByRole('button', { name: '改快速加一条的快捷键' }).click()

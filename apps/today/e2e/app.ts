@@ -41,10 +41,12 @@ export interface LaunchOpts {
   reminders?: Record<string, unknown>
   /** 接着用上一次的目录（重开软件）：库、设置、假提醒事项都留着 */
   root?: string
+  /** 录屏放进这个目录（Playwright recordVideo，交付页的录屏用） */
+  video?: string
 }
 
 /** 测试里的设置：外观定死；排一天（打开时先排一天）关着，老测试照旧从「今天」开始 */
-export const LOOK = (skin: 'sky' | 'petrol', frame: 'a' | 'b', lang: 'zh' | 'en' = 'zh') => ({ lang, followNotes: false, appearance: { followSystem: false, skin, day: 'sky', night: 'petrol', frame, winBg: 'aurora' }, plan: { onOpen: false, tray: true, journal: null } })
+export const LOOK = (skin: string, frame: 'a' | 'b', lang: 'zh' | 'en' = 'zh') => ({ lang, followNotes: false, appearance: { followSystem: false, skin, day: 'sky', night: 'petrol', frame, winBg: 'aurora' }, plan: { onOpen: false, tray: true, journal: null } })
 
 export async function launch(o: LaunchOpts = {}): Promise<Running> {
   const again = !!o.root
@@ -75,8 +77,10 @@ export async function launch(o: LaunchOpts = {}): Promise<Running> {
 
   const app = await electron.launch({
     // CT_PKG=<打好的 Canvas Today.app>：起包里的那一份（发版时拿真包跑某条流程）
+    ...(o.video ? { recordVideo: { dir: o.video, size: o.size ?? { width: 1420, height: 799 } } } : {}),
     executablePath: process.env.CT_PKG ? join(process.env.CT_PKG, 'Contents/MacOS/Canvas Today') : (electronPath as unknown as string),
-    args: process.env.CT_PKG ? [] : [join(__dirname, '../out/main/index.js')],
+    // CT_E2E_MAIN=<别的构建的 out/main/index.js>：起另一份构建（交付时截修前、修后的并排图）
+    args: process.env.CT_PKG ? [] : [process.env.CT_E2E_MAIN ?? join(__dirname, '../out/main/index.js')],
     env: {
       ...process.env,
       CT_E2E: '1',

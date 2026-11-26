@@ -38,6 +38,7 @@ import { BASE_SUMS } from './en/base-sums'
 import { SELBAR } from './en/selbar'
 import { BOARD_SELECT } from './en/board-select'
 import { INK } from './en/ink'
+import { DECOR } from './en/decor'
 import { FEYNMAN_AFTER } from './en/feynman-after'
 import { VOICE } from './en/voice'
 import { CITE } from './en/cite'
@@ -89,6 +90,8 @@ export const EN_PARTS: Readonly<Record<string, Table>> = {
   'board-select': BOARD_SELECT,
   // 白板笔迹（方案 B，2026-11-25）
   ink: INK,
+  // 白板装饰（设计页 145）
+  decor: DECOR,
   // 费曼「讲完以后」（task-yvabi ③）
   'feynman-after': FEYNMAN_AFTER,
   // 费曼的语音输入（task-yvabi）

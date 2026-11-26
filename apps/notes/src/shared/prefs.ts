@@ -37,7 +37,15 @@ export interface EditorPrefs {
   boardDots: boolean
   /** 按意思找（本机小模型建索引） */
   semantic: boolean
+  /** 白板消失笔（设计页 145）：颜色、写完停多久（秒）、写完一起消失还是一笔一笔；白板上的浮层和设置里那一行改的是同一个 */
+  fadeColor: 'red' | 'acc' | 'yellow'
+  fadeSecs: FadeSecs
+  fadeMode: 'all' | 'each'
 }
+
+/** 消失笔停多久能选的几档（秒） */
+export const FADE_SECS = [1.5, 3, 6] as const
+export type FadeSecs = (typeof FADE_SECS)[number]
 
 export interface FilesPrefs {
   /** 新笔记放哪：picked 收件箱（目录树里点过的文件夹优先）、inbox 总是收件箱、beside 正在看的那篇旁边 */
@@ -109,7 +117,7 @@ export const AUTO_SYNC_CHOICES = [0, 30, 60, 1440] as const
 export const FONT_SIZES = [14, 15, 16, 17, 18] as const
 
 export const DEFAULT_GENERAL: GeneralPrefs = { reopen: true, tray: true, quickKey: defaultKeysOf('quick-note')[0]!, quickSrc: true }
-export const DEFAULT_EDITOR: EditorPrefs = { font: 'system', size: 15, lineHeight: 'normal', width: 'narrow', newView: 'doc', spell: false, boardShrink: true, boardDots: true, semantic: true }
+export const DEFAULT_EDITOR: EditorPrefs = { font: 'system', size: 15, lineHeight: 'normal', width: 'narrow', newView: 'doc', spell: false, boardShrink: true, boardDots: true, semantic: true, fadeColor: 'red', fadeSecs: 3, fadeMode: 'all' }
 export const DEFAULT_FILES: FilesPrefs = { newWhere: 'picked', delAsk: 'images', showTodo: false, noteViews: {} }
 export const DEFAULT_PDF: PdfPrefs = { zoom: 'width', openAi: false, ankiSides: true }
 export const DEFAULT_WEB: WebPrefs = { engine: 'google', newTab: 'bookmarks', downloads: 'downloads', keepRecent: true }
@@ -143,6 +151,9 @@ export function normalizeEditor(v: unknown): EditorPrefs {
     boardShrink: bool(r.boardShrink, d.boardShrink),
     boardDots: bool(r.boardDots, d.boardDots),
     semantic: bool(r.semantic, d.semantic),
+    fadeColor: oneOf(r.fadeColor, ['red', 'acc', 'yellow'], d.fadeColor),
+    fadeSecs: (FADE_SECS as readonly number[]).includes(r.fadeSecs as number) ? (r.fadeSecs as FadeSecs) : d.fadeSecs,
+    fadeMode: oneOf(r.fadeMode, ['all', 'each'], d.fadeMode),
   }
 }
 

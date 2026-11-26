@@ -26,6 +26,8 @@ export function AiError(props: {
   cut?: { at: { label: string; code?: string } | null; onContinue?(): void }
   /** 我们自己说的「这次没做」（/ 命令跑不了的原因）：照原话写，不认原因、不给下一步、没有原话可看 */
   own?: boolean
+  /** 扩展点：宿主没有「谁来答」可换（MeetCaption 的 AI 在设置里定）：不给「换一家」 */
+  noSwitch?: boolean
 }) {
   const { t } = useUi()
   const chat = useChat()
@@ -34,7 +36,8 @@ export function AiError(props: {
   const cut = props.cut
   const acts = v.acts.filter((a) => (a === 'retry' ? props.onRetry && !cut : a === 'rephrase' ? props.onRephrase && !cut : true))
   // 能再问一次的，换一家也给上（同一句换一家问）
-  if (acts.includes('retry') && !acts.includes('switch')) acts.push('switch')
+  if (acts.includes('retry') && !acts.includes('switch') && !props.noSwitch) acts.push('switch')
+  if (props.noSwitch && acts.includes('switch')) acts.splice(acts.indexOf('switch'), 1)
   const id = props.engine?.id
   const logo = id && LOGOS.includes(id) ? <EngineLogo id={id} size={12} /> : <Icon name="refresh" size={12} />
   return (

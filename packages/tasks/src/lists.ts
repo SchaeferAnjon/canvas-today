@@ -12,6 +12,15 @@ export const folderOfPath = (path: string) => (path.includes('/') ? path.slice(0
 /** 一个文件夹自己的那篇「待办」（磁盘上的文件名，不翻） */
 export const isTodoNotePath = (path: string) => path.split('/').pop() === '待办.md'
 
+/**
+ * 勾掉以后（2026-11-24 用户「我点了对勾之后，这个任务是不是应该就要消失，到"已完成"里面」，画布笔记待办、画布今日清单同一份规则）：
+ * 刚勾掉的在原处留 JUST_MS 一行「已完成 · 撤回」，过了就从过期 / 今天 / 七天 / 按文件夹里拿掉，只在「已完成」里。
+ */
+export const JUST_MS = 2000
+
+/** 没做完那几种看法里列不列：没做完的（没勾、没取消），加上刚勾掉、还留在原处的（just 里的 key） */
+export const stillListed = (t: { done: boolean; cancelled: boolean; key: string }, just?: ReadonlySet<string>) => (!t.done && !t.cancelled) || (t.done && !!just?.has(t.key))
+
 const collator = new Intl.Collator('zh-Hans-CN', { numeric: true })
 const byPlace = (a: Place, b: Place) => a.path.localeCompare(b.path) || a.line - b.line
 

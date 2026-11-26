@@ -11,7 +11,7 @@
  * CT_AI_FAKE=1：不调模型，shared/ai-chat.ts 的 fakeChatAnswer 照话里的词答（e2e）；各家都当装好了。
  *   CT_AI_FAKE_LOG=<文件>：假 AI 每问一次在这个文件里记一行（收到几张图、每张多大、什么格式），e2e 拿来比对。
  */
-import { appendFileSync, mkdirSync, readFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { EngineId } from '../../../notes/src/shared/agent'
 import { ENGINE_LABEL, type AiPick, fitPick, INITIAL_PREFS, modelsOf, type ModelOption, normalizePick, normalizePrefs, pickLabel, resolvePick } from '@cn/ai-engines/shared'
@@ -19,7 +19,7 @@ import { AgentStore } from '../../../notes/src/main/agent/store'
 import { type Engine, type EngineImage, locateCli, PastedImages, setCustomCli } from '@cn/ai-engines'
 import { ALL_IDS, isApi, isCli, isEngineId } from '@cn/ai-engines/shared'
 import { needBorrow, notesHasKey, todayKey } from './ai-keys'
-import { CHAT_SYSTEM, chatPlace, chatPrompt, chatTitle, type ChatCtx, type ChatInfo, type ChatReply, fakeChatAnswer, historyText, readChat, type TodayMsg } from '../shared/ai-chat'
+import { ANSWER_SYSTEM, CHAT_SYSTEM, chatPlace, chatPrompt, chatTitle, type ChatCtx, type ChatInfo, type ChatReply, fakeAnswerOnly, fakeChatAnswer, historyText, readChat, type TodayMsg } from '../shared/ai-chat'
 import { BorrowNeeded, engineOf, FAKE } from './ai'
 
 /** 命令行四家、API Key 四家（本机模型要现找，对话这一列不列） */
@@ -44,12 +44,14 @@ export class TodayChats {
   constructor(
     private notesDir: string | null,
     fallback: string,
+    /** 设置 › AI 里画布今日自己选的「AI 对话」那一家（对标清单 U4）；没选过跟画布笔记 */
+    private own: () => AiPick | undefined = () => undefined,
   ) {
     this.store = new AgentStore(join(notesDir ?? fallback, 'ai'))
     this.pasted = new PastedImages(join(notesDir ?? fallback, 'pasted'))
   }
 
-  private notesAi(): { prefs?: unknown; engine?: unknown; cli?: unknown } {
+  private notesAi(): { prefs?: unknown; engine?: unknown; cli?: unknown; omni?: unknown } {
     if (!this.notesDir) return {}
     try {
       return JSON.parse(readFileSync(join(this.notesDir, 'ai', 'settings.json'), 'utf8')) as Record<string, unknown>
@@ -57,6 +59,11 @@ export class TodayChats {
       if ((e as NodeJS.ErrnoException).code !== 'ENOENT' && !(e instanceof SyntaxError)) throw e
       return {}
     }
+  }
+
+  /** 画布笔记 设置 › AI 的全能模式开关（没设过是 undefined；画布今日自己切过的优先，shared/ai-agent.ts omniState） */
+  notesOmni(): unknown {
+    return this.notesAi().omni
   }
 
   /** 画布笔记拉到的模型（userData/ai/engines.json；没拉到用自带的） */
@@ -71,12 +78,22 @@ export class TodayChats {
     }
   }
 
-  /** 画布笔记设置里「AI 对话」那一行（没设过是默认那家） */
+  /** 右栏 AI 对话默认用哪一家：画布今日自己选过的 > 画布笔记设置里「AI 对话」那一行（没设过、没装画布笔记是默认那家） */
   defaultPick(): AiPick {
+    return this.own() ?? this.notesPick('chat')
+  }
+
+  /** 画布笔记 设置 › AI 里那一行（chat「AI 对话」、quick「小活」）；没设过、没装画布笔记是默认那家 */
+  notesPick(f: 'chat' | 'quick'): AiPick {
     const raw = this.notesAi()
     const legacy = isEngineId(raw.engine) ? raw.engine : undefined
     const prefs = raw.prefs === undefined && !legacy ? INITIAL_PREFS : normalizePrefs(raw.prefs, legacy)
-    return resolvePick(prefs, 'chat')
+    return resolvePick(prefs, f)
+  }
+
+  /** 有没有画布笔记的设置目录（设置 › AI 里那一项写「跟画布笔记」还是「默认」） */
+  get hasNotes(): boolean {
+    return this.notesDir !== null && existsSync(this.notesDir)
   }
 
   modelsOf(id: EngineId): ModelOption[] {
@@ -133,19 +150,44 @@ export class TodayChats {
     return (this.engines[id] ??= engineOf(id))
   }
 
+  /** 假 AI 想一会儿（CT_AI_FAKE_MS），记下收到的图（CT_AI_FAKE_LOG） */
+  private async fakeWait(pick: AiPick, text: string, images: EngineImage[], signal: AbortSignal) {
+    await new Promise<void>((resolve, reject) => {
+      const t = setTimeout(resolve, Number(process.env.CT_AI_FAKE_MS ?? 600))
+      signal.addEventListener('abort', () => (clearTimeout(t), reject(Object.assign(new Error('停下了'), { name: 'AbortError' }))))
+    })
+    if (text.includes('（测试：AI 出错）')) throw new Error(`${ENGINE_LABEL[pick.engine]} 退出了（1）：测试用的失败`)
+    const log = process.env.CT_AI_FAKE_LOG
+    if (log) appendFileSync(log, JSON.stringify({ engine: pick.engine, images: images.map((i) => ({ mime: i.mime, bytes: Buffer.from(i.data, 'base64').length })), text }) + '\n')
+  }
+
+  /**
+   * 只回答（全局快速输入框问 AI、全能模式关着）：一次问、不给工具，交回 AI 说的话，什么都不改。
+   * text 已经带上了材料那几行（withMaterials），images 是一起给的图
+   */
+  async answer(pick: AiPick, ctx: ChatCtx, msgs: TodayMsg[], text: string, cwd: string, signal: AbortSignal, images: EngineImage[] = []): Promise<string> {
+    const borrow = needBorrow(pick.engine)
+    if (borrow) throw new BorrowNeeded(borrow)
+    if (FAKE()) {
+      await this.fakeWait(pick, text, images, signal)
+      return fakeAnswerOnly(text, images.length)
+    }
+    mkdirSync(cwd, { recursive: true })
+    const model = process.env.CT_AI_MODEL || pick.model
+    const effort = process.env.CT_AI_EFFORT || pick.effort
+    const r = await this.engineOf(pick.engine).run({ prompt: chatPrompt(ctx, historyText(msgs), text), system: ANSWER_SYSTEM, cwd, signal, onText: () => {}, ...(model ? { model } : {}), ...(effort ? { effort } : {}), ...(images.length ? { images } : {}) })
+    const say = r.text.trim()
+    if (!say) throw new Error('AI 没有回答')
+    return say
+  }
+
   /** 问一次：交回 AI 的原话（真的）或假 AI 照词答的；text 已经带上了材料那几行（withMaterials），images 是一起给的图 */
   async ask(pick: AiPick, ctx: ChatCtx, msgs: TodayMsg[], text: string, cwd: string, signal: AbortSignal, images: EngineImage[] = []): Promise<ChatReply> {
     const borrow = needBorrow(pick.engine)
     if (borrow) throw new BorrowNeeded(borrow)
     let answer: string
     if (FAKE()) {
-      await new Promise<void>((resolve, reject) => {
-        const t = setTimeout(resolve, Number(process.env.CT_AI_FAKE_MS ?? 600))
-        signal.addEventListener('abort', () => (clearTimeout(t), reject(Object.assign(new Error('停下了'), { name: 'AbortError' }))))
-      })
-      if (text.includes('（测试：AI 出错）')) throw new Error(`${ENGINE_LABEL[pick.engine]} 退出了（1）：测试用的失败`)
-      const log = process.env.CT_AI_FAKE_LOG
-      if (log) appendFileSync(log, JSON.stringify({ engine: pick.engine, images: images.map((i) => ({ mime: i.mime, bytes: Buffer.from(i.data, 'base64').length })), text }) + '\n')
+      await this.fakeWait(pick, text, images, signal)
       answer = fakeChatAnswer(text, ctx, images.length)
     } else {
       // 工作目录要先有（没有的话命令行起不来，报的是 spawn ENOENT）

@@ -1,0 +1,338 @@
+/*
+ * AI 动手时的流光（画布笔记 DESIGN.v3 2.3，方向 A2，原型 design/glow/proto-a2.html；2026-11-26 从画布笔记 ai-glow.css 搬来，画布今日也用，对标清单 U10）。
+ * 光的颜色 --glow：主题强调色往白里掺一点（浅色 18%，深色 26%），再用低透明度（光头 85%、尾巴 50% 到 18%，乘上往里的柔化）。
+ * 往里的柔化 --glow-fall：最外沿 1，2px .7，6px .48，14px .28，24px .13，36px .05，48px 0（越往里越淡越散，不是一条硬线）。
+ */
+.ai-glow-edge,
+.ai-glow-ring {
+  --glow: light-dark(color-mix(in oklab, var(--acc) 82%, #fff), color-mix(in oklab, var(--acc) 74%, #fff));
+  --glow-0: color-mix(in srgb, var(--glow) 18%, transparent);
+  --glow-1: color-mix(in srgb, var(--glow) 50%, transparent);
+  --glow-2: color-mix(in srgb, var(--glow) 85%, transparent);
+  pointer-events: none;
+}
+
+/* ---------- 整块：四条边各一条 48 宽的细条，在角上 45° 斜着接，斜线两边 40% 的宽度里两条边交叉淡入淡出 ---------- */
+.ai-glow-edge {
+  --f: 48px;
+  --glow-fall: #000 0, rgba(0, 0, 0, 0.7) 2px, rgba(0, 0, 0, 0.48) 6px, rgba(0, 0, 0, 0.28) 14px, rgba(0, 0, 0, 0.13) 24px, rgba(0, 0, 0, 0.05) 36px, transparent 48px;
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  overflow: hidden;
+  animation: ai-glow-in 0.4s ease-out;
+}
+@keyframes ai-glow-in {
+  from {
+    opacity: 0;
+  }
+}
+.ai-glow-edge .s {
+  position: absolute;
+  overflow: hidden;
+  mask-repeat: no-repeat;
+}
+.ai-glow-edge .s-t,
+.ai-glow-edge .s-b {
+  left: 0;
+  right: 0;
+  height: var(--f);
+  mask-size:
+    var(--f) 100%,
+    calc(100% - 2 * var(--f)) 100%,
+    var(--f) 100%;
+  mask-position: left, center, right;
+}
+.ai-glow-edge .s-l,
+.ai-glow-edge .s-r {
+  top: 0;
+  bottom: 0;
+  width: var(--f);
+  mask-size:
+    100% var(--f),
+    100% calc(100% - 2 * var(--f)),
+    100% var(--f);
+  mask-position: top, center, bottom;
+}
+.ai-glow-edge .s-t {
+  top: 0;
+  mask-image: linear-gradient(to top right, transparent 30%, #000 70%), linear-gradient(#000, #000), linear-gradient(to bottom right, #000 30%, transparent 70%);
+}
+.ai-glow-edge .s-b {
+  bottom: 0;
+  mask-image: linear-gradient(to bottom right, transparent 30%, #000 70%), linear-gradient(#000, #000), linear-gradient(to bottom left, transparent 30%, #000 70%);
+}
+.ai-glow-edge .s-l {
+  left: 0;
+  mask-image: linear-gradient(to bottom left, transparent 30%, #000 70%), linear-gradient(#000, #000), linear-gradient(to bottom right, #000 30%, transparent 70%);
+}
+.ai-glow-edge .s-r {
+  right: 0;
+  mask-image: linear-gradient(to bottom right, transparent 30%, #000 70%), linear-gradient(#000, #000), linear-gradient(to top right, transparent 30%, #000 70%);
+}
+.ai-glow-edge .d {
+  position: absolute;
+  inset: 0;
+}
+.ai-glow-edge .s-t .d {
+  mask-image: linear-gradient(to bottom, var(--glow-fall));
+}
+.ai-glow-edge .s-b .d {
+  mask-image: linear-gradient(to top, var(--glow-fall));
+}
+.ai-glow-edge .s-l .d {
+  mask-image: linear-gradient(to right, var(--glow-fall));
+}
+.ai-glow-edge .s-r .d {
+  mask-image: linear-gradient(to left, var(--glow-fall));
+}
+.ai-glow-edge .base,
+.ai-glow-edge .seal,
+.ai-glow-edge .grey {
+  position: absolute;
+  inset: 0;
+}
+/* 四边一层淡底：这一块在被改（24%，2026-11-25 按推荐小改，以前 16% 看不出来；白板和文档同一套） */
+.ai-glow-edge .base {
+  background: color-mix(in srgb, var(--acc) 24%, transparent);
+  transition: opacity 0.3s;
+}
+.ai-glow-edge .seal {
+  background: color-mix(in srgb, var(--glow) 46%, transparent);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.ai-glow-edge .grey {
+  background: color-mix(in srgb, var(--t3) 42%, transparent);
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+/* 一道光：长长一条淡尾巴，越往前越亮，光头前面也是软的 */
+.ai-glow-edge .beam {
+  position: absolute;
+  left: 0;
+  top: 0;
+  will-change: transform;
+  transition: opacity 0.2s;
+}
+.ai-glow-edge .s-t .beam,
+.ai-glow-edge .s-b .beam {
+  height: 100%;
+  width: var(--glow-len, 400px);
+}
+.ai-glow-edge .s-l .beam,
+.ai-glow-edge .s-r .beam {
+  width: 100%;
+  height: var(--glow-len, 400px);
+}
+.ai-glow-edge .s-t .beam {
+  background: linear-gradient(to right, transparent, var(--glow-0) 35%, var(--glow-1) 70%, var(--glow-2) 92%, transparent);
+}
+.ai-glow-edge .s-r .beam {
+  background: linear-gradient(to bottom, transparent, var(--glow-0) 35%, var(--glow-1) 70%, var(--glow-2) 92%, transparent);
+}
+.ai-glow-edge .s-b .beam {
+  background: linear-gradient(to left, transparent, var(--glow-0) 35%, var(--glow-1) 70%, var(--glow-2) 92%, transparent);
+}
+.ai-glow-edge .s-l .beam {
+  background: linear-gradient(to top, transparent, var(--glow-0) 35%, var(--glow-1) 70%, var(--glow-2) 92%, transparent);
+}
+.ai-glow-edge.seal .seal {
+  opacity: 1;
+}
+.ai-glow-edge.seal .beam {
+  opacity: 0;
+}
+/* 停下：光停在原地变灰，这一步做完再淡掉 */
+.ai-glow-edge.halt .grey {
+  opacity: 1;
+}
+.ai-glow-edge.halt .beam,
+.ai-glow-edge.halt .base {
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+.ai-glow-edge.gone {
+  opacity: 0;
+  transition: opacity 0.6s ease-in;
+}
+
+/* ---------- 一样东西自己边上的一圈：往里 12px 柔化 ---------- */
+.ai-glow-ring {
+  --glow-fall-s: #000 0, rgba(0, 0, 0, 0.6) 1px, rgba(0, 0, 0, 0.32) 3px, rgba(0, 0, 0, 0.14) 6px, rgba(0, 0, 0, 0.05) 9px, transparent 12px;
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  overflow: hidden;
+  z-index: 1;
+  mask-image: linear-gradient(to bottom, var(--glow-fall-s)), linear-gradient(to top, var(--glow-fall-s)), linear-gradient(to right, var(--glow-fall-s)), linear-gradient(to left, var(--glow-fall-s));
+}
+.ai-glow-ring .rot {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: var(--glow-d, 400px);
+  height: var(--glow-d, 400px);
+  transform: translate(-50%, -50%);
+  will-change: transform;
+  background: conic-gradient(from 0deg, transparent 0deg 170deg, var(--glow-0) 240deg, var(--glow-1) 310deg, var(--glow-2) 348deg, transparent 360deg);
+  transition: opacity 0.2s;
+}
+.ai-glow-ring .stat {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--glow) 48%, transparent);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.ai-glow-ring.settle .stat,
+.ai-glow-ring.fade .stat {
+  opacity: 1;
+}
+.ai-glow-ring.settle .rot,
+.ai-glow-ring.fade .rot {
+  opacity: 0;
+}
+.ai-glow-ring.fade {
+  opacity: 0;
+  transition: opacity 1.2s ease-in;
+}
+
+/* ---------- 减少动态：光不走，四边一圈不动的柔光；一圈的直接停成一圈 ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .ai-glow-edge {
+    animation: none;
+  }
+  .ai-glow-edge .beam,
+  .ai-glow-ring .rot {
+    display: none;
+  }
+  .ai-glow-edge .base {
+    background: color-mix(in srgb, var(--glow) 40%, transparent);
+  }
+  .ai-glow-ring .stat {
+    opacity: 1;
+  }
+}
+
+/* ---------- 被改的那一块上面那一层、顶上的胶囊、「停下」（2026-11-26 从画布笔记 ai-act.css 搬来）：都不挡鼠标，只有「停下」「撤回」能点 ---------- */
+.ai-act {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+}
+/* 顶上居中：32 高胶囊，--pop，--shadow-up；8px 紫点呼吸 + 一句 + 小按钮「停下 esc」 */
+.ai-actbar {
+  position: absolute;
+  left: 50%;
+  top: 12px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 32px;
+  padding: 0 4px 0 12px;
+  border-radius: 999px;
+  background: var(--pop);
+  box-shadow: var(--shadow-up);
+  font-size: 12px;
+  color: var(--t1);
+  white-space: nowrap;
+  pointer-events: auto;
+  animation: ai-bar-in 0.25s ease-out;
+  transition:
+    opacity 0.25s,
+    transform 0.25s cubic-bezier(0.3, 0.8, 0.25, 1);
+}
+/* 边上那一圈光在底和字之间 */
+.ai-actbar > :not(.ai-glow-ring) {
+  position: relative;
+  z-index: 2;
+}
+/* 文档栏：顶上留给标题的位置少，胶囊贴近格顶（离标题约 11，不压字） */
+.ai-act-doc .ai-actbar {
+  top: 4px;
+}
+/* 白板：和右上角「80% · 收件箱」那组同一行（离顶 16，中线对齐） */
+.ai-act-board .ai-actbar {
+  top: 16px;
+}
+/* 「改好了 · +20 −0」：数字照改动卡上色、等宽 */
+.ai-actbar .n {
+  font-variant-numeric: tabular-nums;
+}
+.ai-actbar .n.add {
+  color: var(--green);
+}
+.ai-actbar .n.del {
+  color: var(--red);
+}
+.ai-actbar .n.zero {
+  color: var(--t3);
+}
+/* 停下了、整理好了：没有「停下」那颗，右边留 14 */
+.ai-actbar.fin,
+.ai-actbar.halt {
+  padding-right: 14px;
+}
+/* 收起：往上 10px 淡出（偏好「提示条要能消失」：做完 1.8 秒后自己退场） */
+.ai-actbar.hide {
+  opacity: 0;
+  transform: translate(-50%, -10px);
+  pointer-events: none;
+}
+.ai-actbar .ok {
+  flex: none;
+  color: var(--green);
+}
+/* 整理好了 · 撤回：撤回是各处同一颗（UndoButton，24 高无边框），右边只留 4 */
+.ai-actbar.fin:has(.cn-undo) {
+  padding-right: 4px;
+}
+@keyframes ai-bar-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -8px);
+  }
+}
+.ai-actbar .pulse {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--acc);
+}
+.ai-actbar .pulse.on {
+  animation: ai-pulse 1.2s ease-in-out infinite;
+}
+@keyframes ai-pulse {
+  50% {
+    opacity: 0.35;
+    transform: scale(0.7);
+  }
+}
+.ai-stop {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 10px;
+  border: 1px solid var(--line2);
+  border-radius: 999px;
+  background: var(--card);
+  font: 500 12px var(--sans);
+  color: var(--t1);
+}
+.ai-stop:hover:not(:disabled) {
+  background: var(--fill);
+}
+.ai-stop:disabled {
+  opacity: 0.5;
+}
+.ai-stop kbd {
+  font: 11px var(--sans);
+  color: var(--t3);
+}

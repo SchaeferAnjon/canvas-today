@@ -7,7 +7,7 @@
  */
 import { type ISODate } from './dates'
 import { DURATION_KEYS, minutesTextLike } from './duration'
-import { EMOJI, type Field, type FieldKind, isDuration, isDvDue, ORDER, parseTaskLine, type Prio, PRIO_EMOJI, type TaskLine } from './line'
+import { EMOJI, type Field, type FieldKind, isDuration, isDvDue, LOWEST, ORDER, parseTaskLine, type Prio, PRIO_EMOJI, type TaskLine } from './line'
 
 const splice = (s: string, from: number, to: number, put: string) => s.slice(0, from) + put + s.slice(to)
 
@@ -138,12 +138,13 @@ export const setRemind = (line: string, v: string | null): string => setField(li
 export const setRepeat = (line: string, v: string | null): string => setField(line, 'repeat', v === null ? null : oneLine(v) || null)
 export const setId = (line: string, id: string | null): string => setField(line, 'id', id)
 
-export function setPrio(line: string, p: Prio): string {
+/** lowest：低优先级写成 ⏬（最低，画布今日四象限第 4 格；读的时候 ⏬ 和 🔽 都算低，PRIO_OF） */
+export function setPrio(line: string, p: Prio, lowest = false): string {
   const t = parseTaskLine(line)
   if (!t) return line
   const f = field(t, 'prio')
   if (p === 0) return dropAll(line, t, 'prio')
-  const e = PRIO_EMOJI[p]
+  const e = p === 1 && lowest ? LOWEST : PRIO_EMOJI[p]
   if (f) return f.emoji === e && f.valueEnd - f.valueStart === e.length ? line : splice(line, f.valueStart, f.valueEnd, e)
   const at = insertAt(t, 'prio')
   return splice(line, at, at, ` ${e}`)

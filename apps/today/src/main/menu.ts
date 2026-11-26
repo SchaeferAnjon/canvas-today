@@ -3,13 +3,19 @@
  * 待办的右键：今天 / 明天 / 下周一（右边小字是哪天）· 开始专注 25 分钟 · 打开笔记，到这一行 · 删除（照原型）。
  * 习惯的右键：打开笔记 · 重复 ▸（每天、工作日、每周一、三、五……）· 删除。
  * 日历左栏系统日历的右键：不在这里显示 / 在这里显示（有藏起的时再加「全部显示」，task-ov5bb）。
- * 软件菜单栏：中英文跟着设置里的语言；应用菜单里「关于」下面是「检查更新…」（下好了是「重启并更新到 x」）。
+ * 软件菜单栏：中英文跟着设置里的语言；应用菜单里「关于」下面是「检查更新…」（下好了是「重启并更新到 x」）；
+ * 「显示」放大、缩小、原大、全屏，「帮助 › 打开日志文件夹」（同画布笔记，bug 一批 1125b）。
+ * 输入框、选了字的右键（界面没接管的）：标准编辑菜单和拼写建议（同画布笔记 ctx-menu.ts 的 attachEditMenu，项是它 shared/ctx-menu.ts 的 fallbackItems）。
  */
-import { BrowserWindow, Menu, type MenuItemConstructorOptions } from 'electron'
+import { BrowserWindow, Menu, type MenuItemConstructorOptions, type WebContents } from 'electron'
+import { type EditCmd, fallbackItems, tidy } from '../../../notes/src/shared/ctx-menu'
 import { HABIT_RULES } from '@cn/tasks'
 import type { HabitMenuPick, HabitView, MenuPick, TaskView, UpdateState } from '../shared/api'
 import { type Lang, repeatLabel, tr } from '../shared/i18n'
 import { menuLabel } from '../shared/update'
+import { type KeyId, keysOf } from '../shared/keymap'
+import { accelOf } from '../shared/quick'
+import type { TodaySettings } from '../shared/settings'
 import { dayLabel, isoPlus, mdLabel, thirdPick } from '../shared/when'
 
 /** 弹待办的右键菜单，等用户点一项（点在别处收起是 null） */
@@ -75,11 +81,52 @@ export function updateItem(lang: Lang, st: UpdateState | null, h: { checkUpdate:
   }
 }
 
+const EDIT_LABEL: Record<Lang, Record<EditCmd, string>> = {
+  zh: { undo: '撤销', redo: '重做', cut: '剪切', copy: '拷贝', paste: '粘贴', pasteAndMatchStyle: '粘贴并匹配样式', selectAll: '全选' },
+  en: { undo: 'Undo', redo: 'Redo', cut: 'Cut', copy: 'Copy', paste: 'Paste', pasteAndMatchStyle: 'Paste and Match Style', selectAll: 'Select All' },
+}
+const EDIT_ACCEL: Record<EditCmd, string> = {
+  undo: 'CommandOrControl+Z',
+  redo: 'Shift+CommandOrControl+Z',
+  cut: 'CommandOrControl+X',
+  copy: 'CommandOrControl+C',
+  paste: 'CommandOrControl+V',
+  pasteAndMatchStyle: 'Alt+Shift+CommandOrControl+V',
+  selectAll: 'CommandOrControl+A',
+}
+
+/** 软件自己的窗口（主窗口、菜单栏小窗、快速加一条）：界面没接管的右键给标准编辑菜单（待办、习惯、日历那几个右键界面先接了，这里收不到） */
+export function attachEditMenu(wc: WebContents, lang: () => Lang) {
+  wc.on('context-menu', (_e, p) => {
+    const win = BrowserWindow.fromWebContents(wc)
+    const items = tidy(fallbackItems(p))
+    if (!win || !items.length) return
+    const l = lang()
+    const t = items.map((it): MenuItemConstructorOptions => {
+      if ('type' in it) return { type: 'separator' }
+      if ('edit' in it) {
+        const cmd = it.edit
+        return { label: EDIT_LABEL[l][cmd], accelerator: EDIT_ACCEL[cmd], registerAccelerator: false, enabled: it.enabled !== false, click: () => !wc.isDestroyed() && wc[cmd]() }
+      }
+      if ('spell' in it) return { label: it.spell, click: () => !wc.isDestroyed() && wc.replaceMisspelling(it.spell) }
+      // 拼错了又没有建议的那一行（灰的）
+      return { label: l === 'zh' ? '没有拼写建议' : 'No Guesses Found', enabled: false }
+    })
+    Menu.buildFromTemplate(t).popup({ window: win })
+  })
+}
+
 export function appMenu(
   lang: Lang,
-  h: { settings: () => void; search: () => void; update: () => UpdateState | null; checkUpdate: () => void; installUpdate: () => void },
+  h: { settings: () => void; search: () => void; update: () => UpdateState | null; checkUpdate: () => void; installUpdate: () => void; revealLogs: () => void; keys: () => Pick<TodaySettings, 'keys' | 'quickKey'> },
 ) {
   const zh = lang === 'zh'
+  // 搜索、设置两项的键照设置 › 快捷键（shared/keymap.ts）；清掉了就不写键
+  const k = h.keys()
+  const accel = (id: KeyId) => {
+    const c = keysOf(id, k)[0]
+    return c ? { accelerator: accelOf(c) } : {}
+  }
   const t: MenuItemConstructorOptions[] = [
     {
       label: tr(lang, 'appName'),
@@ -87,7 +134,7 @@ export function appMenu(
         { role: 'about', label: zh ? '关于画布今日' : 'About Canvas Today' },
         updateItem(lang, h.update(), h),
         { type: 'separator' },
-        { label: zh ? '设置…' : 'Settings…', accelerator: 'Command+,', click: h.settings },
+        { label: zh ? '设置…' : 'Settings…', ...accel('settings'), click: h.settings },
         { type: 'separator' },
         { role: 'hide', label: zh ? '隐藏画布今日' : 'Hide Canvas Today' },
         { role: 'hideOthers', label: zh ? '隐藏其他' : 'Hide Others' },
@@ -107,7 +154,17 @@ export function appMenu(
         { role: 'paste', label: zh ? '粘贴' : 'Paste' },
         { role: 'selectAll', label: zh ? '全选' : 'Select All' },
         { type: 'separator' },
-        { label: zh ? '搜索、加一条…' : 'Search or Add…', accelerator: 'Command+K', click: h.search },
+        { label: zh ? '搜索、加一条…' : 'Search or Add…', ...accel('search'), click: h.search },
+      ],
+    },
+    {
+      label: zh ? '显示' : 'View',
+      submenu: [
+        { role: 'zoomIn', label: zh ? '放大' : 'Zoom In', accelerator: 'CommandOrControl+=' },
+        { role: 'zoomOut', label: zh ? '缩小' : 'Zoom Out', accelerator: 'CommandOrControl+-' },
+        { role: 'resetZoom', label: zh ? '原大' : 'Actual Size', accelerator: 'CommandOrControl+0' },
+        { type: 'separator' },
+        { role: 'togglefullscreen', label: zh ? '进入或退出全屏' : 'Toggle Full Screen' },
       ],
     },
     {
@@ -119,6 +176,8 @@ export function appMenu(
         ...(process.env.NODE_ENV === 'development' ? [{ role: 'toggleDevTools' } as MenuItemConstructorOptions] : []),
       ],
     },
+    // 出了问题让用户把日志发过来（main.log，同画布笔记）
+    { role: 'help', label: zh ? '帮助' : 'Help', submenu: [{ label: zh ? '打开日志文件夹' : 'Open Logs Folder', click: h.revealLogs }] },
   ]
   Menu.setApplicationMenu(Menu.buildFromTemplate(t))
 }

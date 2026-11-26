@@ -362,6 +362,26 @@ strong {
   background: rgba(255, 255, 255, 0.12);
 }
 
+/* ---------- 栏和栏之间的分隔条（panes.tsx，@cn/design/sash.css 的 .sash：6 宽，悬停、拖着时中间 2px --line2） ---------- */
+/* A：骑在 1px 的分区线上，两边各伸出 3 */
+.fa .body > .sash {
+  margin: 0 -3px;
+}
+/* B：就是岛和岛之间那道 6 的缝（.body 的 gap 是 6，手柄两边各退 6，缝不变宽）；露壁纸，平时不画线 */
+.fb .body > .sash {
+  margin: 0 -6px;
+}
+/* 排一天：这一步和「今天的时间」之间，骑在时间线左边那条线上 */
+.pday {
+  position: relative;
+}
+.pday > .sash {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -4px;
+}
+
 /* ---------- A：照 VS Code（平的，1px 分区线） ---------- */
 .fa {
   background: var(--win);
@@ -590,10 +610,13 @@ strong {
 
 /* B 有窗口背景图时三块岛都半透明、透出背景图（2026-11-22 用户：「这个大白底能不能做成…半透明的」，照 v2 和画布笔记首页 B）；
    颜色、透多少、模糊是 @cn/design themes.css 的 --isle*（画布笔记首页 B 也用）。主题渐变（task-aph2j）同样半透明；纯色时照旧是实色：后面是一块纯色，透了只是变色 */
+/* 半透明的岛上（照片、主题渐变）格子和 --win 不一样：日历块换成每套主题给岛用的那组（themes.css --cal-*-isle：浅色待办浅一档、日程白底 14%；松林日程暗一档按色差分），
+   纯色、照 VS Code 时照旧是实底那组 */
 [data-winbg='photo'] .fb,
 [data-winbg='wall'] .fb {
-  /* 日历里的待办块压在格线上，要实底才读得清：先记下实的 --card */
-  --card-solid: var(--card);
+  --cal-task: var(--cal-task-isle);
+  --cal-ev-base: var(--cal-ev-base-isle);
+  --cal-ev-k: var(--cal-ev-k-isle);
 }
 [data-winbg='photo'] .fb .left,
 [data-winbg='wall'] .fb .left,
@@ -609,10 +632,6 @@ strong {
   --card: var(--isle-card);
   --clip: var(--isle-card);
 }
-[data-winbg='photo'] .fb .cal-blk:not(.ev):not(.ghost),
-[data-winbg='wall'] .fb .cal-blk:not(.ev):not(.ghost) {
-  background: var(--card-solid);
-}
 /* 三块的底和画布笔记一样（shell.css「半透明的岛」）：左栏浅色主题同中间（--isle），深色是侧栏色（--isle-side）；
    右栏同中间（--isle，不是 --isle-pop：深色主题的 --pop 比 --win 亮，面板透明度拉到最透时正文不到 7） */
 [data-winbg='photo'] .fb .left,
@@ -625,6 +644,18 @@ strong {
 }
 [data-winbg='photo'][data-tone='dark'] .fb .left,
 [data-winbg='wall'][data-tone='dark'] .fb .left {
+  background: var(--isle-side);
+}
+/* 底栏那条磨砂条跟着「面板透明度」一起变（2026-11-25 按推荐小改，和左中右三块一致：浅色同中间 --isle、深色同左栏 --isle-side，字是岛上的次要字） */
+[data-winbg='photo'] .fb .status,
+[data-winbg='wall'] .fb .status {
+  background: var(--isle);
+  -webkit-backdrop-filter: var(--isle-blur);
+  backdrop-filter: var(--isle-blur);
+  color: var(--isle-t2);
+}
+[data-winbg='photo'][data-tone='dark'] .fb .status,
+[data-winbg='wall'][data-tone='dark'] .fb .status {
   background: var(--isle-side);
 }
 [data-winbg='photo'] .fb .content,
@@ -975,6 +1006,29 @@ strong {
 .row.cancel .rt {
   color: var(--t3);
   text-decoration: line-through;
+}
+/* 刚勾掉的（2 秒，@cn/tasks JUST_MS）：原处一行「已完成 · 撤回」，最后五分之一淡出，然后进「已完成」（同画布笔记 todo.css .td-r.just） */
+.row.just {
+  animation: row-just 2s ease-in forwards;
+}
+/* 不铺悬停底：「撤回」12 号 --acc-t 压在 --fill 上不到 4.5（设计复审） */
+.row.just:hover {
+  background: none;
+}
+@keyframes row-just {
+  0%,
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+.row .rjust {
+  flex: none;
+  font-size: 12px;
+  color: var(--t3);
+  white-space: nowrap;
 }
 .flash {
   animation: flash 1.6s ease-out;
@@ -1534,6 +1588,56 @@ select.sel {
   .q .row .acc.when {
     display: none;
   }
+}
+
+/* 四格下面「没分」（没设优先级的，2026-11-25 按推荐小改）：和格子同一个样子，一整条；展开最高占这一页三分之一、里面滚，收起只剩头一行（也能往里拖） */
+.q.quad-none {
+  flex: none;
+  max-height: 34%;
+  margin: -10px 24px 20px;
+  padding: 6px 8px;
+}
+.q.quad-none.fold {
+  padding-bottom: 6px;
+}
+.quad-none .qnh {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 28px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--t2);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.quad-none .qnh > .ci,
+.quad-none .qnh > svg {
+  /* 箭头占四格序号块那么宽（20），「没分」和四格的标题对齐 */
+  flex: none;
+  width: 20px;
+}
+.quad-none .qnh:hover {
+  background: var(--fill);
+}
+.quad-none .qnh b {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--t1);
+  white-space: nowrap;
+}
+.quad-none .qnh .t3 {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.quad-none .ql {
+  margin-top: 4px;
 }
 
 /* ---------- AI（原型 detail() 的 .ai、calView 的 .aibar）：虚线框，先给看，收下才写 ---------- */
@@ -2242,38 +2346,17 @@ select.sel {
   position: static;
   margin-top: 6px;
 }
-/* 全局快速加一条的键（画布今日特色）：键位按钮、录键、被占了那一句和几组换的，样子同画布笔记设置的 .sa-keyb / .sa-kwarn */
-.sa-keyb {
-  height: 28px;
+/* 全局快速加一条的键（画布今日特色）：键位按钮、录键、撞键那一句的样子在共用的 @cn/design/settings.css（和设置 › 快捷键同一份）；
+   这里只有一般页那一行宽一点、被占了（注册不上）描黄边、被占了那一句能折行放几组换的 */
+.sa-row[data-row='quickKey'] .sa-keyb {
   min-width: 120px;
   text-align: center;
-  padding: 0 10px;
-  border-radius: 6px;
-  border: 1px solid var(--line2);
-  background: var(--fill);
-  font: 12px var(--sans);
-  color: var(--t1);
-  white-space: nowrap;
-}
-.sa-keyb.rec {
-  border-color: var(--acc);
-  box-shadow: 0 0 0 3px var(--acc-soft);
-  color: var(--acc-t);
 }
 .sa-keyb.bad {
   border-color: var(--yellow);
 }
 .sa-kwarn {
-  display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--t1);
-  margin-top: 4px;
-}
-.sa-kwarn .ci {
-  color: var(--yellow);
 }
 .sa-ksug {
   display: inline-flex;
@@ -2548,10 +2631,15 @@ select.sel {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 26px;
+  height: 22px;
+  max-width: calc(100% - 28px);
   margin: 8px 14px 0;
-  padding: 0 9px;
-  border-radius: 8px;
+  padding: 0 8px;
+  border-radius: 6px;
+  /* 窄了不折行、不挤：一行省略，全句在悬停提示里 */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   box-shadow: inset 0 0 0 1px var(--line2);
   font-size: 12px;
   color: var(--t2);
@@ -2611,9 +2699,120 @@ select.sel {
   flex: none;
 }
 .aim-a .txt {
-  line-height: 1.6;
-  white-space: pre-wrap;
+  /* DESIGN.md「AI 消息」正文 13/1.7（同画布笔记 .am） */
+  line-height: 1.7;
   overflow-wrap: anywhere;
+}
+/* 回答正文按 Markdown 画（markdown.tsx，bug 一批 1125b）：样子照画布笔记 app.css、ai.css 里 .md 那几条（AI 回答同一套），只认回答里这一块 */
+/* :where 不加优先级：段落、列表之间那 8 才不被 margin: 0 盖掉 */
+.aim-a .md :where(.md-p) {
+  margin: 0;
+}
+.aim-a .md .md-h {
+  font-weight: 600;
+  line-height: 1.4;
+}
+.aim-a .md .md-h1 {
+  font-size: 15px;
+}
+.aim-a .md .md-h2,
+.aim-a .md .md-h3 {
+  font-size: 14px;
+}
+.aim-a .md :where(.md-list) {
+  margin: 0;
+  padding-left: 1.3em;
+}
+/* 块和块之间 8（写在 margin: 0 那几条后面，同优先级时它赢） */
+.aim-a .md > * + * {
+  margin-top: 8px;
+}
+.aim-a .md .md-list li + li {
+  margin-top: 3px;
+}
+.aim-a .md .md-task {
+  list-style: none;
+  margin-left: -1.3em;
+}
+.aim-a .md .md-box {
+  display: inline-grid;
+  place-items: center;
+  width: 13px;
+  height: 13px;
+  margin-right: 6px;
+  border: 1.5px solid var(--line2);
+  border-radius: 3px;
+  font-size: 9px;
+  vertical-align: -1px;
+}
+.aim-a .md .md-task.done .md-box {
+  background: var(--acc-bg);
+  border-color: var(--acc-bg);
+  color: var(--acc-on);
+}
+.aim-a .md .md-quote {
+  margin: 0;
+  padding-left: 10px;
+  border-left: 2px solid var(--clip-bar);
+  color: var(--t2);
+}
+.aim-a .md .md-code {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--fill);
+  font: 12px/1.55 var(--mono);
+  white-space: pre;
+  overflow-wrap: normal;
+  overflow-x: auto;
+}
+.aim-a .md code {
+  font: 12px var(--mono);
+  background: var(--fill);
+  border-radius: 4px;
+  padding: 0 3px;
+}
+.aim-a .md .md-code code {
+  background: none;
+  padding: 0;
+}
+.aim-a .md .md-hr {
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+.aim-a .md .wl {
+  color: var(--acc-t);
+  background: var(--acc-soft);
+  border-radius: 4px;
+  padding: 0 3px;
+}
+.aim-a .md .lnk {
+  color: var(--acc-t);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+/* 表格放不下时自己横着滚，不撑宽右栏 */
+.aim-a .md .md-table {
+  overflow-x: auto;
+}
+.aim-a .md .md-table table {
+  overflow-wrap: normal;
+  border-collapse: collapse;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.aim-a .md .md-table th,
+.aim-a .md .md-table td {
+  min-width: calc(4em + 20px);
+  padding: 6px 10px;
+  border: 1px solid var(--line2);
+  text-align: left;
+  vertical-align: top;
+}
+.aim-a .md .md-table th {
+  font-weight: 500;
+  color: var(--t2);
+  background: var(--fill);
 }
 .aim-a .aerr {
   display: flex;
@@ -2833,6 +3032,10 @@ select.sel {
   color: var(--acc);
   flex: none;
 }
+/* 对话菜单里当前这段的勾：和画布笔记对话菜单同一个 --t1（2026-11-25 对话菜单分组） */
+.aim-menu.down .it .ck {
+  color: var(--t1);
+}
 .aim-menu .it .nm {
   min-width: 0;
   overflow: hidden;
@@ -2964,11 +3167,14 @@ select.sel {
   padding: 6px 8px 0;
   line-height: 1.5;
 }
+/* 右边「今天的时间」默认占中间一半，中间那道分隔能拖（排一天日历更大，2026-11-25 用户「变成可以拖动的」；panes.tsx DaySash，拖过的宽写在 style 上、记进设置 widths.day，双击回到一半）。
+   13 寸屏 1470 宽、左栏和右栏 AI 都开着时中间 742（B：1470 − 两条图标栏 88 − 缝 18 − 左栏 242 − 右栏 380；A 同样 742）：默认 371，
+   最窄 240（DAY_MIN：一小时的块还放得下两行标题），最宽到左边这一步只剩 320（PMAIN_MIN：估时按钮换到第二行后一行字还放得下），这时是 422 */
 .plan {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 34%);
+  grid-template-columns: minmax(min(320px, 100% - 240px), 1fr) minmax(240px, 50%);
 }
 .pmain {
   overflow: auto;
@@ -3108,6 +3314,9 @@ select.sel {
   color: var(--t2);
   margin-top: 6px;
 }
+.pload .txt span {
+  white-space: nowrap;
+}
 .pload.over .txt span:first-child {
   color: var(--red);
 }
@@ -3164,6 +3373,53 @@ select.sel {
 }
 .pmore {
   margin-top: 6px;
+}
+/* 从全库挑「别的笔记里没定日子的」：一篇一行（在哪篇 + 几条），点开下面是一样的行（排一天第 2 步）。
+   对齐上面几组的线（设计复审）：箭头在勾选框那一列正中，笔记名从标题那一列起；子行的勾选框对齐笔记名 */
+.pnote-h {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  width: 100%;
+  height: 32px;
+  padding: 0 8px 0 9px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--t2);
+  text-align: left;
+}
+.pnote-h:hover {
+  background: var(--fill);
+}
+.pnote-h .ci {
+  color: var(--t3);
+  flex: none;
+}
+.pnote-h .nm {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.pnote-h .n {
+  color: var(--t3);
+  font-size: 12px;
+  font-weight: 400;
+}
+.pnote-g > .plist {
+  margin-left: 28px;
+}
+/* 已经在那一篇底下了：第二行「在哪篇」不再写一遍，一行一条 */
+.pnote-g .pmeta {
+  display: none;
+}
+.pnote-g .prow {
+  min-height: 40px;
+}
+.pnote-g > .pmore {
+  margin: 2px 0 6px 64px;
 }
 .pline code,
 .pline pre {
@@ -3295,18 +3551,26 @@ select.sel {
   container-type: inline-size;
 }
 @container (max-width: 900px) {
-  .plan {
-    grid-template-columns: minmax(0, 1fr) 240px;
-  }
   .pmain {
     padding: 22px 20px 32px;
   }
+}
+/* 按钮换不换行看左边这一步自己多宽（时间线默认占一半、能拖宽，中间宽不等于列表宽）：内容区窄于 460（列表 524 宽减去左右边距）换到下一行，标题不挤成几个字（设计复审） */
+.pmain {
+  container: pmain / inline-size;
+}
+@container pmain (max-width: 460px) {
   .prow {
     flex-wrap: wrap;
   }
   .prow .pacts {
     width: 100%;
     padding-left: 28px;
+  }
+  /* 「今天要做…」「能用来做事的…」各占一行，不把「2小时」拆开 */
+  .pload .txt {
+    flex-direction: column;
+    gap: 2px;
   }
 }
 .pday > .cal-wk {
@@ -3318,6 +3582,14 @@ select.sel {
 }
 .pday > .cal-wk > .cal-week {
   padding: 0 12px 12px 4px;
+}
+/* 块里的标题放两行，放不下才省略（时间线一小时 56 高，一小时的块放得下两行标题 + 钟点那一行） */
+.pday .cal-blk .bt {
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow-wrap: anywhere;
 }
 
 /* 「用画布笔记里存的 Anthropic Key？」（task-587os）：问一句，用它 / 不用 */
@@ -3431,4 +3703,320 @@ select.sel {
 }
 .acc.mcsrc:hover {
   background: var(--fill);
+}
+
+/* ---------- ⌘ 悬停预览（对标清单 U8，peek.tsx）：样子照画布笔记 peek.css（--pop、圆角 12、--shadow-up，520 宽、最高 460，
+   头上一行 36 高：图标 14 · 笔记名 13/500 · 文件夹和第几行 12 --t3 · 右端「在画布笔记里打开」；这一条那一行左边 2px --acc + --acc-soft 淡底） ---------- */
+.pk {
+  position: fixed;
+  z-index: 95;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  border-radius: 12px;
+  background: var(--pop);
+  box-shadow: var(--shadow-up);
+  overflow: hidden;
+  font: 13px/1.5 var(--sans);
+  color: var(--t1);
+}
+.pk-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 6px 0 12px;
+  border-bottom: 1px solid var(--line);
+}
+.pk-head > .ci {
+  flex: none;
+  color: var(--t2);
+}
+.pk-t {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+.pk-sub {
+  flex: 0 10 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--t3);
+}
+.pk-sub .at {
+  color: var(--t2);
+}
+.pk-open {
+  flex: none;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  font: 12px var(--sans);
+  color: var(--t2);
+  white-space: nowrap;
+}
+.pk-open:hover {
+  background: var(--fill);
+  color: var(--t1);
+}
+.pk-body {
+  flex: 0 1 auto;
+  min-height: 72px;
+  overflow: auto;
+  scrollbar-width: none;
+  overscroll-behavior: contain;
+}
+.pk-body::-webkit-scrollbar {
+  display: none;
+}
+/* 下面还有时下沿 32 渐隐，滚到底去掉 */
+.pk-body.more {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 32px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 32px), transparent);
+}
+.pk-msg {
+  margin: 0;
+  padding: 12px 14px;
+  font-size: 12px;
+  color: var(--t3);
+}
+.pk-doc {
+  padding: 12px 0 16px;
+}
+/* 一行一块：字离浮窗左右 34，和头部笔记名的字对齐；淡底从 14 铺到 14，左边那 2px 竖线和头部图标对齐 */
+.pk-l {
+  position: relative;
+  padding: 1px 20px;
+  margin: 0 14px;
+  border-radius: 0 4px 4px 0;
+  overflow-wrap: anywhere;
+}
+.pk-l.hit {
+  background: var(--acc-soft);
+  box-shadow: inset 2px 0 0 var(--acc);
+}
+.pk-l.gap {
+  height: 8px;
+}
+.pk-l.h {
+  font-weight: 600;
+  margin-top: 6px;
+}
+.pk-l.h1 {
+  font-size: 17px;
+}
+.pk-l.h2 {
+  font-size: 15px;
+}
+.pk-l.h3,
+.pk-l.h4,
+.pk-l.h5,
+.pk-l.h6 {
+  font-size: 13px;
+}
+.pk-l.task,
+.pk-l.li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.pk-l .cb {
+  width: 13px;
+  height: 13px;
+  border-radius: 4px;
+  transform: translateY(2px);
+}
+.pk-l.task.done .tx,
+.pk-l.task.off .tx {
+  color: var(--t3);
+  text-decoration: line-through;
+}
+.pk-l .dot {
+  flex: none;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--t3);
+  transform: translateY(-2px);
+  margin: 0 4px 0 4px;
+}
+.pk-l.quote {
+  color: var(--t2);
+  border-left: 2px solid var(--line2);
+}
+.pk-l.code {
+  font: 12px/1.6 var(--mono);
+  white-space: pre-wrap;
+  background: var(--fill);
+}
+.pk-l .lnk,
+.pk-l .wl {
+  color: var(--acc-t);
+}
+.pk-l code {
+  font: 12px var(--mono);
+  background: var(--fill);
+  border-radius: 4px;
+  padding: 0 4px;
+}
+
+/* ---------- 从别的软件拖进来（对标清单 U9）：指到哪一格亮一圈（同拖一条时的 .cal-over），鼠标旁边一颗小牌写松手加进哪 ---------- */
+.drop-tag {
+  position: fixed;
+  z-index: 96;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 6px;
+  background: var(--acc-soft);
+  font-size: 12px;
+  color: var(--acc-t);
+  white-space: nowrap;
+}
+.drop-tag .ci {
+  color: var(--acc-t);
+}
+
+/* ---------- 回答下面那排（对标清单 U2，@cn/ai-chat AnswerBar 的 .ans-acts）：最新那条一直露，之前的悬停那条回答才露（同画布笔记 .am） ---------- */
+.aim-a .ans-row {
+  margin-top: 6px;
+}
+.aim-a .ans-acts:not(.on) {
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.aim-a:hover .ans-acts,
+.aim-a .ans-acts:focus-within {
+  opacity: 1;
+}
+
+/* ---------- 全部对话（对标清单 U3）：同画布笔记 ai.css 的 .convmenu（搜索框 28 高 --fill；组头 26 高 12/500 --t2、图标 --acc-t、右边段数 --t3；组间一道细线） ---------- */
+.aim-menu.convmenu .find {
+  display: block;
+  width: calc(100% - 12px);
+  height: 28px;
+  margin: 2px 6px 6px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--fill);
+  font-size: 13px;
+  color: var(--t1);
+  outline: none;
+}
+.aim-menu.convmenu .find:focus {
+  box-shadow: 0 0 0 1px var(--acc-ring);
+}
+.aim-menu.convmenu .agrp + .agrp::before {
+  content: '';
+  display: block;
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--line);
+}
+.aim-menu.convmenu .gh {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  height: 26px;
+  padding: 0 8px;
+  font-size: 12px;
+  color: var(--t2);
+}
+.aim-menu.convmenu .gh .gi {
+  flex: none;
+  width: 14px;
+  display: inline-grid;
+  place-items: center;
+  color: var(--acc-t);
+}
+.aim-menu.convmenu .gh .nm {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.aim-menu.convmenu .gh .n {
+  flex: none;
+  margin-left: auto;
+  padding-left: 4px;
+  color: var(--t3);
+  font-variant-numeric: tabular-nums;
+}
+.aim-menu.convmenu .none {
+  padding: 8px 8px 8px 30px;
+  font-size: 12px;
+  color: var(--t3);
+}
+/* 全部对话：搜索框不跟着滚，下面的组自己滚 */
+.aim-menu.convmenu {
+  max-height: none;
+  overflow: visible;
+}
+.aim-menu.convmenu .all {
+  max-height: 340px;
+  overflow-y: auto;
+}
+
+/* ---------- 在这一格里找（⇧⌘F，对标清单 U11）：找的条是画布笔记那个（find.css 的 .cn-findbar，右 14），贴在这一格标签条下面 14 ---------- */
+main.center,
+aside.right {
+  position: relative;
+}
+main.center > .cn-findbar,
+aside.right > .cn-findbar {
+  top: 50px;
+}
+
+/* 共用 AI 组件里的引擎标志格子（@cn/ai-chat 的 EngineLogo，同画布笔记 app.css .eng-logo；设置 › AI 的选择器、对话菜单里用） */
+.eng-logo {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+}
+.eng-logo svg {
+  width: 100%;
+  height: 100%;
+}
+:disabled > .eng-logo,
+:disabled .eng-logo {
+  opacity: 0.45;
+}
+
+/* 设计复审（第二批）：对话菜单 300 宽、左边对齐对话名那颗；全部对话 340；搜索框里浏览器自带的 × 不要（esc、删字就清） */
+.aim-menu.down {
+  width: 300px;
+  right: auto;
+}
+.aim-menu.down.convmenu {
+  width: min(340px, calc(100% - 18px));
+}
+.aim-menu.convmenu .find::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+}
+/* AI 正在改的胶囊：放在标签条下沿再空 4（开几个标签时不盖住标签） */
+main.center > .ai-act .ai-actbar {
+  top: 40px;
+}
+/* 右栏里找：AI 对话的消息往下让出找的条的高度（条贴在对话头分隔线下面） */
+.aim-msgs.finding {
+  padding-top: 62px;
+  scroll-padding-top: 62px;
 }

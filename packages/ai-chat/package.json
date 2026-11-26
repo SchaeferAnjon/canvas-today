@@ -29,6 +29,8 @@
     "./use-dismiss": "./src/use-dismiss.ts",
     "./chat-jump": "./src/chat-jump.ts",
     "./follow": "./src/follow.tsx",
+    "./greeting": "./src/greeting.tsx",
+    "./chat.css": "./src/chat.css",
     "./side/side-inline.css": "./src/side/side-inline.css",
     "./assets/*": "./src/assets/*"
   },

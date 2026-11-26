@@ -11,12 +11,19 @@
     "./themes.css": "./src/themes.css",
     "./settings": "./src/settings.tsx",
     "./settings.css": "./src/settings.css",
+    "./settings-search": "./src/settings-search.ts",
+    "./glow": "./src/glow.tsx",
+    "./glow.css": "./src/glow.css",
     "./codicon-svg": "./src/codicon-svg.ts",
     "./codicons-all": "./src/codicons-all.gen.ts",
     "./drag-end": "./src/drag-end.ts",
+    "./dismiss": "./src/dismiss.ts",
+    "./sash": "./src/sash.tsx",
+    "./sash.css": "./src/sash.css",
     "./glass": "./src/glass.ts",
     "./wall": "./src/wall.ts",
-    "./wall.css": "./src/wall.css"
+    "./wall.css": "./src/wall.css",
+    "./stickers/*": "./stickers/*"
   },
   "dependencies": {
     "@cn/family": "workspace:*"

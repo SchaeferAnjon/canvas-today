@@ -201,7 +201,7 @@ export interface SideTurnRequest {
  * 主进程请界面做的事（只有界面拿得到的东西：编辑器、标签、右栏）。
  * closeTabs：AI 要删这篇 / 这个文件夹，开着的标签先关（编辑器接着存字会把删掉的建回来）；moved：AI 改了名、挪了，标签和编辑器跟过去
  */
-export type BridgeOp = 'saveAll' | 'context' | 'openWeb' | 'openWide' | 'webPages' | 'measure' | 'docRead' | 'docInsert' | 'docReplace' | 'onScreen' | 'accent' | 'closeTabs' | 'moved'
+export type BridgeOp = 'saveAll' | 'context' | 'openWeb' | 'openWide' | 'webPages' | 'measure' | 'docRead' | 'docInsert' | 'docReplace' | 'onScreen' | 'accent' | 'closeTabs' | 'moved' | 'clipDest'
 
 /**
  * AI 动手看得见（DESIGN.v3 2.3）：主进程发给界面的 ai:act。

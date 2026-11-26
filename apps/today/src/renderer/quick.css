@@ -40,6 +40,74 @@ body.quickbody {
   margin: 0 16px 10px 44px;
   color: var(--t2);
 }
+/* 空着时的符号小抄：写法一块（--fill2 底、--t2 字，不压过输入框的占位字），后面一个词；放不下换行 */
+.qp .qgot:has(.qck) {
+  gap: 6px 14px;
+}
+.qck {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--t2);
+}
+.qck code {
+  font: inherit;
+  font-size: 12px;
+  line-height: 20px;
+  padding: 0 6px;
+  border-radius: 5px;
+  background: var(--fill2);
+  color: var(--t2);
+}
+/* 打 # / ! 时的候选：就在输入框下面（不是弹层，小窗口跟着长高），一行 30；图标对齐「+」那一列，名字对齐输入的字（44） */
+.qsug {
+  margin: 0 8px 8px;
+}
+.qsr {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 30px;
+  padding: 0 8px 0 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--t1);
+  cursor: default;
+}
+.qsr > .ci {
+  color: var(--t3);
+  flex: none;
+}
+.qsr.on {
+  background: var(--fill2);
+}
+/* 高优先级那行的图标和清单里高优先级的勾选框同一个颜色 */
+.qsr > .ci.hi {
+  color: var(--cb-hi);
+}
+.qsm {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.qss {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--t2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.qsk {
+  margin-left: auto;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--t2);
+}
 .qmulti {
   padding: 0 16px 8px 44px;
 }
@@ -120,4 +188,121 @@ body.quickbody {
   padding: 18px 20px;
   font-size: 13px;
   color: var(--t2);
+}
+/* ---------- 方案 B：Tab 在加待办、问 AI 之间切（左边图标跟着换），贴的图，问 AI 时小框里展开对话 ---------- */
+.qin .qmode {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  margin-top: 3px;
+  color: var(--acc-t);
+}
+.qin .qmode .ci {
+  margin-top: 0;
+}
+/* 贴的图：照 AI 对话框材料一排的小卡（44 高、--fill 底、圆角 6、右上 ×），上面一行小字写去处，下面是名字 */
+.qshelf {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 16px 8px 44px;
+}
+.qimg {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  max-width: 220px;
+  padding: 0 24px 0 6px;
+  border-radius: 6px;
+  background: var(--fill);
+}
+.qimg > img {
+  height: 34px;
+  max-width: 60px;
+  object-fit: cover;
+  border-radius: 3px;
+  background: #fff;
+  box-shadow: 0 0 0 1px var(--line);
+}
+[data-tone='dark'] .qimg > img {
+  filter: brightness(0.92);
+}
+.qimg-t {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.qimg-to {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10.5px;
+  line-height: 15px;
+  color: var(--t3);
+  white-space: nowrap;
+}
+.qimg-n {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--t2);
+  white-space: nowrap;
+}
+.qimg-x {
+  position: absolute;
+  right: 4px;
+  top: 4px;
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--t3);
+  cursor: pointer;
+}
+.qimg-x:hover {
+  background: var(--fill2);
+  color: var(--t1);
+}
+/* 问 AI：全能模式开关就是右栏输入框下面那一颗（@cn/ai-chat 的 OmniLine，22 × 12 方角开关，整行一颗按钮左右各 6）：38 + 6 对齐输入的字 */
+.qp .ai-omni {
+  margin: 0 16px 10px 38px;
+}
+/* 小框里的对话：最高 360，在里面滚、不横滚；样子用右栏那一套（.aim-u、.aim-a） */
+.qtalk {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 360px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  margin: 0 8px 10px 44px;
+  padding: 4px 8px 4px 0;
+  font-size: 13px;
+}
+/* 挂着右栏的 .aim（改动卡、改了几个文件、步骤的样子都写在它下面），不要它的 flex: 1（不然小框被撑高） */
+.qtalk.aim {
+  flex: none;
+}
+.qtalk .aim-a {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.qtalk .qa-err {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--red-t, var(--red));
+}
+.qtalk .qa-wait {
+  font-size: 12px;
+  color: var(--t3);
 }

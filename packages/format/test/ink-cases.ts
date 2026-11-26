@@ -3,7 +3,7 @@
  * （apps/apple/test/ink-fixtures.test.ts 导出成 Fixtures/ink-cases.json）。
  * 笔是程序合成的（随机游走、起笔收笔压力），点数、精度和真 Pencil 写的差不多。
  */
-import { decodePoints, encodePoints, type InkPoint, inkStrokes, moveInk, parseInk, printInk, splitInk } from '../src/ink'
+import { decodePoints, encodePoints, type InkPoint, inkStrokes, moveInk, parseInk, printInk, recolorInk, splitInk } from '../src/ink'
 
 /** 固定种子的随机数 */
 export function rng(seed: number): () => number {
@@ -62,6 +62,37 @@ export const INK_HAND =
 
 /** 只有头一行（还没写字） */
 export const INK_EMPTY = '{"ink":1}\n'
+
+/**
+ * 读 PDF 上写的（组行带 pg，x、y 是页内位置）：第 1 页迁过来的一组（moved 行在前），第 3 页写的一组；
+ * 一行 pg 写成 0、一行写成字、一行写成小数：都是认不出的行，原样留着
+ */
+export const INK_PDF_DOC =
+  '{"ink":1}\n' +
+  '{"moved":"附件/手写/C72/第 1 页.drawing","sha":"a7fe7b8f8c48","pg":1}\n' +
+  '{"g":"79wxybrw","pg":1,"x":302,"y":154}\n' +
+  `{"id":"hbcq54ts","g":"79wxybrw","pen":"pen","c":"#0a0a0a","seed":1878408279,"p":"${P1}"}\n` +
+  `{"id":"c2v3b4n5","g":"79wxybrw","pen":"marker","c":"#ffd60ab3","p":"${P3}"}\n` +
+  '{"g":"n0000001","pg":3,"x":71.6,"y":254.3,"t":1764090000000}\n' +
+  `{"id":"s0000004","g":"n0000001","pen":"pen","c":"#2459c6","p":"${P2}"}\n` +
+  '{"g":"bad00001","pg":0,"x":1,"y":1}\n' +
+  '{"g":"bad00002","pg":"2","x":1,"y":1}\n' +
+  '{"g":"bad00003","pg":1.5,"x":1,"y":1}\n'
+
+/** PDF 笔迹两台设备都改了：按编号合并，pg 跟着组行走；两边迁出来的 moved 行一样，只留一行 */
+export const INK_PDF_MERGE_CASES: { name: string; base: string; local: string; remote: string }[] = (() => {
+  const base = INK_PDF_DOC
+  const line = (id: string, g: string, c = '#1d2421') => `{"id":"${id}","g":"${g}","pen":"pen","c":"${c}","p":"${P5}"}\n`
+  const moved = '{"moved":"附件/手写/C72/第 2 页.drawing","sha":"0123456789ab","pg":2}\n'
+  const mig = moved + '{"g":"oldg0002","pg":2,"x":10,"y":20}\n' + line('olds0001', 'oldg0002', '#0a0a0a')
+  return [
+    { name: 'PDF：两台设备在不同页各写了一组', base, local: base + '{"g":"macg0101","pg":2,"x":40,"y":60}\n' + line('macs0101', 'macg0101'), remote: base + '{"g":"ipdg0101","pg":5,"x":12,"y":500.25}\n' + line('ipds0101', 'ipdg0101') },
+    { name: 'PDF：一边在页里挪了一组、另一边改了另一组一笔的色', base, local: base.replace('{"g":"79wxybrw","pg":1,"x":302,"y":154}', '{"g":"79wxybrw","pg":1,"x":320,"y":170,"t":1764091000000}'), remote: printInk(recolorInk(parseInk(base), ['s0000004'], '#d64545', { now: 1764091000500 })) },
+    { name: 'PDF：两台设备都迁了同一页旧笔迹（一模一样）、一边还写了一笔', base, local: base + mig, remote: base + mig + line('ipds0102', 'oldg0002') },
+    { name: 'PDF：一边擦断第 1 页的一笔（from）、另一边在白板那样加了一张贴纸行（三条线的行都在）', base, local: eraseCase(base, 'hbcq54ts', [[0, 8], [14, 24]], ['pdfc0001', 'pdfc0002'], 1764096000000), remote: base + '{"sticker":"s9pdf001","k":"coffee","x":40,"y":60,"w":76,"rot":10}\n' },
+    { name: 'PDF：只挪一组里的一笔（拆出新组，pg 跟着）', base, local: printInk(moveInk(parseInk(base), ['hbcq54ts'], 5, -3, { now: 1764092000000, newId: () => 'splitg01' })), remote: base + line('ipds0103', 'n0000001') },
+  ]
+})()
 
 /** 合并的样例：base、local（Mac）、remote（iPad） */
 export const INK_MERGE_CASES: { name: string; base: string; local: string; remote: string }[] = (() => {

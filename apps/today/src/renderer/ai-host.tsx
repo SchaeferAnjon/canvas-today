@@ -3,7 +3,7 @@
  * 输入框（AiInput、useComposer）和发出去那条（MatMsg）用的是画布笔记同一套，贴图、拖图、「+」选图、缩略图、删一张、字和图一起时先贴字都一样。
  * - 文案：组件里写中文原句，英文界面用画布笔记那张英文表（同一批组件，画布笔记已经译过）；@cn/ai-engines/shared 的 t() 也交同一份。
  * - 图：主进程存进 pasted/（ct:chatPaste），界面上按名字记一份 data: 网址（index.html 的 CSP 只许 data:）；以前对话里的图打开时去取（ct:chatPasted）。
- * - 引擎、全能模式：画布今日的底行谁来答 · 模型 · 想多久是自己画的（AiInput 的 bar），不走 useConvPick，这几项只给个不碰东西的样子；没有全能模式。
+ * - 引擎、全能模式：画布今日的底行谁来答 · 模型 · 想多久是自己画的（AiInput 的 bar），不走 useConvPick，这几项只给个不碰东西的样子；全能模式开关由 AiChat 直接交给 AiInput 的 omni（ai-omni.tsx 的 omniLine，主进程 ct:chatOmni），不走这里的 aiSetOmni。
  */
 import { Codicon, codiconEl, type CodiconName } from '@cn/design'
 import { setAiChatHost } from '@cn/ai-chat/context'
@@ -12,6 +12,7 @@ import { setI18n } from '@cn/ai-engines/shared'
 import { EN as NOTES_EN } from '../../../notes/src/shared/i18n/en'
 import { translate } from '../../../notes/src/shared/i18n/core'
 import type { Lang } from '../shared/i18n'
+import { Markdown } from './markdown'
 
 let lang: Lang = 'zh'
 const tShared = (key: string, p?: Record<string, string | number | boolean | null | undefined>) => translate(lang, NOTES_EN, key, p)
@@ -23,6 +24,10 @@ const ui: UiHost = {
   isKey: () => false,
   keyLabel: () => null,
 }
+
+let openMention: (path: string) => void = () => undefined
+/** 点 @ 胶囊时打开那一篇（App 里换到那篇清单） */
+export const setOpenMention = (f: (path: string) => void) => void (openMention = f)
 
 /** 贴的图：名字 → data: 网址（贴的那一下就有；以前存的打开对话时取） */
 const pasted = new Map<string, string>()
@@ -61,15 +66,21 @@ const chat: ChatHost = {
     return got
   },
   pastedUrl: (name) => pasted.get(name) ?? '',
-  renderMarkdown: (text) => <div className="txt">{text}</div>,
+  renderMarkdown: (text) => <Markdown text={text} />,
   plainAnswer: (text) => text,
   copy: (text) => navigator.clipboard.writeText(text),
   openAiSettings: () => undefined,
+  // 点 @ 胶囊（输入框里、发出去那条里）：中间清单换到那一篇（App 交进来，setOpenMention）
+  openMention: (m) => openMention(m.path),
   aiErrorView: (raw) => {
     const line = raw.trim().split('\n')[0] ?? ''
     return { code: 'other', title: line, acts: ['retry'], raw: raw.includes('\n') ? raw : null }
   },
 }
+
+/** 全局快速输入框贴的图：存进 pasted/，记下 data: 网址（缩略图、发出去那条都用它），返回名字 */
+export const pasteImage = (bytes: Uint8Array, mime: string): Promise<string> => chat.aiPaste(bytes, mime)
+export const pastedUrl = (name: string): string => pasted.get(name) ?? ''
 
 /** 界面语言定了、换了：交一次（输入框里的字跟着换） */
 export function installAiHost(l: Lang) {

@@ -21,6 +21,8 @@ import { E2E } from './test-mode'
 
 const W = 640
 const H0 = 132
+/** 最高多高：问 AI 时小框里展开对话（回答区最高 360，加上输入框、贴的图、开关、底栏） */
+const MAX_H = 680
 
 type Front = { name: string; bundle: string }
 
@@ -181,9 +183,9 @@ export class QuickPanel {
       .catch(() => undefined)
   }
 
-  /** 页面量好自己多高：窗口跟着变（最高 560） */
+  /** 页面量好自己多高：窗口跟着变（最高 MAX_H：问 AI 时小框里展开对话） */
   fit(h: number) {
-    if (this.win && h > 40) this.win.setContentSize(W, Math.min(560, Math.ceil(h)))
+    if (this.win && h > 40) this.win.setContentSize(W, Math.min(MAX_H, Math.ceil(h)))
   }
 
   get webContentsId(): number | null {

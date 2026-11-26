@@ -94,6 +94,7 @@ export const DOC: Table = {
   看法: 'View',
   任务: 'Tasks',
   缩放: 'Zoom',
+  '缩放\n右栏开着，画布实际 {real}%': 'Zoom\nRight panel open, board shown at {real}%',
   '触控板捏合、按住 ⌘ 滚动也能缩放': 'Pinch or ⌘-scroll to zoom too',
   宽版: 'Wide layout',
   '改成按「##」分列的写法': 'Convert to “##” columns',

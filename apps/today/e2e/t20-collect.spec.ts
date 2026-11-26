@@ -84,9 +84,10 @@ test('勾掉抄了三遍的「驾照刷题」：三篇各只改那一行，✅ �
     // 那一次提交只动了三篇、每篇一行
     const stat = execFileSync('git', ['-C', run.vault, 'show', '--numstat', '--format=', 'HEAD'], { encoding: 'utf8' }).trim().split('\n').sort()
     expect(stat).toEqual([`1\t1\t${D1}`, `1\t1\t${D2}`, `1\t1\t${D3}`])
-    // 列表里还是一条（今天勾掉的那组，划掉）
+    // 列表里还是一条（刚勾掉的那一行「已完成 · 撤回」，划掉），2 秒后进「已完成」
     await expect(page.locator('.center .row.done .rt', { hasText: /^🚗 驾照刷题$/ })).toHaveCount(1)
     await expect(page.locator('.center .row .rt', { hasText: /^🚗 驾照刷题$/ })).toHaveCount(1)
+    await expect(page.locator('.center .row .rt', { hasText: /^🚗 驾照刷题$/ })).toHaveCount(0, { timeout: 4000 })
     await page.locator('.toast').getByRole('button', { name: '撤回' }).click()
     await expect.poll(() => [D1, D2, D3].map((p) => run.read(p))).toEqual(before)
   } finally {
